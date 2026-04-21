@@ -1,9 +1,10 @@
 <?php
 /**
  * Plugin Name: Class Manager Pro
- * Description: Admin system for managing classes, batches, students, payments, analytics, and secure batch intake links.
- * Version: 1.3.1
- * Author: Class Manager Pro
+ * Description: Advanced Class, Batch, Student and Payment Management System with Tutor LMS and Razorpay Integration
+ * Version: 1.0.0
+ * Author: Swaraj Fugare
+ * Author URI: https://portfolio.matoshreecollection.in
  * Text Domain: class-manager-pro
  *
  * @package ClassManagerPro
@@ -13,13 +14,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMP_VERSION', '1.3.1' );
+define( 'CMP_VERSION', '1.0.0' );
 define( 'CMP_PLUGIN_FILE', __FILE__ );
 define( 'CMP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 require_once CMP_PLUGIN_DIR . 'includes/db.php';
 require_once CMP_PLUGIN_DIR . 'includes/functions.php';
+require_once CMP_PLUGIN_DIR . 'includes/tutor.php';
 require_once CMP_PLUGIN_DIR . 'includes/razorpay.php';
 require_once CMP_PLUGIN_DIR . 'includes/public.php';
 
@@ -31,6 +33,7 @@ require_once CMP_PLUGIN_DIR . 'admin/students.php';
 require_once CMP_PLUGIN_DIR . 'admin/add-new.php';
 require_once CMP_PLUGIN_DIR . 'admin/payments.php';
 require_once CMP_PLUGIN_DIR . 'admin/razorpay-import.php';
+require_once CMP_PLUGIN_DIR . 'admin/teacher-console.php';
 require_once CMP_PLUGIN_DIR . 'admin/analytics.php';
 require_once CMP_PLUGIN_DIR . 'admin/settings.php';
 
@@ -65,8 +68,21 @@ function cmp_register_admin_menu() {
 	add_submenu_page( 'cmp-dashboard', __( 'Add New', 'class-manager-pro' ), __( 'Add New', 'class-manager-pro' ), 'manage_options', 'cmp-add-new', 'cmp_render_add_new_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Payments', 'class-manager-pro' ), __( 'Payments', 'class-manager-pro' ), 'manage_options', 'cmp-payments', 'cmp_render_payments_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Razorpay Import', 'class-manager-pro' ), __( 'Razorpay Import', 'class-manager-pro' ), 'manage_options', 'cmp-razorpay-import', 'cmp_render_razorpay_import_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Teacher Console', 'class-manager-pro' ), __( 'Teacher Console', 'class-manager-pro' ), 'manage_options', 'cmp-teacher-console', 'cmp_render_teacher_console_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Analytics', 'class-manager-pro' ), __( 'Analytics', 'class-manager-pro' ), 'manage_options', 'cmp-analytics', 'cmp_render_analytics_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Settings', 'class-manager-pro' ), __( 'Settings', 'class-manager-pro' ), 'manage_options', 'cmp-settings', 'cmp_render_settings_page' );
+
+	if ( ! current_user_can( 'manage_options' ) && function_exists( 'cmp_current_user_has_teacher_batches' ) && cmp_current_user_has_teacher_batches() ) {
+		add_menu_page(
+			__( 'My Classes', 'class-manager-pro' ),
+			__( 'My Classes', 'class-manager-pro' ),
+			'read',
+			'cmp-teacher-console',
+			'cmp_render_teacher_console_page',
+			'dashicons-groups',
+			27
+		);
+	}
 }
 
 /**
@@ -112,8 +128,10 @@ function cmp_enqueue_admin_assets( $hook ) {
 		'cmp-admin',
 		'CMPAdmin',
 		array(
-			'ajaxUrl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'cmp_admin_nonce' ),
+			'ajaxUrl'       => admin_url( 'admin-ajax.php' ),
+			'nonce'         => wp_create_nonce( 'cmp_admin_nonce' ),
+			'deleteNonce'   => wp_create_nonce( 'cmp_delete_nonce' ),
+			'attendanceNonce' => wp_create_nonce( 'cmp_save_attendance' ),
 		)
 	);
 }

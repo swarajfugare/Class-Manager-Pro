@@ -93,7 +93,7 @@
 
 		const data = $form.serializeArray();
 		data.push({ name: 'action', value: action });
-		data.push({ name: 'nonce', value: CMPAdmin.nonce });
+		data.push({ name: 'nonce', value: getAjaxNonce() });
 
 		$form.addClass('cmp-loading');
 
@@ -239,6 +239,105 @@
 				}
 			});
 		}
+
+		if (charts.courseDemandHeatmap) {
+			renderChart('cmp-analytics-course-demand', {
+				type: 'bar',
+				data: {
+					labels: charts.courseDemandHeatmap.labels,
+					datasets: [{
+						label: 'Students',
+						data: charts.courseDemandHeatmap.values,
+						backgroundColor: palette[3]
+					}]
+				},
+				options: {
+					indexAxis: 'y',
+					maintainAspectRatio: false,
+					scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+				}
+			});
+		}
+	}
+
+	function downloadCsv(filename, content) {
+		const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+
+		link.href = url;
+		link.download = filename;
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	}
+
+	function getAjaxNonce() {
+		return String($('input[name="cmp_admin_ajax_nonce"]').first().val() || CMPAdmin.nonce || '');
+	}
+
+	function updateFeedback($feedback, message, isError) {
+		if (!$feedback || !$feedback.length) {
+			return;
+		}
+
+		$feedback.text(message || '');
+		$feedback.toggleClass('cmp-feedback-error', !!isError);
+		$feedback.toggleClass('cmp-feedback-success', !!message && !isError);
+	}
+
+	function showAdminNotice(message, type) {
+		const noticeType = type === 'error' ? 'notice-error' : 'notice-success';
+		const $wrap = $('.cmp-wrap').first();
+		const $notice = $('<div class="notice is-dismissible cmp-ajax-notice"><p></p></div>');
+
+		if (!$wrap.length || !message) {
+			return;
+		}
+
+		$wrap.find('.cmp-ajax-notice').remove();
+		$notice.addClass(noticeType);
+		$notice.find('p').text(message);
+		$wrap.prepend($notice);
+		window.scrollTo({ top: 0, behavior: 'smooth' });
+	}
+
+	function collectIds(selector) {
+		return $(selector).filter(':checked').map(function () {
+			return $(this).val();
+		}).get();
+	}
+
+	function requestEntityAction(payload) {
+		return $.post(CMPAdmin.ajaxUrl, $.extend({
+			action: 'cmp_admin_entity_action',
+			nonce: getAjaxNonce()
+		}, payload));
+	}
+
+	function requestDelete(payload) {
+		return $.post(CMPAdmin.ajaxUrl, $.extend({
+			action: 'cmp_delete_item',
+			nonce: String(CMPAdmin.deleteNonce || '')
+		}, payload));
+	}
+
+	function removeDeletedRows(rows) {
+		if (!Array.isArray(rows)) {
+			return;
+		}
+
+		rows.forEach(function (rowId) {
+			$('[data-cmp-row-id="' + rowId + '"]').remove();
+		});
+	}
+
+	function handleEntityActionFailure(xhr, $feedback) {
+		const message = xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message ? xhr.responseJSON.data.message : 'Request failed.';
+
+		updateFeedback($feedback, message, true);
+		showAdminNotice(message, 'error');
 	}
 
 	$(function () {
@@ -284,16 +383,70 @@
 		});
 
 		$(document).on('submit', '.cmp-filter-form', function (event) {
+			if (!$(this).data('cmp-action')) {
+				return;
+			}
+
 			event.preventDefault();
 			runAjaxFilter($(this));
 		});
 
-		$(document).on('input change', '.cmp-filter-form input, .cmp-filter-form select', delayedFilter);
+		$(document).on('input change', '.cmp-filter-form input, .cmp-filter-form select', function () {
+			if (!$(this).closest('.cmp-filter-form').data('cmp-action')) {
+				return;
+			}
+
+			delayedFilter.call(this);
+		});
 
 		$(document).on('click', '.cmp-delete-link', function (event) {
-			if (!window.confirm('Delete this record?')) {
-				event.preventDefault();
+			const $link = $(this);
+			const message = 'Are you sure you want to delete?';
+
+			if (!$link.data('cmp-ajax-delete')) {
+				if (!window.confirm(message)) {
+					event.preventDefault();
+				}
+
+				return;
 			}
+
+			event.preventDefault();
+
+			if (!window.confirm(message)) {
+				return;
+			}
+
+			const entityType = String($link.data('type') || $link.data('cmp-entity-type') || '');
+			const entityId = String($link.data('id') || $link.data('cmp-entity-id') || '');
+			const $feedback = $($link.data('cmp-feedback') || '');
+			const originalText = $.trim($link.text());
+
+			if (!entityType || !entityId) {
+				return;
+			}
+
+			$link.addClass('is-busy').attr('aria-disabled', 'true').text('Deleting...');
+			updateFeedback($feedback, 'Deleting...', false);
+
+			requestDelete({
+				id: entityId,
+				type: entityType
+			}).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					updateFeedback($feedback, 'Delete failed.', true);
+					showAdminNotice('Delete failed.', 'error');
+					return;
+				}
+
+				removeDeletedRows([response.data.deleted_row || (entityType + '-' + entityId)]);
+				updateFeedback($feedback, response.data.message || 'Deleted.', false);
+				showAdminNotice(response.data.message || 'Deleted.', 'success');
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$link.removeClass('is-busy').removeAttr('aria-disabled').text(originalText);
+			});
 		});
 
 		$(document).on('submit', 'form[data-cmp-confirm]', function (event) {
@@ -320,6 +473,186 @@
 				window.setTimeout(function () {
 					$button.text(originalText);
 				}, 1200);
+			});
+		});
+
+		$(document).on('change', '[data-cmp-select-all]', function () {
+			const checked = $(this).is(':checked');
+			const target = $(this).data('cmp-select-all');
+
+			if (!target) {
+				return;
+			}
+
+			$(target).prop('checked', checked);
+		});
+
+		$(document).on('click', '[data-cmp-bulk-apply="1"]', function () {
+			const $button = $(this);
+			const entityType = String($button.data('cmp-entity-type') || '');
+			const checkboxSelector = String($button.data('cmp-checkbox') || '');
+			const actionSelector = String($button.data('cmp-action-select') || '');
+			const $feedback = $($button.data('cmp-feedback') || '');
+			const task = String($(actionSelector).val() || '');
+			const ids = collectIds(checkboxSelector);
+			const confirmMessage = entityType === 'class' ? 'Delete the selected classes?' : 'Delete the selected batches?';
+
+			if (!task) {
+				updateFeedback($feedback, 'Choose a bulk action.', true);
+				return;
+			}
+
+			if (!ids.length) {
+				updateFeedback($feedback, 'Select at least one record.', true);
+				return;
+			}
+
+			if (task === 'delete' && !window.confirm(confirmMessage)) {
+				return;
+			}
+
+			$button.prop('disabled', true).addClass('is-busy');
+			updateFeedback($feedback, 'Working...', false);
+
+			requestEntityAction({
+				entity_type: entityType,
+				task: task,
+				ids: ids
+			}).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					updateFeedback($feedback, 'Bulk action failed.', true);
+					showAdminNotice('Bulk action failed.', 'error');
+					return;
+				}
+
+				if (response.data.csv && response.data.filename) {
+					downloadCsv(response.data.filename, response.data.csv);
+				}
+
+				removeDeletedRows(response.data.deleted_rows || []);
+				updateFeedback($feedback, response.data.message || 'Done.', false);
+				showAdminNotice(response.data.message || 'Done.', 'success');
+
+				if (response.data.reload) {
+					window.location.reload();
+				}
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$button.prop('disabled', false).removeClass('is-busy');
+			});
+		});
+
+		$(document).on('change', '#cmp-student-select-all', function () {
+			const checked = $(this).is(':checked');
+			$('.cmp-student-select').prop('checked', checked);
+		});
+
+		$(document).on('click', '#cmp-student-bulk-apply', function () {
+			const $button = $(this);
+			const $feedback = $('#cmp-student-bulk-feedback');
+			const action = String($('#cmp-student-bulk-action').val() || '');
+			const studentIds = $('.cmp-student-select:checked').map(function () {
+				return $(this).val();
+			}).get();
+
+			if (!action) {
+				updateFeedback($feedback, 'Choose a bulk action.', true);
+				return;
+			}
+
+			if (!studentIds.length) {
+				updateFeedback($feedback, 'Select at least one student.', true);
+				return;
+			}
+
+			if (action === 'change_batch' && (!$('#cmp-student-bulk-class').val() || $('#cmp-student-bulk-class').val() === '0' || !$('#cmp-student-bulk-batch').val() || $('#cmp-student-bulk-batch').val() === '0')) {
+				updateFeedback($feedback, 'Choose the target class and batch.', true);
+				return;
+			}
+
+			if (action === 'delete' && !window.confirm('Delete the selected students?')) {
+				return;
+			}
+
+			$button.prop('disabled', true).addClass('is-busy');
+			updateFeedback($feedback, 'Working...', false);
+
+			requestEntityAction({
+				entity_type: 'student',
+				task: action,
+				ids: studentIds,
+				target_class_id: $('#cmp-student-bulk-class').val(),
+				target_batch_id: $('#cmp-student-bulk-batch').val()
+			}).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					updateFeedback($feedback, 'Bulk action failed.', true);
+					showAdminNotice('Bulk action failed.', 'error');
+					return;
+				}
+
+				if (response.data.csv && response.data.filename) {
+					downloadCsv(response.data.filename, response.data.csv);
+				}
+
+				updateFeedback($feedback, response.data.message || 'Done.', false);
+				showAdminNotice(response.data.message || 'Done.', 'success');
+
+				if (response.data.reload) {
+					window.location.reload();
+				}
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$button.prop('disabled', false).removeClass('is-busy');
+			});
+		});
+
+		$(document).on('submit', 'form[data-cmp-attendance-form="1"]', function (event) {
+			const $form = $(this);
+			const $feedback = $form.find('[data-cmp-attendance-feedback]');
+			const $button = $form.find('input[type="submit"], button[type="submit"]').first();
+			const isInputButton = $button.is('input');
+			const originalText = isInputButton ? String($button.val() || '') : String($button.text() || '');
+			const data = $form.serializeArray();
+
+			event.preventDefault();
+
+			data.push({ name: 'action', value: 'cmp_save_attendance_quick' });
+			data.push({ name: 'nonce', value: String(CMPAdmin.attendanceNonce || '') });
+
+			$button.prop('disabled', true).addClass('is-busy');
+			if (isInputButton) {
+				$button.val('Saving...');
+			} else {
+				$button.text('Saving...');
+			}
+			updateFeedback($feedback, 'Saving attendance...', false);
+
+			$.post(CMPAdmin.ajaxUrl, data).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					updateFeedback($feedback, 'Attendance save failed.', true);
+					showAdminNotice('Attendance save failed.', 'error');
+					return;
+				}
+
+				if (response.data.summary) {
+					Object.keys(response.data.summary).forEach(function (key) {
+						$form.closest('.cmp-panel').find('[data-cmp-attendance-summary="' + key + '"]').text(response.data.summary[key]);
+					});
+				}
+
+				updateFeedback($feedback, response.data.message || 'Attendance saved.', false);
+				showAdminNotice(response.data.message || 'Attendance saved.', 'success');
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$button.prop('disabled', false).removeClass('is-busy');
+				if (isInputButton) {
+					$button.val(originalText);
+				} else {
+					$button.text(originalText);
+				}
 			});
 		});
 

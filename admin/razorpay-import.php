@@ -17,12 +17,19 @@ function cmp_render_razorpay_import_page() {
 
 	$credentials = cmp_get_razorpay_credentials();
 	$has_keys    = '' !== $credentials['key_id'] && '' !== $credentials['secret'];
-	$page_id     = sanitize_text_field( cmp_field( $_GET, 'razorpay_page_id' ) );
+	$selected_id = sanitize_text_field( cmp_field( $_GET, 'razorpay_page_id' ) );
+	$manual_id   = sanitize_text_field( cmp_field( $_GET, 'manual_razorpay_page_id' ) );
+	$page_id     = '' !== $manual_id ? $manual_id : $selected_id;
 	$links       = $has_keys ? cmp_get_razorpay_payment_links_for_admin() : array();
 	$link        = null;
 	$payments    = array();
 	$classes     = cmp_get_classes();
 	$batches     = cmp_get_batches();
+	$last_sync   = sanitize_text_field( (string) get_option( 'cmp_last_razorpay_sync_at', '' ) );
+	$last_summary = get_option( 'cmp_last_razorpay_sync_summary', array() );
+	$sync_search = sanitize_text_field( cmp_field( $_GET, 'sync_search' ) );
+	$sync_class_id = absint( cmp_field( $_GET, 'sync_class_id', get_option( 'cmp_automation_sync_class_id', 0 ) ) );
+	$sync_batch_id = absint( cmp_field( $_GET, 'sync_batch_id', get_option( 'cmp_automation_sync_batch_id', 0 ) ) );
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Razorpay Import', 'class-manager-pro' ); ?></h1>
@@ -46,15 +53,89 @@ function cmp_render_razorpay_import_page() {
 			<section class="cmp-panel">
 				<div class="cmp-panel-header">
 					<div>
+						<h2><?php esc_html_e( 'Sync Payments', 'class-manager-pro' ); ?></h2>
+						<p class="cmp-muted"><?php esc_html_e( 'Fetch captured payments from the Razorpay Payments API, match them using notes/metadata/date filters, and import only missing payment IDs.', 'class-manager-pro' ); ?></p>
+					</div>
+					<?php if ( $last_sync ) : ?>
+						<span class="cmp-inline-badge"><?php echo esc_html( sprintf( __( 'Last sync: %s', 'class-manager-pro' ), $last_sync ) ); ?></span>
+					<?php endif; ?>
+				</div>
+
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+					<input type="hidden" name="action" value="cmp_sync_razorpay_payments">
+					<input type="hidden" name="return_page" value="cmp-razorpay-import">
+					<?php wp_nonce_field( 'cmp_sync_razorpay_payments' ); ?>
+
+					<div class="cmp-grid cmp-grid-3">
+						<label>
+							<span><?php esc_html_e( 'Created From', 'class-manager-pro' ); ?></span>
+							<input type="date" name="created_from" value="<?php echo esc_attr( sanitize_text_field( cmp_field( $_GET, 'created_from' ) ) ); ?>">
+						</label>
+						<label>
+							<span><?php esc_html_e( 'Created To', 'class-manager-pro' ); ?></span>
+							<input type="date" name="created_to" value="<?php echo esc_attr( sanitize_text_field( cmp_field( $_GET, 'created_to' ) ) ); ?>">
+						</label>
+						<label>
+							<span><?php esc_html_e( 'Notes / Metadata', 'class-manager-pro' ); ?></span>
+							<input type="text" name="sync_search" class="regular-text" value="<?php echo esc_attr( $sync_search ); ?>" placeholder="<?php esc_attr_e( 'batch_id, email, payment_link_id...', 'class-manager-pro' ); ?>">
+						</label>
+						<label>
+							<span><?php esc_html_e( 'Select Class', 'class-manager-pro' ); ?></span>
+							<select name="sync_class_id" data-cmp-class-select required>
+								<option value="0"><?php esc_html_e( 'Choose class', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $classes as $class ) : ?>
+									<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $sync_class_id, (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</label>
+						<label>
+							<span><?php esc_html_e( 'Select Batch', 'class-manager-pro' ); ?></span>
+							<select name="sync_batch_id" data-cmp-batches required>
+								<option value="0"><?php esc_html_e( 'Choose batch', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $batches as $batch ) : ?>
+									<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $sync_batch_id, (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</label>
+					</div>
+
+					<?php submit_button( __( 'Sync Payments', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
+				</form>
+
+				<?php if ( ! empty( $last_summary ) && is_array( $last_summary ) ) : ?>
+					<div class="cmp-cards cmp-cards-4">
+						<div class="cmp-card">
+							<span><?php esc_html_e( 'Fetched', 'class-manager-pro' ); ?></span>
+							<strong><?php echo esc_html( number_format_i18n( isset( $last_summary['fetched'] ) ? (int) $last_summary['fetched'] : 0 ) ); ?></strong>
+						</div>
+						<div class="cmp-card">
+							<span><?php esc_html_e( 'Imported', 'class-manager-pro' ); ?></span>
+							<strong><?php echo esc_html( number_format_i18n( isset( $last_summary['imported'] ) ? (int) $last_summary['imported'] : 0 ) ); ?></strong>
+						</div>
+						<div class="cmp-card">
+							<span><?php esc_html_e( 'Duplicates', 'class-manager-pro' ); ?></span>
+							<strong><?php echo esc_html( number_format_i18n( isset( $last_summary['duplicate'] ) ? (int) $last_summary['duplicate'] : 0 ) ); ?></strong>
+						</div>
+						<div class="cmp-card">
+							<span><?php esc_html_e( 'Failed', 'class-manager-pro' ); ?></span>
+							<strong><?php echo esc_html( number_format_i18n( isset( $last_summary['failed'] ) ? (int) $last_summary['failed'] : 0 ) ); ?></strong>
+						</div>
+					</div>
+				<?php endif; ?>
+			</section>
+
+			<section class="cmp-panel">
+				<div class="cmp-panel-header">
+					<div>
 						<h2><?php esc_html_e( 'Choose Razorpay Page', 'class-manager-pro' ); ?></h2>
-						<p class="cmp-muted"><?php esc_html_e( 'These are payment links/pages from your Razorpay dashboard.', 'class-manager-pro' ); ?></p>
+						<p class="cmp-muted"><?php esc_html_e( 'Choose from detected payment links/pages, or paste a Razorpay page ID manually.', 'class-manager-pro' ); ?></p>
 					</div>
 				</div>
 
 				<form method="get" class="cmp-toolbar">
 					<input type="hidden" name="page" value="cmp-razorpay-import">
-					<select name="razorpay_page_id" required>
-						<option value=""><?php esc_html_e( 'Select Razorpay page', 'class-manager-pro' ); ?></option>
+					<select name="razorpay_page_id">
+						<option value=""><?php esc_html_e( 'Select detected page', 'class-manager-pro' ); ?></option>
 						<?php foreach ( $links as $candidate ) : ?>
 							<?php
 							$candidate_id    = isset( $candidate['id'] ) ? sanitize_text_field( $candidate['id'] ) : '';
@@ -65,9 +146,10 @@ function cmp_render_razorpay_import_page() {
 								$candidate_id
 							);
 							?>
-							<option value="<?php echo esc_attr( $candidate_id ); ?>" <?php selected( $page_id, $candidate_id ); ?>><?php echo esc_html( $candidate_label ); ?></option>
+							<option value="<?php echo esc_attr( $candidate_id ); ?>" <?php selected( $selected_id, $candidate_id ); ?>><?php echo esc_html( $candidate_label ); ?></option>
 						<?php endforeach; ?>
 					</select>
+					<input type="text" name="manual_razorpay_page_id" class="regular-text" value="<?php echo esc_attr( $manual_id ); ?>" placeholder="<?php esc_attr_e( 'Or paste page ID', 'class-manager-pro' ); ?>">
 					<button type="submit" class="button button-primary"><?php esc_html_e( 'Load Page Data', 'class-manager-pro' ); ?></button>
 				</form>
 			</section>

@@ -28,15 +28,35 @@ function cmp_render_settings_page() {
 	$reminder_days             = (int) get_option( 'cmp_reminder_days', 7 );
 	$whatsapp_template         = (string) get_option( 'cmp_whatsapp_template', '' );
 	$sms_template              = (string) get_option( 'cmp_sms_template', '' );
+	$email_subject             = (string) get_option( 'cmp_email_subject', '' );
+	$email_template            = (string) get_option( 'cmp_email_template', '' );
 	$attendance_enabled        = cmp_is_attendance_enabled();
 	$default_attendance_status = (string) get_option( 'cmp_default_attendance_status', 'present' );
+	$automation_sync_enabled   = '1' === (string) get_option( 'cmp_automation_sync_enabled', '0' );
+	$automation_sync_interval  = (string) get_option( 'cmp_automation_sync_interval', 'hourly' );
+	$automation_sync_lookback_days = (int) get_option( 'cmp_automation_sync_lookback_days', 7 );
+	$automation_sync_class_id  = (int) get_option( 'cmp_automation_sync_class_id', 0 );
+	$automation_sync_batch_id  = (int) get_option( 'cmp_automation_sync_batch_id', 0 );
+	$last_sync_at              = (string) get_option( 'cmp_last_razorpay_sync_at', '' );
+	$last_sync_summary         = get_option( 'cmp_last_razorpay_sync_summary', array() );
 	$wp_razorpay_keys          = cmp_detect_wordpress_razorpay();
 	$credentials               = cmp_get_razorpay_credentials();
 	$has_api_credentials       = '' !== $credentials['key_id'] && '' !== $credentials['secret'];
+	$classes                   = cmp_get_classes();
+	$batches                   = cmp_get_batches();
+	$teachers                  = cmp_get_teacher_users();
+	$selected_teacher_log_id   = absint( cmp_field( $_GET, 'teacher_user_id', 0 ) );
+	$admin_logs                = cmp_get_admin_logs( 100 );
+	$teacher_logs              = $selected_teacher_log_id ? cmp_get_teacher_logs( $selected_teacher_log_id, 200 ) : array();
+	$students_export_url       = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-students', 'cmp_export' => 'students' ), admin_url( 'admin.php' ) ), 'cmp_export_students' );
+	$payments_export_url       = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-payments', 'cmp_export' => 'payments' ), admin_url( 'admin.php' ) ), 'cmp_export_payments' );
+	$classes_export_url        = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-classes', 'cmp_export' => 'classes' ), admin_url( 'admin.php' ) ), 'cmp_export_classes' );
+	$admin_logs_export_url     = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-settings', 'cmp_export' => 'admin-logs' ), admin_url( 'admin.php' ) ), 'cmp_export_admin-logs' );
+	$teacher_logs_export_url   = $selected_teacher_log_id ? wp_nonce_url( add_query_arg( array( 'page' => 'cmp-settings', 'cmp_export' => 'teacher-logs', 'teacher_user_id' => $selected_teacher_log_id ), admin_url( 'admin.php' ) ), 'cmp_export_teacher-logs' ) : '';
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Settings', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Use this page to connect Razorpay, pull historical data into classes and batches, automate reminders, and control attendance defaults. Class fees now work as defaults only. Live pricing should be saved on each batch.', 'class-manager-pro' ); ?></p>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Use this page to connect Razorpay, automate reminders, and control attendance defaults. Class fees now work as defaults only. Live pricing should be saved on each batch.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
 
 		<section class="cmp-panel">
@@ -102,8 +122,108 @@ function cmp_render_settings_page() {
 		<section class="cmp-panel">
 			<div class="cmp-panel-header">
 				<div>
-					<h2><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'This importer reads captured Razorpay payments only, groups similar paid page names into one class, and creates batches underneath automatically.', 'class-manager-pro' ); ?></p>
+					<h2><?php esc_html_e( 'Automation System', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Automate Razorpay payment sync through WP-Cron so new captured payments are imported without rebuilding your existing plugin flow.', 'class-manager-pro' ); ?></p>
+				</div>
+				<?php if ( $last_sync_at ) : ?>
+					<span class="cmp-inline-badge"><?php echo esc_html( sprintf( __( 'Last sync: %s', 'class-manager-pro' ), $last_sync_at ) ); ?></span>
+				<?php endif; ?>
+			</div>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+				<input type="hidden" name="action" value="cmp_save_automation_settings">
+				<?php wp_nonce_field( 'cmp_save_automation_settings' ); ?>
+
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="cmp-automation-sync-enabled"><?php esc_html_e( 'Enable Auto Sync', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<label><input type="checkbox" id="cmp-automation-sync-enabled" name="automation_sync_enabled" value="1" <?php checked( $automation_sync_enabled, true ); ?>> <?php esc_html_e( 'Automatically sync captured Razorpay payments', 'class-manager-pro' ); ?></label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-automation-sync-interval"><?php esc_html_e( 'Sync Interval', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<select id="cmp-automation-sync-interval" name="automation_sync_interval">
+								<?php foreach ( cmp_automation_intervals() as $interval_key => $interval_label ) : ?>
+									<option value="<?php echo esc_attr( $interval_key ); ?>" <?php selected( $automation_sync_interval, $interval_key ); ?>><?php echo esc_html( $interval_label ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-automation-sync-lookback"><?php esc_html_e( 'Lookback Window', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<select id="cmp-automation-sync-lookback" name="automation_sync_lookback_days">
+								<?php foreach ( array( 1, 7, 30, 90 ) as $day_option ) : ?>
+									<option value="<?php echo esc_attr( $day_option ); ?>" <?php selected( $automation_sync_lookback_days, $day_option ); ?>><?php echo esc_html( sprintf( _n( '%d day', '%d days', $day_option, 'class-manager-pro' ), $day_option ) ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description"><?php esc_html_e( 'When no exact date range is given, the sync imports captured Razorpay payments from this recent window and skips already stored payment IDs.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-automation-sync-class"><?php esc_html_e( 'Sync Class', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<select id="cmp-automation-sync-class" name="automation_sync_class_id" data-cmp-class-select>
+								<option value="0"><?php esc_html_e( 'Choose class', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $classes as $class ) : ?>
+									<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $automation_sync_class_id, (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-automation-sync-batch"><?php esc_html_e( 'Sync Batch', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<select id="cmp-automation-sync-batch" name="automation_sync_batch_id" data-cmp-batches>
+								<option value="0"><?php esc_html_e( 'Choose batch', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $batches as $batch ) : ?>
+									<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $automation_sync_batch_id, (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description"><?php esc_html_e( 'Auto sync imports all captured payments into this exact class and batch instead of creating new classes or batches.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+				</table>
+
+				<?php submit_button( __( 'Save Automation Settings', 'class-manager-pro' ) ); ?>
+			</form>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-space-top">
+				<input type="hidden" name="action" value="cmp_sync_razorpay_payments">
+				<input type="hidden" name="return_page" value="cmp-settings">
+				<?php wp_nonce_field( 'cmp_sync_razorpay_payments' ); ?>
+				<?php submit_button( __( 'Sync Payments Now', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+			</form>
+
+			<?php if ( ! empty( $last_sync_summary ) && is_array( $last_sync_summary ) ) : ?>
+				<div class="cmp-cards cmp-cards-4">
+					<div class="cmp-card">
+						<span><?php esc_html_e( 'Fetched', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( number_format_i18n( isset( $last_sync_summary['fetched'] ) ? (int) $last_sync_summary['fetched'] : 0 ) ); ?></strong>
+					</div>
+					<div class="cmp-card">
+						<span><?php esc_html_e( 'Imported', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( number_format_i18n( isset( $last_sync_summary['imported'] ) ? (int) $last_sync_summary['imported'] : 0 ) ); ?></strong>
+					</div>
+					<div class="cmp-card">
+						<span><?php esc_html_e( 'Duplicates', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( number_format_i18n( isset( $last_sync_summary['duplicate'] ) ? (int) $last_sync_summary['duplicate'] : 0 ) ); ?></strong>
+					</div>
+					<div class="cmp-card">
+						<span><?php esc_html_e( 'Failed', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( number_format_i18n( isset( $last_sync_summary['failed'] ) ? (int) $last_sync_summary['failed'] : 0 ) ); ?></strong>
+					</div>
+				</div>
+			<?php endif; ?>
+		</section>
+
+		<section class="cmp-panel">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Razorpay Page Import', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Use the dedicated import page to choose a Razorpay page or enter a page ID, preview successful paid students, and add them to a selected batch.', 'class-manager-pro' ); ?></p>
 				</div>
 				<?php if ( $has_api_credentials ) : ?>
 					<span class="cmp-inline-badge cmp-inline-badge-success"><?php esc_html_e( 'API Ready', 'class-manager-pro' ); ?></span>
@@ -119,20 +239,11 @@ function cmp_render_settings_page() {
 			<?php else : ?>
 				<div class="cmp-grid cmp-grid-2">
 					<div class="cmp-callout">
-						<h3><?php esc_html_e( 'One-Time Full Import', 'class-manager-pro' ); ?></h3>
-						<p><?php esc_html_e( 'Fetch captured payments from Razorpay in one run. Only pages that have successful paid students are synced into classes and batches.', 'class-manager-pro' ); ?></p>
-						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
-							<input type="hidden" name="action" value="cmp_import_razorpay_data">
-							<?php wp_nonce_field( 'cmp_import_razorpay_data' ); ?>
-							<?php submit_button( __( 'Import All Razorpay Data', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
-						</form>
-					</div>
-					<div class="cmp-callout">
 						<h3><?php esc_html_e( 'Manual Import', 'class-manager-pro' ); ?></h3>
 						<p><?php esc_html_e( 'Use the dedicated import page when you want to choose a Razorpay page, preview successful students, and then add them into a selected class and batch.', 'class-manager-pro' ); ?></p>
 						<p><a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) ); ?>"><?php esc_html_e( 'Open Razorpay Import Page', 'class-manager-pro' ); ?></a></p>
 						<hr>
-						<p><?php esc_html_e( 'Advanced: pull one Payment Link or one captured Payment directly by ID.', 'class-manager-pro' ); ?></p>
+						<p><?php esc_html_e( 'Advanced: pull one Payment Link/Page or one captured Payment directly by ID.', 'class-manager-pro' ); ?></p>
 						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
 							<input type="hidden" name="action" value="cmp_manual_import_razorpay">
 							<?php wp_nonce_field( 'cmp_manual_import_razorpay' ); ?>
@@ -140,7 +251,7 @@ function cmp_render_settings_page() {
 								<label>
 									<span><?php esc_html_e( 'Import Type', 'class-manager-pro' ); ?></span>
 									<select name="import_type">
-										<option value="payment_link"><?php esc_html_e( 'Payment Link', 'class-manager-pro' ); ?></option>
+										<option value="payment_link"><?php esc_html_e( 'Payment Link / Page', 'class-manager-pro' ); ?></option>
 										<option value="payment"><?php esc_html_e( 'Captured Payment', 'class-manager-pro' ); ?></option>
 									</select>
 								</label>
@@ -160,7 +271,7 @@ function cmp_render_settings_page() {
 			<div class="cmp-panel-header">
 				<div>
 					<h2><?php esc_html_e( 'WhatsApp / SMS Reminders', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'Reminders run daily through WP-Cron. You can also fire them manually from here. They use the batch fee due date and only target active students who still have pending fees.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Reminders run daily through WP-Cron. You can also fire them manually from here. They use the batch fee due date and can send by SMS, WhatsApp, and email.', 'class-manager-pro' ); ?></p>
 				</div>
 			</div>
 
@@ -204,6 +315,9 @@ function cmp_render_settings_page() {
 								<option value="both" <?php selected( $notification_channels, 'both' ); ?>><?php esc_html_e( 'SMS and WhatsApp', 'class-manager-pro' ); ?></option>
 								<option value="sms" <?php selected( $notification_channels, 'sms' ); ?>><?php esc_html_e( 'SMS Only', 'class-manager-pro' ); ?></option>
 								<option value="whatsapp" <?php selected( $notification_channels, 'whatsapp' ); ?>><?php esc_html_e( 'WhatsApp Only', 'class-manager-pro' ); ?></option>
+								<option value="email" <?php selected( $notification_channels, 'email' ); ?>><?php esc_html_e( 'Email Only', 'class-manager-pro' ); ?></option>
+								<option value="sms_email" <?php selected( $notification_channels, 'sms_email' ); ?>><?php esc_html_e( 'SMS and Email', 'class-manager-pro' ); ?></option>
+								<option value="all" <?php selected( $notification_channels, 'all' ); ?>><?php esc_html_e( 'SMS, WhatsApp, and Email', 'class-manager-pro' ); ?></option>
 							</select>
 						</td>
 					</tr>
@@ -226,6 +340,17 @@ function cmp_render_settings_page() {
 						<td>
 							<textarea id="cmp-whatsapp-template" name="whatsapp_template" rows="4" class="large-text"><?php echo esc_textarea( $whatsapp_template ); ?></textarea>
 							<p class="description"><?php esc_html_e( 'Available placeholders: {student_name}, {class_name}, {batch_name}, {pending_fee}, {due_date}, {payment_link}', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-email-subject"><?php esc_html_e( 'Email Subject', 'class-manager-pro' ); ?></label></th>
+						<td><input type="text" id="cmp-email-subject" name="email_subject" class="large-text" value="<?php echo esc_attr( $email_subject ); ?>"></td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-email-template"><?php esc_html_e( 'Email Template', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<textarea id="cmp-email-template" name="email_template" rows="5" class="large-text"><?php echo esc_textarea( $email_template ); ?></textarea>
+							<p class="description"><?php esc_html_e( 'The same placeholders work in email reminders too.', 'class-manager-pro' ); ?></p>
 						</td>
 					</tr>
 				</table>
@@ -275,11 +400,122 @@ function cmp_render_settings_page() {
 			</form>
 		</section>
 
+		<section class="cmp-panel">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Backup & Export', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Export the core plugin records as CSV backups.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+			<div class="cmp-toolbar">
+				<a class="button" href="<?php echo esc_url( $classes_export_url ); ?>"><?php esc_html_e( 'Export Classes CSV', 'class-manager-pro' ); ?></a>
+				<a class="button" href="<?php echo esc_url( $students_export_url ); ?>"><?php esc_html_e( 'Export Students CSV', 'class-manager-pro' ); ?></a>
+				<a class="button" href="<?php echo esc_url( $payments_export_url ); ?>"><?php esc_html_e( 'Export Payments CSV', 'class-manager-pro' ); ?></a>
+			</div>
+			<p class="description"><?php echo esc_html( sprintf( __( 'Plugin errors and webhook issues are logged to: %s', 'class-manager-pro' ), cmp_get_log_file_path() ) ); ?></p>
+		</section>
+
+		<section class="cmp-panel">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Admin Activity Logs', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Review recent admin actions across classes, batches, students, and payments.', 'class-manager-pro' ); ?></p>
+				</div>
+				<a class="button" href="<?php echo esc_url( $admin_logs_export_url ); ?>"><?php esc_html_e( 'Export CSV', 'class-manager-pro' ); ?></a>
+			</div>
+
+			<div class="cmp-log-container">
+				<table class="widefat striped">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Timestamp', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Admin', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Action', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Details', 'class-manager-pro' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php if ( empty( $admin_logs ) ) : ?>
+							<tr><td colspan="4"><?php esc_html_e( 'No admin activity recorded yet.', 'class-manager-pro' ); ?></td></tr>
+						<?php else : ?>
+							<?php foreach ( $admin_logs as $log ) : ?>
+								<tr>
+									<td><?php echo esc_html( $log->created_at ); ?></td>
+									<td><?php echo esc_html( $log->admin_name ? $log->admin_name : __( 'System', 'class-manager-pro' ) ); ?></td>
+									<td><?php echo esc_html( cmp_get_admin_log_action_label( $log->action ) ); ?></td>
+									<td><?php echo esc_html( $log->message ? $log->message : sprintf( __( '%1$s #%2$d', 'class-manager-pro' ), ucfirst( $log->object_type ), (int) $log->object_id ) ); ?></td>
+								</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+		<section class="cmp-panel">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Teacher Activity Logs', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Track batch and student views performed from the teacher console.', 'class-manager-pro' ); ?></p>
+				</div>
+				<?php if ( $teacher_logs_export_url ) : ?>
+					<a class="button" href="<?php echo esc_url( $teacher_logs_export_url ); ?>"><?php esc_html_e( 'Export CSV', 'class-manager-pro' ); ?></a>
+				<?php endif; ?>
+			</div>
+
+			<form method="get" class="cmp-inline-form">
+				<input type="hidden" name="page" value="cmp-settings">
+				<label for="cmp-teacher-log-user">
+					<span><?php esc_html_e( 'Select Teacher', 'class-manager-pro' ); ?></span>
+					<select id="cmp-teacher-log-user" name="teacher_user_id">
+						<option value="0"><?php esc_html_e( 'Choose teacher', 'class-manager-pro' ); ?></option>
+						<?php foreach ( $teachers as $teacher ) : ?>
+							<option value="<?php echo esc_attr( (int) $teacher->ID ); ?>" <?php selected( $selected_teacher_log_id, (int) $teacher->ID ); ?>><?php echo esc_html( sprintf( '%1$s (#%2$d)', $teacher->display_name, (int) $teacher->ID ) ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</label>
+				<?php submit_button( __( 'Load Logs', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+			</form>
+
+			<div class="cmp-log-container cmp-space-top">
+				<table class="widefat striped">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Timestamp', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Action', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Details', 'class-manager-pro' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php if ( ! $selected_teacher_log_id ) : ?>
+							<tr><td colspan="6"><?php esc_html_e( 'Choose a teacher to view activity logs.', 'class-manager-pro' ); ?></td></tr>
+						<?php elseif ( empty( $teacher_logs ) ) : ?>
+							<tr><td colspan="6"><?php esc_html_e( 'No teacher activity recorded yet.', 'class-manager-pro' ); ?></td></tr>
+						<?php else : ?>
+							<?php foreach ( $teacher_logs as $log ) : ?>
+								<tr>
+									<td><?php echo esc_html( $log->created_at ); ?></td>
+									<td><?php echo esc_html( $log->teacher_name ? $log->teacher_name : __( 'Unknown Teacher', 'class-manager-pro' ) ); ?></td>
+									<td><?php echo esc_html( cmp_get_teacher_log_action_label( $log->action ) ); ?></td>
+									<td><?php echo esc_html( $log->batch_name ? $log->batch_name : __( 'Not set', 'class-manager-pro' ) ); ?></td>
+									<td><?php echo esc_html( $log->student_name ? $log->student_name . ( $log->student_unique_id ? ' (' . $log->student_unique_id . ')' : '' ) : __( 'Not set', 'class-manager-pro' ) ); ?></td>
+									<td><?php echo esc_html( $log->message ); ?></td>
+								</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
 		<section class="cmp-panel cmp-danger-panel">
 			<div class="cmp-panel-header">
 				<div>
 					<h2><?php esc_html_e( 'Reset Plugin Data', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'This clears classes, batches, students, payments, attendance, reminders, and temporary intake matches from Class Manager Pro only. Settings and Razorpay keys are kept.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'This clears classes, batches, students, payments, expenses, attendance, reminders, and temporary intake matches from Class Manager Pro only. Settings and Razorpay keys are kept.', 'class-manager-pro' ); ?></p>
 				</div>
 			</div>
 

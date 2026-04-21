@@ -13,6 +13,41 @@ add_action( 'admin_post_nopriv_cmp_submit_public_batch_form', 'cmp_handle_public
 add_action( 'admin_post_cmp_submit_public_batch_form', 'cmp_handle_public_batch_form_submission' );
 
 /**
+ * Stores a public duplicate warning for a batch token.
+ *
+ * @param string $token Batch token.
+ * @param string $message Message.
+ * @return void
+ */
+function cmp_store_public_duplicate_warning( $token, $message ) {
+	$token = sanitize_text_field( $token );
+
+	if ( '' === $token || '' === trim( (string) $message ) ) {
+		return;
+	}
+
+	set_transient( 'cmp_public_duplicate_warning_' . md5( $token ), sanitize_text_field( $message ), MINUTE_IN_SECONDS * 5 );
+}
+
+/**
+ * Pops a public duplicate warning for a batch token.
+ *
+ * @param string $token Batch token.
+ * @return string
+ */
+function cmp_pop_public_duplicate_warning( $token ) {
+	$token   = sanitize_text_field( $token );
+	$key     = 'cmp_public_duplicate_warning_' . md5( $token );
+	$message = (string) get_transient( $key );
+
+	if ( '' !== $message ) {
+		delete_transient( $key );
+	}
+
+	return sanitize_text_field( $message );
+}
+
+/**
  * Renders the public batch form page when a valid token is present.
  */
 function cmp_maybe_render_public_batch_page() {
@@ -36,6 +71,7 @@ function cmp_maybe_render_public_batch_page() {
 
 	$status      = sanitize_key( cmp_field( $_GET, 'cmp_public_status' ) );
 	$error       = sanitize_text_field( cmp_field( $_GET, 'cmp_public_error' ) );
+	$warning     = cmp_pop_public_duplicate_warning( $token );
 	$batch_fee   = cmp_get_batch_effective_fee( $batch );
 	$content     = '';
 	$form_notice = '';
@@ -51,6 +87,10 @@ function cmp_maybe_render_public_batch_page() {
 		$form_notice .= '</div>';
 	} elseif ( '' !== $error ) {
 		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-error"><p>' . esc_html( $error ) . '</p></div>';
+	}
+
+	if ( '' !== $warning ) {
+		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-error"><p>' . esc_html( $warning ) . '</p></div>';
 	}
 
 	ob_start();

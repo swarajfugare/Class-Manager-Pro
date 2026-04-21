@@ -156,6 +156,30 @@
 	margin: 16px 0;
 }
 
+.cmp-bulk-toolbar {
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	padding: 12px;
+}
+
+.cmp-bulk-toolbar select {
+	min-width: 180px;
+}
+
+.cmp-bulk-toolbar .cmp-muted {
+	margin-left: 4px;
+}
+
+.cmp-student-select,
+.cmp-class-select,
+.cmp-batch-select,
+#cmp-student-select-all,
+#cmp-class-select-all,
+#cmp-batch-select-all {
+	margin: 0;
+}
+
 .cmp-inline-tools {
 	align-items: center;
 	display: flex;
@@ -311,9 +335,30 @@
 	color: #135e96;
 }
 
+.cmp-status-paid {
+	background: #d7f7e3;
+	color: #0a6b3f;
+}
+
+.cmp-status-partial {
+	background: #fff3cd;
+	color: #8a5a00;
+}
+
+.cmp-status-pending {
+	background: #f8d7da;
+	color: #8a2424;
+}
+
 .cmp-status-dropped {
 	background: #f8d7da;
 	color: #8a2424;
+}
+
+.cmp-filter-form {
+	position: sticky;
+	top: 32px;
+	z-index: 2;
 }
 
 .cmp-actions {
@@ -325,6 +370,20 @@
 }
 
 .cmp-delete-link {
+	color: #b32d2e;
+}
+
+.cmp-delete-link.is-busy,
+.button.is-busy {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.cmp-feedback-success {
+	color: #0a6b3f;
+}
+
+.cmp-feedback-error {
 	color: #b32d2e;
 }
 
@@ -379,6 +438,70 @@
 
 .cmp-simple-list li {
 	margin-bottom: 4px;
+}
+
+.cmp-panel-nested {
+	margin: 0;
+}
+
+.cmp-pagination {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 16px;
+}
+
+.cmp-pagination .page-numbers {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	color: #2271b1;
+	padding: 6px 10px;
+	text-decoration: none;
+}
+
+.cmp-pagination .page-numbers.current {
+	background: #2271b1;
+	border-color: #2271b1;
+	color: #fff;
+}
+
+.cmp-activity-timeline {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.cmp-activity-timeline li {
+	border-bottom: 1px solid #e2e4e7;
+	display: grid;
+	gap: 4px;
+	padding: 12px 0;
+}
+
+.cmp-activity-timeline li:last-child {
+	border-bottom: 0;
+	padding-bottom: 0;
+}
+
+.cmp-activity-timeline strong {
+	color: #1d2327;
+}
+
+.cmp-activity-timeline span,
+.cmp-activity-timeline em {
+	color: #646970;
+	font-size: 12px;
+	font-style: normal;
+}
+
+.cmp-log-container {
+	max-height: 360px;
+	overflow: auto;
+}
+
+.cmp-ajax-notice {
+	margin-top: 16px;
 }
 
 @media (max-width: 1100px) {

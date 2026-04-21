@@ -73,7 +73,17 @@ function cmp_render_payments_page() {
 
 	$selected_student_id = absint( cmp_field( $_GET, 'student_id', 0 ) );
 	$payment_mode        = sanitize_key( cmp_field( $_GET, 'payment_mode' ) );
-	$payments            = cmp_get_payments( array( 'payment_mode' => $payment_mode ) );
+	$paged               = cmp_get_current_page_number();
+	$per_page            = cmp_get_default_per_page();
+	$payment_filters     = array( 'payment_mode' => $payment_mode );
+	$pagination          = cmp_get_pagination_data( cmp_get_payments_count( $payment_filters ), $paged, $per_page );
+	$payments            = cmp_get_payments(
+		array(
+			'payment_mode' => $payment_mode,
+			'limit'        => $pagination['per_page'],
+			'offset'       => $pagination['offset'],
+		)
+	);
 	$export_url          = wp_nonce_url(
 		add_query_arg(
 			array(
@@ -135,6 +145,7 @@ function cmp_render_payments_page() {
 					<?php endif; ?>
 				</tbody>
 			</table>
+			<?php cmp_render_pagination( $pagination, $payment_filters ); ?>
 		</section>
 	</div>
 	<?php

@@ -1,177 +1,264 @@
-# 🚀 Class Manager Pro  
-### ⚡ Smart CRM System for Training Institutes
+# Class Manager Pro
 
-> A powerful **WordPress Admin Plugin** designed to manage **Classes, Batches, Students, Payments & Razorpay Automation** — built for real-world education businesses.
+Advanced Class, Batch, Student and Payment Management System with Tutor LMS and Razorpay Integration.
 
----
+## Overview
 
-## 🌐 Live Usage  
-This plugin is actively used in:  
-👉 https://matoshreecollection.in  
+Class Manager Pro is a WordPress admin plugin built to manage:
 
----
+- Classes
+- Batches
+- Students
+- Payments
+- Attendance
+- Tutor LMS enrollment
+- Razorpay import and payment mapping
+- Admin and teacher activity logs
 
-## 🧠 What is Class Manager Pro?
+This plugin is designed for coaching centers, training institutes, and class-based learning businesses that need a single admin workflow inside WordPress.
 
-**Class Manager Pro** is a complete internal management system (CRM + ERP style) built for training institutes like:
+## Main Features
 
-- 🎓 Coaching Classes  
-- 🧵 Skill Training (Aari Work, Fashion, etc.)  
-- 📚 Online & Offline Courses  
+- Class management with default fee and next Tutor LMS course support
+- Batch management with class mapping, teacher assignment, Tutor LMS course linking, fee due date, public intake form, and Razorpay page mapping
+- Student management with class and batch assignment, fee tracking, notes, and payment status
+- Payment management with manual and Razorpay payment support
+- Tutor LMS integration for automatic student enrollment
+- Razorpay webhook and import support
+- Attendance Quick View inside each batch
+- Teacher console for assigned batch access
+- Bulk actions for classes, batches, and students
+- CSV export tools
+- Admin activity logs
+- Teacher activity logs
+- Reminder settings for SMS, WhatsApp, and email
+- Analytics and dashboard reporting
 
-It replaces spreadsheets with a **fast, automated, and scalable system inside WordPress Admin**.
+## Attendance Quick View
 
----
+- Added inside the batch detail page
+- Shows attendance for the selected date
+- Displays student-wise status
+- Supports Present, Absent, and Leave status
+- Saves through AJAX without leaving the batch page
+- Includes a quick summary for present, absent, and leave counts
 
-## 🎯 Core Features
+## Delete System
 
-### 📊 Smart Dashboard
-- Total Classes, Batches, Students  
-- Total Revenue & Pending Fees  
-- Recent Admissions Overview  
+- Delete buttons for classes, batches, and students use AJAX
+- Delete confirmation popup is shown before removal
+- Delete button changes to `Deleting...` during request
+- Related records are cleaned safely during deletion
+- Admin notices are shown for success and failure
 
----
+## Integrations
 
-### 📚 Class & Batch Management
-- Structured hierarchy: **Class → Batch → Students**  
-- Easy creation & control  
-- Organized data system  
+### Tutor LMS
 
----
+- Optional integration
+- Assign Tutor LMS course at batch level
+- Student is linked to WordPress user automatically
+- Student is enrolled into the linked Tutor LMS course
 
-### 🧑‍🎓 Student Management
-- Full student database  
-- Unique Student ID (Auto-generated)  
-- Status tracking:
-  - Active  
-  - Completed  
-  - Dropped  
+### Razorpay
 
----
+- Optional integration
+- Supports webhook-based payment handling
+- Supports manual import and batch-linked page mapping
+- Razorpay payments can create or update student records
 
-### 💰 Payment System
-- Razorpay auto payment tracking  
-- Manual payment entry (UPI, Cash, etc.)  
-- Fee calculation (Total / Paid / Pending)  
-- Complete payment history  
+## Requirements
 
----
+- WordPress latest stable version
+- PHP 7.4+ recommended
+- MySQL / MariaDB supported by WordPress
+- Tutor LMS plugin for course enrollment features
+- Razorpay API keys for Razorpay payment sync/import features
 
-### 🔄 Automation (Game Changer)
-- Auto student creation after payment  
-- Auto class & batch assignment  
-- Auto fee updates  
+## Plugin Folder
 
-👉 **No manual work needed**
+Upload only this folder:
 
----
+`class-manager-pro`
 
-### 📈 Analytics
-- Monthly revenue charts  
-- Class-wise performance  
-- Student growth insights  
+Do not upload the parent project folder. The plugin main file must remain:
 
----
+`class-manager-pro/class-manager-pro.php`
 
-### 🔍 Smart Tools
-- Search & filters  
-- Export data (CSV)  
-- Bulk handling  
+## Installation on WordPress
 
----
+### Method 1: Upload ZIP from WordPress Admin
 
-## 🔗 Razorpay Integration Flow
+1. Compress the `class-manager-pro` folder into `class-manager-pro.zip`
+2. Open WordPress Admin
+3. Go to `Plugins > Add New > Upload Plugin`
+4. Upload `class-manager-pro.zip`
+5. Click `Install Now`
+6. Click `Activate`
 
-```text
-Student → Payment → Razorpay Webhook → Plugin → Auto Entry
-```
+### Method 2: Upload Directly to Server
 
-✔ Creates student  
-✔ Assigns class & batch  
-✔ Stores payment  
-✔ Updates fee  
+1. Open your hosting file manager, SFTP, or terminal
+2. Navigate to:
 
----
+`wp-content/plugins/`
 
-## 🗄️ Database Architecture
+3. Upload the full `class-manager-pro` folder there
+4. Open WordPress Admin
+5. Go to `Plugins`
+6. Activate `Class Manager Pro`
 
-Custom optimized tables:
+## Upload on Replit
 
-- Classes  
-- Batches  
-- Students  
-- Payments  
+Use this guide if your WordPress site is hosted or managed inside Replit.
 
-👉 Built for **performance + scalability**
+### Option 1: Upload Plugin Folder in Replit Project
 
----
+1. Open your Replit WordPress project
+2. In the file sidebar, open:
 
-## 📁 Project Structure
+`wp-content/plugins/`
 
-```
-class-manager-pro/
-│
-├── class-manager-pro.php
-├── admin/
-├── includes/
-├── assets/
-```
+3. Upload the `class-manager-pro` folder into that directory
+4. Confirm the main plugin file exists at:
 
----
+`wp-content/plugins/class-manager-pro/class-manager-pro.php`
 
-## ⚙️ Installation
+5. Start or reload the Replit app
+6. Open your WordPress admin panel
+7. Go to `Plugins`
+8. Activate `Class Manager Pro`
 
-1. Upload plugin to:
-   ```
-   wp-content/plugins/class-manager-pro
-   ```
-2. Activate plugin from WordPress  
-3. Configure Razorpay API in Settings  
-4. Start managing your system 🚀  
+### Option 2: Upload ZIP from WordPress Admin on Replit
 
----
+1. Zip the plugin folder as `class-manager-pro.zip`
+2. Open the WordPress admin URL running on Replit
+3. Go to `Plugins > Add New > Upload Plugin`
+4. Upload the zip file
+5. Install and activate it
 
-## 🔒 Security
+## First-Time Setup
 
-- Admin-only access  
-- No frontend exposure  
-- Sanitized inputs & secure queries  
+After activation:
 
----
+1. Open `Class Manager Pro > Settings`
+2. Add Razorpay API settings if required
+3. Configure reminder settings if needed
+4. Configure attendance settings
+5. Create at least one class
+6. Create at least one batch inside a class
+7. Link Tutor LMS course to the batch if needed
+8. Add students manually or through Razorpay/public intake flow
 
-## 💡 Why This Plugin?
+## Basic Workflow
 
-✔ Replace Google Sheets  
-✔ Save hours of manual work  
-✔ Manage everything in one place  
-✔ Scale your business easily  
+### Step 1: Create Classes
 
----
+- Go to `Class Manager Pro > Classes`
+- Add class name
+- Add description
+- Set default fee
+- Set next course if needed
 
-## 🧠 Built For
+### Step 2: Create Batches
 
-This plugin is specially designed for real usage in:  
-👉 https://matoshreecollection.in  
+- Go to `Class Manager Pro > Batches`
+- Select class
+- Add batch name
+- Assign teacher
+- Link Tutor LMS course
+- Set batch fee
+- Set start date
+- Set fee due date
+- Save batch
 
----
+### Step 3: Add Students
 
-## 👨‍💻 Author
+- Go to `Class Manager Pro > Students`
+- Add student details
+- Select class and batch
+- Save student
 
-**Swaraj Fugare**  
-Founder – Matoshree Collection  
+### Step 4: Track Attendance
 
----
+- Open any batch
+- Use `Attendance Quick View`
+- Select date
+- Mark attendance
+- Save through AJAX
 
-## ⭐ Support
+### Step 5: Track Payments
 
-If you like this project:
+- Add payments from the payment section
+- Import Razorpay payments if needed
+- Review paid, pending, and partial fee status
 
-- ⭐ Star this repository  
-- 🔗 Share with others  
-- 🚀 Use it in your business  
+## Safety and Behavior Notes
 
----
+- Batch names are validated per class to avoid duplicates
+- Delete actions use AJAX and capability checks
+- Reset action keeps plugin settings but clears plugin records
+- Attendance is stored in the plugin attendance table
+- Tutor LMS enrollment only runs when a linked course exists
+- Razorpay features work only after keys are configured
 
-## 📄 License
+## Recommended Live Deployment Checklist
 
-MIT License
+Before going live:
+
+1. Test plugin activation on staging first
+2. Confirm WordPress admin access is working
+3. Confirm plugin menu loads correctly
+4. Create one class, one batch, and one student
+5. Test delete for student, batch, and class
+6. Test `Delete All Plugin Data` only on staging
+7. Test attendance save inside batch page
+8. Test Tutor LMS enrollment if Tutor LMS is active
+9. Test Razorpay webhook or import if Razorpay is in use
+10. Export CSV backups before production changes
+
+## Troubleshooting
+
+### Plugin does not appear in WordPress
+
+- Confirm the folder name is `class-manager-pro`
+- Confirm the main file is:
+
+`class-manager-pro/class-manager-pro.php`
+
+- Confirm the plugin was uploaded inside `wp-content/plugins/`
+
+### Delete button does not remove records
+
+- Confirm you are logged in as an admin user
+- Confirm WordPress AJAX is working
+- Check browser console and network tab
+- Confirm no security plugin is blocking `admin-ajax.php`
+
+### Razorpay import does not work
+
+- Confirm Razorpay key ID and secret are saved
+- Confirm webhook secret is correct
+- Confirm payment page is linked to the right batch
+
+### Tutor LMS enrollment does not work
+
+- Confirm Tutor LMS is active
+- Confirm the batch has a valid linked Tutor LMS course
+- Confirm the student has a valid phone/email/user mapping
+
+## File Structure
+
+- `class-manager-pro.php` : Main plugin bootstrap
+- `includes/` : Core logic, DB, Tutor LMS, Razorpay, helpers
+- `admin/` : Admin pages
+- `assets/js/` : Admin JavaScript
+- `assets/css/` : Admin styles
+
+## Final Notes
+
+- Keep a backup before production deployment
+- Use staging for first validation
+- Upload only the plugin folder or plugin zip
+- Do not rename internal files unless you also update references
+

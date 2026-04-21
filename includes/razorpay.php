@@ -39,6 +39,7 @@ class CMP_Razorpay_Webhook {
 		$body   = $request->get_body();
 
 		if ( '' === $secret ) {
+			cmp_log_event( 'error', 'Razorpay webhook rejected because the secret is missing.' );
 			return new WP_Error( 'cmp_webhook_secret_missing', __( 'Webhook secret is not configured.', 'class-manager-pro' ), array( 'status' => 403 ) );
 		}
 
@@ -46,12 +47,14 @@ class CMP_Razorpay_Webhook {
 		$expected  = hash_hmac( 'sha256', $body, $secret );
 
 		if ( ! $signature || ! hash_equals( $expected, $signature ) ) {
+			cmp_log_event( 'error', 'Razorpay webhook signature verification failed.' );
 			return new WP_Error( 'cmp_webhook_invalid_signature', __( 'Invalid webhook signature.', 'class-manager-pro' ), array( 'status' => 403 ) );
 		}
 
 		$payload = json_decode( $body, true );
 
 		if ( ! is_array( $payload ) ) {
+			cmp_log_event( 'error', 'Razorpay webhook payload could not be decoded.' );
 			return new WP_Error( 'cmp_webhook_invalid_payload', __( 'Invalid webhook payload.', 'class-manager-pro' ), array( 'status' => 400 ) );
 		}
 
@@ -59,6 +62,7 @@ class CMP_Razorpay_Webhook {
 		$payment_link = self::extract_payment_link_entity( $payload );
 
 		if ( empty( $payment ) && empty( $payment_link ) ) {
+			cmp_log_event( 'error', 'Razorpay webhook did not include payment data.' );
 			return new WP_Error( 'cmp_webhook_payment_missing', __( 'Payment data was not found in webhook payload.', 'class-manager-pro' ), array( 'status' => 400 ) );
 		}
 
@@ -90,13 +94,11 @@ class CMP_Razorpay_Webhook {
 			);
 		}
 
-		$notes                 = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
-		$metadata              = isset( $payment['metadata'] ) && is_array( $payment['metadata'] ) ? $payment['metadata'] : array();
+		$payment_meta          = cmp_razorpay_entity_meta( $payment );
 		$payment_customer      = isset( $payment['customer'] ) && is_array( $payment['customer'] ) ? $payment['customer'] : array();
-		$payment_link_notes    = isset( $payment_link['notes'] ) && is_array( $payment_link['notes'] ) ? $payment_link['notes'] : array();
-		$payment_link_metadata = isset( $payment_link['metadata'] ) && is_array( $payment_link['metadata'] ) ? $payment_link['metadata'] : array();
+		$payment_link_meta     = cmp_razorpay_entity_meta( $payment_link );
 		$payment_link_customer = isset( $payment_link['customer'] ) && is_array( $payment_link['customer'] ) ? $payment_link['customer'] : array();
-		$meta                  = array_merge( $payment_link_notes, $payment_link_metadata, $notes, $metadata );
+		$meta                  = array_merge( $payment_link_meta, $payment_meta );
 		$batch                 = null;
 
 		$name     = self::first_non_empty( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
@@ -202,6 +204,7 @@ class CMP_Razorpay_Webhook {
 			);
 
 			if ( is_wp_error( $student_id ) ) {
+				cmp_log_event( 'error', 'Razorpay webhook student creation failed.', array( 'message' => $student_id->get_error_message() ) );
 				return new WP_Error( $student_id->get_error_code(), $student_id->get_error_message(), array( 'status' => 400 ) );
 			}
 		} else {
@@ -210,7 +213,7 @@ class CMP_Razorpay_Webhook {
 		}
 
 		$payment_date = isset( $payment['created_at'] ) && is_numeric( $payment['created_at'] )
-			? gmdate( 'Y-m-d H:i:s', (int) $payment['created_at'] )
+			? wp_date( 'Y-m-d H:i:s', (int) $payment['created_at'] )
 			: cmp_current_datetime();
 
 		$result = cmp_insert_payment(
@@ -224,8 +227,11 @@ class CMP_Razorpay_Webhook {
 		);
 
 		if ( is_wp_error( $result ) ) {
+			cmp_log_event( 'error', 'Razorpay webhook payment insert failed.', array( 'message' => $result->get_error_message(), 'transaction_id' => $transaction_id ) );
 			return new WP_Error( $result->get_error_code(), $result->get_error_message(), array( 'status' => 400 ) );
 		}
+
+		cmp_sync_student_tutor_enrollment( $student_id );
 
 		return rest_ensure_response(
 			array(

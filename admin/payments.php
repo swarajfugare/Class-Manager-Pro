@@ -88,6 +88,7 @@ function cmp_render_payments_page() {
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Payments', 'class-manager-pro' ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Only completed payments are saved here. Failed or authorized-only Razorpay payments are ignored during webhook sync and historical imports.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
 
 		<section class="cmp-panel">

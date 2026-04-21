@@ -29,21 +29,25 @@ function cmp_maybe_render_public_batch_page() {
 		nocache_headers();
 		cmp_render_public_batch_shell(
 			__( 'Form Not Found', 'class-manager-pro' ),
-			'<div class="cmp-public-panel"><h1>' . esc_html__( 'Form Not Found', 'class-manager-pro' ) . '</h1><p>' . esc_html__( 'This student form link is invalid or expired.', 'class-manager-pro' ) . '</p></div>'
+			'<div class="cmp-public-page"><section class="cmp-public-panel"><h1>' . esc_html__( 'Form Not Found', 'class-manager-pro' ) . '</h1><p>' . esc_html__( 'This student form link is invalid or expired.', 'class-manager-pro' ) . '</p></section></div>'
 		);
 		exit;
 	}
 
 	$status      = sanitize_key( cmp_field( $_GET, 'cmp_public_status' ) );
 	$error       = sanitize_text_field( cmp_field( $_GET, 'cmp_public_error' ) );
-	$class_fee   = isset( $batch->class_total_fee ) ? (float) $batch->class_total_fee : 0;
+	$batch_fee   = cmp_get_batch_effective_fee( $batch );
 	$content     = '';
 	$form_notice = '';
 
 	if ( 'success' === $status ) {
 		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-success">';
 		$form_notice .= '<strong>' . esc_html__( 'Details received successfully.', 'class-manager-pro' ) . '</strong>';
-		$form_notice .= '<p>' . esc_html__( 'Your details are saved in the batch. Continue to payment if the batch payment link is available below.', 'class-manager-pro' ) . '</p>';
+		if ( ! empty( $batch->is_free ) ) {
+			$form_notice .= '<p>' . esc_html__( 'Your details are saved in this free batch. No payment is required.', 'class-manager-pro' ) . '</p>';
+		} else {
+			$form_notice .= '<p>' . esc_html__( 'Your details are saved in the batch. Continue to payment if the batch payment link is available below.', 'class-manager-pro' ) . '</p>';
+		}
 		$form_notice .= '</div>';
 	} elseif ( '' !== $error ) {
 		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-error"><p>' . esc_html( $error ) . '</p></div>';
@@ -62,7 +66,8 @@ function cmp_maybe_render_public_batch_page() {
 				<div><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_name ); ?></strong></div>
 				<div><span><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->batch_name ); ?></strong></div>
 				<div><span><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->start_date ? $batch->start_date : __( 'To be announced', 'class-manager-pro' ) ); ?></strong></div>
-				<div><span><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $class_fee ) ); ?></strong></div>
+				<div><span><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></span><strong><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free', 'class-manager-pro' ) : esc_html( cmp_format_money( $batch_fee ) ); ?></strong></div>
+				<div><span><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->fee_due_date ? $batch->fee_due_date : __( 'Shared by the admin later', 'class-manager-pro' ) ); ?></strong></div>
 			</div>
 		</section>
 
@@ -106,10 +111,15 @@ function cmp_maybe_render_public_batch_page() {
 				</form>
 			<?php endif; ?>
 
-			<?php if ( ! empty( $batch->razorpay_link ) ) : ?>
+			<?php if ( 'success' === $status && ! empty( $batch->is_free ) ) : ?>
+				<div class="cmp-public-payment">
+					<h2><?php esc_html_e( 'Registration Complete', 'class-manager-pro' ); ?></h2>
+					<p><?php esc_html_e( 'This is a free batch. Your details are saved and no payment is required.', 'class-manager-pro' ); ?></p>
+				</div>
+			<?php elseif ( 'success' === $status && ! empty( $batch->razorpay_link ) ) : ?>
 				<div class="cmp-public-payment">
 					<h2><?php esc_html_e( 'Payment', 'class-manager-pro' ); ?></h2>
-					<p><?php esc_html_e( 'After submitting your details, use the payment button below to complete your batch payment in Razorpay. Use the same phone number and email there so the payment matches your batch record correctly.', 'class-manager-pro' ); ?></p>
+					<p><?php esc_html_e( 'Use the payment button below to complete your batch payment in Razorpay. Use the same phone number and email there so the payment matches your batch record correctly.', 'class-manager-pro' ); ?></p>
 					<a class="cmp-public-button cmp-public-button-secondary" href="<?php echo esc_url( $batch->razorpay_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Continue to Razorpay', 'class-manager-pro' ); ?></a>
 				</div>
 			<?php endif; ?>
@@ -176,19 +186,13 @@ function cmp_handle_public_batch_form_submission() {
 }
 
 /**
- * Outputs the public batch form page using the active WordPress theme.
+ * Outputs the public batch form inside the active theme shell.
  *
- * Bug 3 fix: Previously rendered a bare HTML page with no theme. Now uses
- * get_header() / get_footer() so the site's header, footer, menus, and
- * branding all appear around the form just like any other page.
- *
- * @param string $title   Page title shown in <title> and wp_title filters.
- * @param string $content HTML content to render inside the theme.
+ * @param string $title Page title.
+ * @param string $content HTML content.
  */
 function cmp_render_public_batch_shell( $title, $content ) {
 	nocache_headers();
-
-	// Enqueue plugin stylesheet so it loads via wp_head() inside the theme.
 	wp_enqueue_style(
 		'cmp-public',
 		CMP_PLUGIN_URL . 'assets/css/public.css',
@@ -196,25 +200,27 @@ function cmp_render_public_batch_shell( $title, $content ) {
 		CMP_VERSION
 	);
 
-	// Override the page title for this virtual page.
 	add_filter(
-		'wp_title',
-		function() use ( $title ) {
-			return esc_html( $title );
-		},
-		99
-	);
-	add_filter(
-		'document_title_parts',
-		function( $parts ) use ( $title ) {
-			$parts['title'] = esc_html( $title );
-			return $parts;
-		},
-		99
+		'pre_get_document_title',
+		function () use ( $title ) {
+			return wp_strip_all_tags( $title );
+		}
 	);
 
-	// Render with full theme wrapper.
+	add_filter(
+		'body_class',
+		function ( $classes ) {
+			$classes[] = 'cmp-public-form-active';
+
+			return $classes;
+		}
+	);
+
 	get_header();
-	echo '<div class="cmp-theme-wrapper">' . $content . '</div>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	?>
+	<main class="cmp-public-theme-shell" role="main">
+		<?php echo $content; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+	</main>
+	<?php
 	get_footer();
 }

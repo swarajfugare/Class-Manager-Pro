@@ -53,10 +53,10 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 			<tr>
 				<th scope="row"><label for="cmp-student-class"><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></label></th>
 				<td>
-					<select id="cmp-student-class" name="class_id" data-cmp-class-select data-cmp-fee-target="#cmp-student-total-fee" required>
+					<select id="cmp-student-class" name="class_id" data-cmp-class-select required>
 						<option value=""><?php esc_html_e( 'Select class', 'class-manager-pro' ); ?></option>
 						<?php foreach ( $classes as $class ) : ?>
-							<option value="<?php echo esc_attr( (int) $class->id ); ?>" data-total-fee="<?php echo esc_attr( $class->total_fee ); ?>" <?php selected( $selected_class, (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
+							<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $selected_class, (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
 						<?php endforeach; ?>
 					</select>
 				</td>
@@ -64,12 +64,13 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 			<tr>
 				<th scope="row"><label for="cmp-student-batch"><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></label></th>
 				<td>
-					<select id="cmp-student-batch" name="batch_id" data-cmp-batches required>
+					<select id="cmp-student-batch" name="batch_id" data-cmp-batches data-cmp-batch-fee-target="#cmp-student-total-fee" required>
 						<option value=""><?php esc_html_e( 'Select batch', 'class-manager-pro' ); ?></option>
 						<?php foreach ( $batches as $batch ) : ?>
-							<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $selected_batch, (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
+							<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" data-batch-fee="<?php echo esc_attr( cmp_get_batch_effective_fee( $batch ) ); ?>" <?php selected( $selected_batch, (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
 						<?php endforeach; ?>
 					</select>
+					<p class="description"><?php esc_html_e( 'Choose the batch first. The total fee field will use the batch fee automatically, and you can still adjust it for special cases.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -78,7 +79,10 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-student-paid-fee"><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></label></th>
-				<td><input type="number" id="cmp-student-paid-fee" name="paid_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? $student->paid_fee : '' ); ?>"></td>
+				<td>
+					<input type="number" id="cmp-student-paid-fee" name="paid_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? $student->paid_fee : '' ); ?>">
+					<p class="description"><?php esc_html_e( 'Manual payments are still best added from the Payments screen so the ledger stays clean. This field is useful for initial setup or migration.', 'class-manager-pro' ); ?></p>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-student-status"><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></label></th>
@@ -114,23 +118,29 @@ function cmp_render_student_detail_panel( $student_id ) {
 		return;
 	}
 
-	$remaining = max( 0, (float) $student->total_fee - (float) $student->paid_fee );
+	$remaining      = max( 0, (float) $student->total_fee - (float) $student->paid_fee );
+	$batch_manage   = cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $student->batch_id ) );
 	?>
 	<section class="cmp-panel">
 		<div class="cmp-panel-header">
-			<h2><?php echo esc_html( $student->name ); ?></h2>
-			<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments', array( 'student_id' => (int) $student->id ) ) . '#cmp-add-payment' ); ?>"><?php esc_html_e( 'Add Payment', 'class-manager-pro' ); ?></a>
+			<div>
+				<h2><?php echo esc_html( $student->name ); ?></h2>
+				<p class="cmp-muted"><?php echo esc_html( $student->class_name ); ?><?php echo $student->batch_name ? ' | ' . esc_html( $student->batch_name ) : ''; ?></p>
+			</div>
+			<div class="cmp-toolbar">
+				<a class="button" href="<?php echo esc_url( $batch_manage ); ?>"><?php esc_html_e( 'Open Batch Workspace', 'class-manager-pro' ); ?></a>
+				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments', array( 'student_id' => (int) $student->id ) ) . '#cmp-add-payment' ); ?>"><?php esc_html_e( 'Add Payment', 'class-manager-pro' ); ?></a>
+			</div>
 		</div>
 
 		<div class="cmp-detail-grid">
 			<p><span><?php esc_html_e( 'Student ID', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->unique_id ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->phone ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->email ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->class_name ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->batch_name ); ?></strong></p>
+			<p><span><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->email ? $student->email : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $student->total_fee ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $student->paid_fee ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $remaining ) ); ?></strong></p>
+			<p><span><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $student->fee_due_date ? $student->fee_due_date : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( ucfirst( $student->status ) ); ?></strong></p>
 		</div>
 
@@ -139,30 +149,32 @@ function cmp_render_student_detail_panel( $student_id ) {
 		<?php endif; ?>
 
 		<h3><?php esc_html_e( 'Payments', 'class-manager-pro' ); ?></h3>
-		<table class="widefat striped">
-			<thead>
-				<tr>
-					<th><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></th>
-					<th><?php esc_html_e( 'Mode', 'class-manager-pro' ); ?></th>
-					<th><?php esc_html_e( 'Transaction ID', 'class-manager-pro' ); ?></th>
-					<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
-				</tr>
-			</thead>
-			<tbody>
-				<?php if ( empty( $payments ) ) : ?>
-					<tr><td colspan="4"><?php esc_html_e( 'No payments found.', 'class-manager-pro' ); ?></td></tr>
-				<?php else : ?>
-					<?php foreach ( $payments as $payment ) : ?>
-						<tr>
-							<td><?php echo esc_html( cmp_format_money( $payment->amount ) ); ?></td>
-							<td><?php echo esc_html( ucfirst( $payment->payment_mode ) ); ?></td>
-							<td><?php echo esc_html( $payment->transaction_id ); ?></td>
-							<td><?php echo esc_html( $payment->payment_date ); ?></td>
-						</tr>
-					<?php endforeach; ?>
-				<?php endif; ?>
-			</tbody>
-		</table>
+		<div class="cmp-table-scroll">
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Mode', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Transaction ID', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if ( empty( $payments ) ) : ?>
+						<tr><td colspan="4"><?php esc_html_e( 'No payments found.', 'class-manager-pro' ); ?></td></tr>
+					<?php else : ?>
+						<?php foreach ( $payments as $payment ) : ?>
+							<tr>
+								<td><?php echo esc_html( cmp_format_money( $payment->amount ) ); ?></td>
+								<td><?php echo esc_html( ucfirst( $payment->payment_mode ) ); ?></td>
+								<td><?php echo esc_html( $payment->transaction_id ); ?></td>
+								<td><?php echo esc_html( $payment->payment_date ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
+		</div>
 	</section>
 	<?php
 }
@@ -196,7 +208,7 @@ function cmp_render_students_page() {
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Use Batches as the main intake workspace. Students can now be added manually here, through the shared batch form link, or automatically after batch-linked Razorpay payments.', 'class-manager-pro' ); ?></p>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Students can now arrive from three paths: manual entry, the shared batch intake form, or imported Razorpay data. Batch fee controls the default total fee for new records.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
 
 		<div class="cmp-cards cmp-cards-4">
@@ -254,26 +266,35 @@ function cmp_render_students_page() {
 		</form>
 
 		<section class="cmp-panel">
-			<table class="widefat striped">
-				<thead>
-					<tr>
-						<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
-					</tr>
-				</thead>
-				<tbody class="cmp-student-results">
-					<?php echo cmp_render_student_rows( $filters ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-				</tbody>
-			</table>
+			<div class="cmp-table-scroll">
+				<table class="widefat striped">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+						</tr>
+					</thead>
+					<tbody class="cmp-student-results">
+						<?php echo cmp_render_student_rows( $filters ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+					</tbody>
+				</table>
+			</div>
 		</section>
+
+		<?php if ( ! $student && 'view' !== $action ) : ?>
+			<section class="cmp-panel">
+				<h2><?php esc_html_e( 'Add Student', 'class-manager-pro' ); ?></h2>
+				<?php cmp_render_student_form( null, 'cmp-students' ); ?>
+			</section>
+		<?php endif; ?>
 	</div>
 	<?php
 }

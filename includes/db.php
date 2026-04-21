@@ -40,14 +40,19 @@ function cmp_install() {
 		class_id int(11) unsigned NOT NULL,
 		batch_name varchar(191) NOT NULL,
 		start_date date NULL,
+		fee_due_date date NULL,
 		status enum('active','completed') NOT NULL DEFAULT 'active',
 		public_token varchar(64) NULL DEFAULT NULL,
 		razorpay_link text NULL,
+		batch_fee float NOT NULL DEFAULT 0,
+		is_free tinyint(1) NOT NULL DEFAULT 0,
+		razorpay_page_id varchar(191) NULL,
 		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY  (id),
 		KEY class_id (class_id),
 		KEY status (status),
-		UNIQUE KEY public_token (public_token)
+		UNIQUE KEY public_token (public_token),
+		KEY razorpay_page_id (razorpay_page_id)
 	) {$charset_collate};";
 
 	$sql[] = "CREATE TABLE {$students} (
@@ -87,11 +92,49 @@ function cmp_install() {
 		KEY payment_date (payment_date)
 	) {$charset_collate};";
 
+	$attendance = $wpdb->prefix . 'cmp_attendance';
+	$reminders  = $wpdb->prefix . 'cmp_reminders';
+
+	$sql[] = "CREATE TABLE {$attendance} (
+		id int(11) unsigned NOT NULL AUTO_INCREMENT,
+		batch_id int(11) unsigned NOT NULL,
+		student_id int(11) unsigned NOT NULL,
+		attendance_date date NOT NULL,
+		status enum('present','absent','leave') NOT NULL DEFAULT 'present',
+		notes text NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY batch_id (batch_id),
+		KEY student_id (student_id),
+		KEY attendance_date (attendance_date),
+		UNIQUE KEY batch_student_date (batch_id, student_id, attendance_date)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$reminders} (
+		id int(11) unsigned NOT NULL AUTO_INCREMENT,
+		student_id int(11) unsigned NOT NULL,
+		batch_id int(11) unsigned NOT NULL,
+		reminder_date date NOT NULL,
+		due_date date NULL,
+		channel enum('sms','whatsapp') NOT NULL,
+		status enum('sent','failed','skipped') NOT NULL DEFAULT 'sent',
+		provider varchar(50) NULL,
+		response_message text NULL,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY student_id (student_id),
+		KEY batch_id (batch_id),
+		KEY reminder_date (reminder_date),
+		KEY status (status),
+		UNIQUE KEY student_batch_date_channel (student_id, batch_id, reminder_date, channel)
+	) {$charset_collate};";
+
 	foreach ( $sql as $statement ) {
 		dbDelta( $statement );
 	}
 
 	cmp_backfill_batch_tokens();
+	cmp_backfill_batch_defaults();
 
 	update_option( 'cmp_db_version', CMP_VERSION );
 }
@@ -132,4 +175,26 @@ function cmp_backfill_batch_tokens() {
 			array( '%d' )
 		);
 	}
+}
+
+/**
+ * Backfills new batch defaults for older installs.
+ */
+function cmp_backfill_batch_defaults() {
+	global $wpdb;
+
+	$wpdb->query(
+		'UPDATE ' . $wpdb->prefix . 'cmp_batches b
+		LEFT JOIN ' . $wpdb->prefix . 'cmp_classes c ON c.id = b.class_id
+		SET b.batch_fee = COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0)
+		WHERE b.batch_fee = 0'
+	);
+
+	$wpdb->query(
+		'UPDATE ' . $wpdb->prefix . 'cmp_students s
+		LEFT JOIN ' . $wpdb->prefix . 'cmp_batches b ON b.id = s.batch_id
+		LEFT JOIN ' . $wpdb->prefix . 'cmp_classes c ON c.id = s.class_id
+		SET s.total_fee = COALESCE(NULLIF(s.total_fee, 0), NULLIF(b.batch_fee, 0), c.total_fee, 0)
+		WHERE s.total_fee = 0 AND COALESCE(b.is_free, 0) = 0'
+	);
 }

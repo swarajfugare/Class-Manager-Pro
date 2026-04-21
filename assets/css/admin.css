@@ -2,30 +2,10 @@
 	max-width: 1320px;
 }
 
-/* Prevent form-table content from breaking out of panels */
-.cmp-panel .form-table {
+.cmp-wrap,
+.cmp-wrap * {
 	box-sizing: border-box;
-	table-layout: fixed;
-	width: 100%;
 }
-
-.cmp-panel .form-table td,
-.cmp-panel .form-table th {
-	overflow-wrap: break-word;
-	word-break: break-word;
-}
-
-.cmp-panel .form-table .regular-text,
-.cmp-panel .form-table .large-text,
-.cmp-panel .form-table input[type="url"],
-.cmp-panel .form-table input[type="text"],
-.cmp-panel .form-table input[type="email"],
-.cmp-panel .form-table select,
-.cmp-panel .form-table textarea {
-	box-sizing: border-box;
-	max-width: 100%;
-}
-
 
 .cmp-cards {
 	display: grid;
@@ -70,7 +50,42 @@
 
 .cmp-panel {
 	margin: 18px 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 	padding: 18px;
+}
+
+.cmp-callout {
+	background: #f6f8fb;
+	border: 1px solid #d7dde5;
+	border-radius: 6px;
+	padding: 16px;
+}
+
+.cmp-callout h3 {
+	margin: 0 0 8px;
+}
+
+.cmp-callout p:last-child {
+	margin-bottom: 0;
+}
+
+.cmp-callout-info {
+	background: #eef6ff;
+	border-color: #bfd7f2;
+}
+
+.cmp-callout-warning {
+	background: #fff7e8;
+	border-color: #ebcd8a;
+}
+
+.cmp-danger-panel {
+	border-color: #d63638;
+}
+
+.cmp-danger-panel h2 {
+	color: #b32d2e;
 }
 
 .cmp-panel h2,
@@ -84,6 +99,36 @@
 	gap: 12px;
 	justify-content: space-between;
 	margin-bottom: 16px;
+}
+
+.cmp-panel-header h2,
+.cmp-panel-header h3 {
+	margin-bottom: 0;
+}
+
+.cmp-add-new-stack {
+	display: grid;
+	gap: 18px;
+	max-width: 980px;
+	width: 100%;
+}
+
+.cmp-add-new-panel {
+	margin: 0;
+}
+
+.cmp-step-badge {
+	align-items: center;
+	background: #2271b1;
+	border-radius: 999px;
+	color: #fff;
+	display: inline-flex;
+	font-size: 12px;
+	font-weight: 700;
+	height: 24px;
+	justify-content: center;
+	margin-bottom: 8px;
+	width: 24px;
 }
 
 .cmp-grid {
@@ -118,9 +163,46 @@
 	gap: 8px;
 }
 
+.cmp-inline-form {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.cmp-inline-form .button,
+.cmp-inline-form .button-primary,
+.cmp-inline-form .button-secondary {
+	margin: 0;
+}
+
+.cmp-inline-badge {
+	background: #eef1f5;
+	border-radius: 999px;
+	color: #50575e;
+	display: inline-flex;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 6px 10px;
+}
+
+.cmp-inline-badge-success {
+	background: #d7f7e3;
+	color: #0a6b3f;
+}
+
+.cmp-inline-badge-warning {
+	background: #fff3cd;
+	color: #8a5a00;
+}
+
+.cmp-space-top {
+	margin-top: 12px;
+}
+
 .cmp-inline-tools .code,
 .cmp-inline-tools .large-text {
-	flex: 1 1 320px;
+	flex: 1 1 260px;
+	min-width: 0;
 }
 
 .cmp-toolbar input[type="search"],
@@ -133,11 +215,67 @@
 	width: 150px;
 }
 
+.cmp-form .form-table,
+.cmp-form .form-table tbody,
+.cmp-form .form-table tr,
+.cmp-form .form-table th,
+.cmp-form .form-table td {
+	max-width: 100%;
+}
+
+.cmp-form .form-table td {
+	padding-right: 0;
+}
+
+.cmp-form label span {
+	color: #1d2327;
+	display: block;
+	font-size: 13px;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.cmp-form input[type="text"],
+.cmp-form input[type="email"],
+.cmp-form input[type="url"],
+.cmp-form input[type="number"],
+.cmp-form input[type="date"],
+.cmp-form input[type="datetime-local"],
+.cmp-form input[type="password"],
+.cmp-form textarea,
+.cmp-form select,
+.cmp-form .regular-text,
+.cmp-form .large-text {
+	max-width: 100%;
+}
+
 .cmp-form input[type="number"],
 .cmp-form input[type="date"],
 .cmp-form input[type="datetime-local"],
 .cmp-form select {
 	min-width: 220px;
+}
+
+.cmp-panel .widefat {
+	max-width: 100%;
+	table-layout: auto;
+	width: 100%;
+}
+
+.cmp-table-scroll {
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.cmp-table-scroll .widefat td,
+.cmp-table-scroll .widefat th {
+	vertical-align: top;
+}
+
+.cmp-attendance-table select,
+.cmp-attendance-table input[type="text"] {
+	min-width: 140px;
+	width: 100%;
 }
 
 .cmp-chart {
@@ -235,6 +373,14 @@
 	max-width: 900px;
 }
 
+.cmp-simple-list {
+	margin: 0 0 12px 18px;
+}
+
+.cmp-simple-list li {
+	margin-bottom: 4px;
+}
+
 @media (max-width: 1100px) {
 	.cmp-cards,
 	.cmp-cards-4,
@@ -258,8 +404,18 @@
 		padding: 14px;
 	}
 
+	.cmp-panel-header {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
 	.cmp-toolbar {
 		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.cmp-inline-form {
+		display: flex;
 		flex-direction: column;
 	}
 
@@ -267,7 +423,30 @@
 	.cmp-toolbar select,
 	.cmp-toolbar .button,
 	.cmp-inline-tools input,
-	.cmp-inline-tools .button {
+	.cmp-inline-tools .button,
+	.cmp-inline-form .button {
+		width: 100%;
+	}
+
+	.cmp-form .form-table th,
+	.cmp-form .form-table td {
+		display: block;
+		padding-left: 0;
+		width: 100%;
+	}
+
+	.cmp-form input[type="text"],
+	.cmp-form input[type="email"],
+	.cmp-form input[type="url"],
+	.cmp-form input[type="number"],
+	.cmp-form input[type="date"],
+	.cmp-form input[type="datetime-local"],
+	.cmp-form input[type="password"],
+	.cmp-form textarea,
+	.cmp-form select,
+	.cmp-form .regular-text,
+	.cmp-form .large-text {
+		min-width: 0;
 		width: 100%;
 	}
 

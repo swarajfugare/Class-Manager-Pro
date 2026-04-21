@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Class Manager Pro
  * Description: Admin system for managing classes, batches, students, payments, analytics, and secure batch intake links.
- * Version: 1.2.0
+ * Version: 1.3.1
  * Author: Class Manager Pro
  * Text Domain: class-manager-pro
  *
@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMP_VERSION', '1.2.0' );
+define( 'CMP_VERSION', '1.3.1' );
 define( 'CMP_PLUGIN_FILE', __FILE__ );
 define( 'CMP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
@@ -30,10 +30,12 @@ require_once CMP_PLUGIN_DIR . 'admin/batches.php';
 require_once CMP_PLUGIN_DIR . 'admin/students.php';
 require_once CMP_PLUGIN_DIR . 'admin/add-new.php';
 require_once CMP_PLUGIN_DIR . 'admin/payments.php';
+require_once CMP_PLUGIN_DIR . 'admin/razorpay-import.php';
 require_once CMP_PLUGIN_DIR . 'admin/analytics.php';
 require_once CMP_PLUGIN_DIR . 'admin/settings.php';
 
 register_activation_hook( __FILE__, 'cmp_install' );
+register_deactivation_hook( __FILE__, 'cmp_clear_scheduled_fee_reminders' );
 
 add_action( 'admin_menu', 'cmp_register_admin_menu' );
 add_action( 'admin_enqueue_scripts', 'cmp_enqueue_admin_assets' );
@@ -62,6 +64,7 @@ function cmp_register_admin_menu() {
 	add_submenu_page( 'cmp-dashboard', __( 'Students', 'class-manager-pro' ), __( 'Students', 'class-manager-pro' ), 'manage_options', 'cmp-students', 'cmp_render_students_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Add New', 'class-manager-pro' ), __( 'Add New', 'class-manager-pro' ), 'manage_options', 'cmp-add-new', 'cmp_render_add_new_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Payments', 'class-manager-pro' ), __( 'Payments', 'class-manager-pro' ), 'manage_options', 'cmp-payments', 'cmp_render_payments_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Razorpay Import', 'class-manager-pro' ), __( 'Razorpay Import', 'class-manager-pro' ), 'manage_options', 'cmp-razorpay-import', 'cmp_render_razorpay_import_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Analytics', 'class-manager-pro' ), __( 'Analytics', 'class-manager-pro' ), 'manage_options', 'cmp-analytics', 'cmp_render_analytics_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Settings', 'class-manager-pro' ), __( 'Settings', 'class-manager-pro' ), 'manage_options', 'cmp-settings', 'cmp_render_settings_page' );
 }

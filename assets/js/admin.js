@@ -30,15 +30,15 @@
 		});
 	}
 
-	function maybeFillClassFee($classSelect) {
-		const targetSelector = $classSelect.data('cmp-fee-target');
+	function maybeFillBatchFee($batchSelect) {
+		const targetSelector = $batchSelect.data('cmp-batch-fee-target');
 
 		if (!targetSelector) {
 			return;
 		}
 
 		const $target = $(targetSelector);
-		const selectedFee = $classSelect.find('option:selected').data('total-fee');
+		const selectedFee = $batchSelect.find('option:selected').data('batch-fee');
 
 		if (!$target.length || selectedFee === undefined || selectedFee === '') {
 			return;
@@ -47,6 +47,18 @@
 		if (!$target.val() || $target.data('cmp-autofilled')) {
 			$target.val(selectedFee);
 			$target.data('cmp-autofilled', true);
+		}
+	}
+
+	function updateFreeBatchState($checkbox) {
+		const $form = $checkbox.closest('form');
+		const $fee = $form.find('#cmp-batch-fee');
+		const isFree = $checkbox.is(':checked');
+
+		$fee.prop('disabled', isFree);
+
+		if (isFree) {
+			$fee.val('0');
 		}
 	}
 
@@ -237,17 +249,34 @@
 		$('[data-cmp-class-select]').each(function () {
 			const $select = $(this);
 			updateBatchOptions($select);
-			maybeFillClassFee($select);
 		});
 
 		$(document).on('change', '[data-cmp-class-select]', function () {
 			const $select = $(this);
 			updateBatchOptions($select);
-			maybeFillClassFee($select);
+			$select.closest('form, .cmp-wrap').find('[data-cmp-batches]').each(function () {
+				maybeFillBatchFee($(this));
+			});
+		});
+
+		$('[data-cmp-batches]').each(function () {
+			maybeFillBatchFee($(this));
+		});
+
+		$(document).on('change', '[data-cmp-batches]', function () {
+			maybeFillBatchFee($(this));
 		});
 
 		$(document).on('input', '#cmp-student-total-fee', function () {
 			$(this).data('cmp-autofilled', false);
+		});
+
+		$('#cmp-batch-is-free').each(function () {
+			updateFreeBatchState($(this));
+		});
+
+		$(document).on('change', '#cmp-batch-is-free', function () {
+			updateFreeBatchState($(this));
 		});
 
 		$('.cmp-filter-form').each(function () {
@@ -263,6 +292,14 @@
 
 		$(document).on('click', '.cmp-delete-link', function (event) {
 			if (!window.confirm('Delete this record?')) {
+				event.preventDefault();
+			}
+		});
+
+		$(document).on('submit', 'form[data-cmp-confirm]', function (event) {
+			const message = $(this).data('cmp-confirm');
+
+			if (message && !window.confirm(message)) {
 				event.preventDefault();
 			}
 		});

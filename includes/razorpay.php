@@ -55,36 +55,31 @@ class CMP_Razorpay_Webhook {
 			return new WP_Error( 'cmp_webhook_invalid_payload', __( 'Invalid webhook payload.', 'class-manager-pro' ), array( 'status' => 400 ) );
 		}
 
-		// FIX Bug 2: Only process successful payment events. Ignore failed/pending.
-		$event          = isset( $payload['event'] ) ? (string) $payload['event'] : '';
-		$allowed_events = array( 'payment.captured', 'payment.authorized', 'payment_link.paid', '' );
-		if ( $event && ! in_array( $event, $allowed_events, true ) ) {
-			return rest_ensure_response(
-				array(
-					'success' => true,
-					'message' => 'Event "' . $event . '" ignored — not a captured payment event.',
-				)
-			);
-		}
+		$payment      = self::extract_payment_entity( $payload );
+		$payment_link = self::extract_payment_link_entity( $payload );
 
-		$payment = self::extract_payment_entity( $payload );
-
-		if ( empty( $payment ) ) {
+		if ( empty( $payment ) && empty( $payment_link ) ) {
 			return new WP_Error( 'cmp_webhook_payment_missing', __( 'Payment data was not found in webhook payload.', 'class-manager-pro' ), array( 'status' => 400 ) );
 		}
 
-		// FIX Bug 2: Block non-captured payment statuses.
-		$payment_status = isset( $payment['status'] ) ? (string) $payment['status'] : '';
-		if ( $payment_status && ! in_array( $payment_status, array( 'captured', 'authorized' ), true ) ) {
+		if ( ! self::is_successful_payment_payload( $payload, $payment, $payment_link ) ) {
 			return rest_ensure_response(
 				array(
 					'success' => true,
-					'message' => 'Payment status "' . $payment_status . '" ignored — only captured/authorized payments are recorded.',
+					'message' => 'Webhook ignored because the payment is not completed.',
 				)
 			);
 		}
 
-		$transaction_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+		$transaction_id = sanitize_text_field(
+			self::first_non_empty(
+				array(
+					$payment['id'] ?? '',
+					$payment_link['payment_id'] ?? '',
+					$payment_link['id'] ?? '',
+				)
+			)
+		);
 
 		if ( '' !== $transaction_id && cmp_payment_exists( $transaction_id ) ) {
 			return rest_ensure_response(
@@ -95,40 +90,51 @@ class CMP_Razorpay_Webhook {
 			);
 		}
 
-		$notes    = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
-		$metadata = isset( $payment['metadata'] ) && is_array( $payment['metadata'] ) ? $payment['metadata'] : array();
-		$meta     = array_merge( $notes, $metadata );
-		$batch    = null;
+		$notes                 = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
+		$metadata              = isset( $payment['metadata'] ) && is_array( $payment['metadata'] ) ? $payment['metadata'] : array();
+		$payment_customer      = isset( $payment['customer'] ) && is_array( $payment['customer'] ) ? $payment['customer'] : array();
+		$payment_link_notes    = isset( $payment_link['notes'] ) && is_array( $payment_link['notes'] ) ? $payment_link['notes'] : array();
+		$payment_link_metadata = isset( $payment_link['metadata'] ) && is_array( $payment_link['metadata'] ) ? $payment_link['metadata'] : array();
+		$payment_link_customer = isset( $payment_link['customer'] ) && is_array( $payment_link['customer'] ) ? $payment_link['customer'] : array();
+		$meta                  = array_merge( $payment_link_notes, $payment_link_metadata, $notes, $metadata );
+		$batch                 = null;
 
-		$name     = self::first_non_empty( array( $meta['name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
-		$email    = sanitize_email( self::first_non_empty( array( $meta['email'] ?? '', $payment['email'] ?? '' ) ) );
-		$phone    = sanitize_text_field( self::first_non_empty( array( $meta['phone'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '' ) ) );
+		$name     = self::first_non_empty( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		$email    = sanitize_email( self::first_non_empty( array( $meta['email'] ?? '', $meta['student_email'] ?? '', $payment['email'] ?? '', $payment_customer['email'] ?? '', $payment_link['email'] ?? '', $payment_link['customer_email'] ?? '', $payment_link_customer['email'] ?? '' ) ) );
+		$phone    = sanitize_text_field( self::first_non_empty( array( $meta['phone'] ?? '', $meta['mobile'] ?? '', $meta['contact'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment_customer['contact'] ?? '', $payment_link['contact'] ?? '', $payment_link['customer_contact'] ?? '', $payment_link_customer['contact'] ?? '' ) ) );
 		$class_id = isset( $meta['class_id'] ) ? absint( $meta['class_id'] ) : 0;
 		$batch_id = isset( $meta['batch_id'] ) ? absint( $meta['batch_id'] ) : 0;
-		$amount   = isset( $payment['amount'] ) ? round( (float) $payment['amount'] / 100, 2 ) : 0;
+		$amount   = self::amount_from_minor_units( self::first_non_empty( array( $payment['amount'] ?? '', $payment_link['amount_paid'] ?? '', $payment_link['amount'] ?? '' ) ) );
 
-		// Try batch_token from payment notes.
+		if ( $amount <= 0 ) {
+			return rest_ensure_response(
+				array(
+					'success' => true,
+					'message' => 'Webhook ignored because no successful paid amount was found.',
+				)
+			);
+		}
+
 		if ( ! $batch_id ) {
 			$batch_token = self::first_non_empty( array( $meta['batch_token'] ?? '', $meta['cmp_batch_token'] ?? '', $meta['public_token'] ?? '' ) );
 			$batch       = $batch_token ? cmp_get_batch_by_token( $batch_token ) : null;
 			$batch_id    = $batch ? (int) $batch->id : 0;
 		}
 
-		// FIX Bug 5: Try matching batch via Razorpay payment link URL in webhook payload.
 		if ( ! $batch_id ) {
-			$link_short_url = '';
-			if ( isset( $payload['payload']['payment_link']['entity']['short_url'] ) ) {
-				$link_short_url = (string) $payload['payload']['payment_link']['entity']['short_url'];
-			} elseif ( isset( $payload['payload']['payment_link']['entity']['url'] ) ) {
-				$link_short_url = (string) $payload['payload']['payment_link']['entity']['url'];
-			} elseif ( isset( $meta['payment_link_url'] ) ) {
-				$link_short_url = (string) $meta['payment_link_url'];
-			}
-
-			if ( $link_short_url ) {
-				$batch    = cmp_get_batch_by_razorpay_link( $link_short_url );
-				$batch_id = $batch ? (int) $batch->id : 0;
-			}
+			$batch = cmp_get_batch_by_razorpay_reference(
+				array(
+					$meta['razorpay_link'] ?? '',
+					$meta['payment_link'] ?? '',
+					$meta['payment_link_id'] ?? '',
+					$payment['payment_link_id'] ?? '',
+					$payment['payment_link_reference_id'] ?? '',
+					$payment_link['id'] ?? '',
+					$payment_link['short_url'] ?? '',
+					$payment_link['reference_id'] ?? '',
+				)
+			);
+			$batch_id = $batch ? (int) $batch->id : 0;
 		}
 
 		if ( $batch_id && ! $batch ) {
@@ -165,7 +171,7 @@ class CMP_Razorpay_Webhook {
 
 		$student = null;
 
-		if ( $recent_match && ! empty( $recent_match['student_id'] ) ) {
+		if ( $recent_match && ! empty( $recent_match['student_id'] ) && ( ! $batch_id || empty( $recent_match['batch_id'] ) || (int) $recent_match['batch_id'] === (int) $batch_id ) ) {
 			$student = cmp_get_student( (int) $recent_match['student_id'] );
 		}
 
@@ -179,6 +185,7 @@ class CMP_Razorpay_Webhook {
 
 		if ( ! $student ) {
 			$class = $class_id ? cmp_get_class( $class_id ) : null;
+			$fee   = $batch ? cmp_get_batch_effective_fee( $batch ) : ( $class ? (float) $class->total_fee : 0 );
 
 			$student_id = cmp_insert_student(
 				array(
@@ -187,7 +194,7 @@ class CMP_Razorpay_Webhook {
 					'email'     => $email,
 					'class_id'  => $class_id,
 					'batch_id'  => $batch_id,
-					'total_fee' => isset( $meta['total_fee'] ) ? cmp_money_value( $meta['total_fee'] ) : ( $class ? (float) $class->total_fee : 0 ),
+					'total_fee' => isset( $meta['total_fee'] ) ? cmp_money_value( $meta['total_fee'] ) : $fee,
 					'paid_fee'  => 0,
 					'status'    => 'active',
 					'notes'     => __( 'Created by Razorpay webhook.', 'class-manager-pro' ),
@@ -252,6 +259,88 @@ class CMP_Razorpay_Webhook {
 	}
 
 	/**
+	 * Extracts the payment link entity from common Razorpay payload shapes.
+	 *
+	 * @param array $payload Payload.
+	 * @return array
+	 */
+	private static function extract_payment_link_entity( $payload ) {
+		if ( isset( $payload['payload']['payment_link']['entity'] ) && is_array( $payload['payload']['payment_link']['entity'] ) ) {
+			return $payload['payload']['payment_link']['entity'];
+		}
+
+		if ( isset( $payload['payment_link']['entity'] ) && is_array( $payload['payment_link']['entity'] ) ) {
+			return $payload['payment_link']['entity'];
+		}
+
+		if ( isset( $payload['payment_link'] ) && is_array( $payload['payment_link'] ) ) {
+			return $payload['payment_link'];
+		}
+
+		if ( isset( $payload['id'] ) && is_scalar( $payload['id'] ) && 0 === strpos( (string) $payload['id'], 'plink_' ) ) {
+			return $payload;
+		}
+
+		return array();
+	}
+
+	/**
+	 * Confirms that the webhook represents a completed payment.
+	 *
+	 * @param array $payload Payload.
+	 * @param array $payment Payment entity.
+	 * @param array $payment_link Payment link entity.
+	 * @return bool
+	 */
+	private static function is_successful_payment_payload( $payload, $payment, $payment_link ) {
+		$event          = isset( $payload['event'] ) && is_scalar( $payload['event'] ) ? strtolower( (string) $payload['event'] ) : '';
+		$payment_status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
+		$link_status    = isset( $payment_link['status'] ) && is_scalar( $payment_link['status'] ) ? strtolower( (string) $payment_link['status'] ) : '';
+		$amount_paid    = isset( $payment_link['amount_paid'] ) && is_numeric( $payment_link['amount_paid'] ) ? (float) $payment_link['amount_paid'] : 0;
+		$captured       = ! isset( $payment['captured'] ) || true === filter_var( $payment['captured'], FILTER_VALIDATE_BOOLEAN );
+
+		if ( false !== strpos( $event, 'failed' ) || false !== strpos( $event, 'cancelled' ) || false !== strpos( $event, 'expired' ) ) {
+			return false;
+		}
+
+		if ( in_array( $payment_status, array( 'failed', 'created', 'authorized', 'refunded', 'refund_pending' ), true ) ) {
+			return false;
+		}
+
+		if ( in_array( $link_status, array( 'created', 'issued', 'cancelled', 'expired' ), true ) ) {
+			return false;
+		}
+
+		if ( ! empty( $payment ) ) {
+			if ( 'captured' !== $payment_status || ! $captured || ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
+				return false;
+			}
+
+			return in_array( $event, array( 'payment.captured', 'payment_link.paid' ), true );
+		}
+
+		if ( ! empty( $payment_link ) ) {
+			return 'payment_link.paid' === $event && 'paid' === $link_status && $amount_paid > 0;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Converts Razorpay minor units (paise) to a money value.
+	 *
+	 * @param mixed $amount Amount in minor units.
+	 * @return float
+	 */
+	private static function amount_from_minor_units( $amount ) {
+		if ( ! is_numeric( $amount ) ) {
+			return 0;
+		}
+
+		return round( (float) $amount / 100, 2 );
+	}
+
+	/**
 	 * Returns the first non-empty scalar value.
 	 *
 	 * @param array $values Values.
@@ -295,6 +384,11 @@ class CMP_Razorpay_Webhook {
 		if ( $batch && (int) $student->batch_id !== $batch_id && (int) $batch->class_id === $target_class_id ) {
 			$updates['batch_id'] = $batch_id;
 			$formats[]           = '%d';
+		}
+
+		if ( empty( $student->total_fee ) && $batch ) {
+			$updates['total_fee'] = cmp_get_batch_effective_fee( $batch );
+			$formats[]            = '%f';
 		}
 
 		if ( $updates ) {

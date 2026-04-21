@@ -1,32 +1,32 @@
-/* =====================================================================
-   Class Manager Pro — Public Form Styles
-   Rendered inside the active WordPress theme (get_header/get_footer).
-   All rules are scoped to .cmp-theme-wrapper to avoid conflicts.
-   ===================================================================== */
+.cmp-public-theme-shell {
+	background: #f3f6fb;
+	color: #1d2327;
+	font-family: inherit;
+	min-height: 70vh;
+	width: 100%;
+}
 
-/* Theme wrapper — constrains and centres the form inside any theme */
-.cmp-theme-wrapper {
+.cmp-public-theme-shell,
+.cmp-public-theme-shell * {
 	box-sizing: border-box;
+}
+
+.cmp-public-page {
 	margin: 0 auto;
-	max-width: 1040px;
-	padding: 40px 20px 72px;
-	width: 100%;
+	max-width: 1120px;
+	padding: 48px 20px 72px;
 }
 
-
-.cmp-theme-wrapper .cmp-public-page {
-	width: 100%;
-}
-
-.cmp-theme-wrapper .cmp-public-hero {
+.cmp-public-hero {
 	align-items: end;
 	display: grid;
 	gap: 24px;
-	grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+	grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
 	margin-bottom: 24px;
+	min-width: 0;
 }
 
-.cmp-theme-wrapper .cmp-public-eyebrow {
+.cmp-public-eyebrow {
 	color: #2271b1;
 	font-size: 13px;
 	font-weight: 700;
@@ -35,148 +35,151 @@
 	text-transform: uppercase;
 }
 
-.cmp-theme-wrapper .cmp-public-hero h1 {
-	font-size: clamp(24px, 4vw, 42px);
-	line-height: 1.1;
+.cmp-public-hero h1 {
+	font-size: 44px;
+	line-height: 1.05;
 	margin: 0 0 12px;
 }
 
-.cmp-theme-wrapper .cmp-public-subtitle {
+.cmp-public-subtitle {
 	color: #50575e;
-	font-size: 17px;
+	font-size: 18px;
 	line-height: 1.6;
 	margin: 0;
+	max-width: 700px;
 }
 
-.cmp-theme-wrapper .cmp-public-panel,
-.cmp-theme-wrapper .cmp-public-summary {
+.cmp-public-panel,
+.cmp-public-summary {
 	background: #fff;
 	border: 1px solid #dcdcde;
-	border-radius: 10px;
-	box-shadow: 0 4px 18px rgba(18, 34, 56, 0.07);
-	box-sizing: border-box;
-	overflow: hidden;
-	width: 100%;
+	border-radius: 8px;
+	box-shadow: 0 12px 35px rgba(18, 34, 56, 0.06);
 }
 
-.cmp-theme-wrapper .cmp-public-summary {
+.cmp-public-summary {
 	display: grid;
-	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 16px;
+	min-width: 0;
 	padding: 20px;
 }
 
-.cmp-theme-wrapper .cmp-public-summary div {
+.cmp-public-summary div {
 	background: #f6f8fb;
 	border-radius: 6px;
-	padding: 12px 14px;
+	padding: 14px;
 }
 
-.cmp-theme-wrapper .cmp-public-summary span {
+.cmp-public-summary span {
 	color: #646970;
 	display: block;
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	margin-bottom: 4px;
+	font-size: 12px;
+	margin-bottom: 6px;
 	text-transform: uppercase;
 }
 
-.cmp-theme-wrapper .cmp-public-summary strong {
+.cmp-public-summary strong {
 	display: block;
-	font-size: 17px;
-	word-break: break-word;
+	font-size: 18px;
+	overflow-wrap: anywhere;
 }
 
-.cmp-theme-wrapper .cmp-public-panel {
+.cmp-public-panel {
+	margin: 0;
+	max-width: 100%;
+	overflow-wrap: anywhere;
 	padding: 28px;
 }
 
-.cmp-theme-wrapper .cmp-public-alert {
+.cmp-public-panel h2,
+.cmp-public-panel h3 {
+	margin-top: 0;
+}
+
+.cmp-public-alert {
 	border-radius: 6px;
 	margin-bottom: 18px;
 	padding: 14px 16px;
 }
 
-.cmp-theme-wrapper .cmp-public-alert p,
-.cmp-theme-wrapper .cmp-public-alert strong {
+.cmp-public-alert p,
+.cmp-public-alert strong {
 	margin: 0;
 }
 
-.cmp-theme-wrapper .cmp-public-alert-success {
+.cmp-public-alert-success {
 	background: #e7f7ed;
 	border: 1px solid #a6d7b8;
 	color: #175d38;
 }
 
-.cmp-theme-wrapper .cmp-public-alert-error {
+.cmp-public-alert-error {
 	background: #fdebec;
 	border: 1px solid #f0b4b8;
 	color: #8a2424;
 }
 
-.cmp-theme-wrapper .cmp-public-form {
+.cmp-public-form {
 	display: grid;
 	gap: 20px;
 }
 
-.cmp-theme-wrapper .cmp-public-grid {
+.cmp-public-grid {
 	display: grid;
 	gap: 16px;
 	grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.cmp-theme-wrapper .cmp-public-grid-span {
+.cmp-public-grid-span {
 	grid-column: 1 / -1;
 }
 
-.cmp-theme-wrapper .cmp-public-form label {
+.cmp-public-form label {
 	display: grid;
-	gap: 6px;
+	gap: 8px;
 }
 
-.cmp-theme-wrapper .cmp-public-form span {
-	color: #1d2327;
+.cmp-public-form span {
+	color: #50575e;
 	font-size: 14px;
 	font-weight: 600;
 }
 
-.cmp-theme-wrapper .cmp-public-form input,
-.cmp-theme-wrapper .cmp-public-form textarea {
-	background: #fff;
-	border: 1.5px solid #c3c4c7;
+.cmp-public-form input,
+.cmp-public-form textarea {
+	border: 1px solid #c3c4c7;
 	border-radius: 6px;
+	box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 	box-sizing: border-box;
-	font-family: inherit;
-	font-size: 15px;
-	line-height: 1.5;
-	padding: 10px 13px;
-	transition: border-color 0.15s;
+	font: inherit;
+	padding: 12px 14px;
 	width: 100%;
 }
 
-.cmp-theme-wrapper .cmp-public-form input:focus,
-.cmp-theme-wrapper .cmp-public-form textarea:focus {
-	border-color: #2271b1;
-	box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.15);
-	outline: none;
+.cmp-public-form textarea {
+	resize: vertical;
 }
 
-.cmp-theme-wrapper .cmp-public-form input[readonly] {
+.cmp-public-form input[readonly] {
 	background: #f6f7f7;
-	color: #646970;
 }
 
-.cmp-theme-wrapper .cmp-public-payment {
+.cmp-public-payment {
 	border-top: 1px solid #e5e7eb;
 	margin-top: 24px;
 	padding-top: 24px;
 }
 
-.cmp-theme-wrapper .cmp-public-payment h2 {
+.cmp-public-payment p {
+	max-width: 680px;
+}
+
+.cmp-public-payment h2 {
 	margin-top: 0;
 }
 
-.cmp-theme-wrapper .cmp-public-button {
+.cmp-public-button {
 	background: #2271b1;
 	border: 0;
 	border-radius: 6px;
@@ -186,48 +189,49 @@
 	font-size: 15px;
 	font-weight: 700;
 	justify-content: center;
-	padding: 12px 22px;
+	line-height: 1.2;
+	padding: 13px 18px;
 	text-decoration: none;
-	transition: background 0.15s;
 }
 
-.cmp-theme-wrapper .cmp-public-button:hover {
+.cmp-public-button:hover,
+.cmp-public-button:focus {
 	background: #135e96;
 	color: #fff;
+	text-decoration: none;
 }
 
-.cmp-theme-wrapper .cmp-public-button-secondary {
-	background: #1d2327;
+.cmp-public-button-secondary {
+	background: #111827;
 }
 
-.cmp-theme-wrapper .cmp-public-button-secondary:hover {
-	background: #3c434a;
+.cmp-public-button-secondary:hover,
+.cmp-public-button-secondary:focus {
+	background: #1f2937;
 }
 
 @media (max-width: 900px) {
-	.cmp-theme-wrapper .cmp-public-hero {
+	.cmp-public-hero,
+	.cmp-public-grid {
 		grid-template-columns: 1fr;
 	}
 }
 
 @media (max-width: 640px) {
-	.cmp-theme-wrapper {
-		padding: 24px 16px 48px;
+	.cmp-public-page {
+		padding: 28px 16px 48px;
 	}
 
-	.cmp-theme-wrapper .cmp-public-panel {
+	.cmp-public-hero h1 {
+		font-size: 32px;
+	}
+
+	.cmp-public-panel,
+	.cmp-public-summary {
 		padding: 18px;
 	}
 
-	.cmp-theme-wrapper .cmp-public-summary {
-		padding: 16px;
-	}
-
-	.cmp-theme-wrapper .cmp-public-grid {
-		grid-template-columns: 1fr;
-	}
-
-	.cmp-theme-wrapper .cmp-public-button {
+	.cmp-public-button {
 		width: 100%;
 	}
 }

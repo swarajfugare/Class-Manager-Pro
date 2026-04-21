@@ -36,8 +36,11 @@ function cmp_render_class_form( $class = null, $return_page = 'cmp-classes' ) {
 				<td><textarea id="cmp-class-description" name="description" rows="4" class="large-text"><?php echo esc_textarea( $is_edit ? $class->description : '' ); ?></textarea></td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-class-total-fee"><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></label></th>
-				<td><input type="number" id="cmp-class-total-fee" name="total_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? $class->total_fee : '' ); ?>"></td>
+				<th scope="row"><label for="cmp-class-total-fee"><?php esc_html_e( 'Default Fee', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<input type="number" id="cmp-class-total-fee" name="total_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? $class->total_fee : '' ); ?>">
+					<p class="description"><?php esc_html_e( 'This is a fallback only. New students should normally inherit the fee from their batch.', 'class-manager-pro' ); ?></p>
+				</td>
 			</tr>
 		</table>
 
@@ -59,6 +62,7 @@ function cmp_render_classes_page() {
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Classes', 'class-manager-pro' ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Keep classes as the top-level structure. Batch fee now controls the real selling price, while class fee stays as a default template for new batches and older data.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
 
 		<section class="cmp-panel">
@@ -73,7 +77,7 @@ function cmp_render_classes_page() {
 					<tr>
 						<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Description', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Default Fee', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Created', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
 					</tr>

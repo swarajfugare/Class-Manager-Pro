@@ -17,7 +17,18 @@ add_action( 'admin_post_cmp_save_student', 'cmp_handle_save_student' );
 add_action( 'admin_post_cmp_delete_student', 'cmp_handle_delete_student' );
 add_action( 'admin_post_cmp_save_payment', 'cmp_handle_save_payment' );
 add_action( 'admin_post_cmp_save_settings', 'cmp_handle_save_settings' );
+add_action( 'admin_post_cmp_import_detected_razorpay_keys', 'cmp_handle_import_detected_razorpay_keys' );
+add_action( 'admin_post_cmp_import_razorpay_data', 'cmp_handle_import_razorpay_data' );
+add_action( 'admin_post_cmp_manual_import_razorpay', 'cmp_handle_manual_import_razorpay' );
+add_action( 'admin_post_cmp_import_razorpay_page_to_batch', 'cmp_handle_import_razorpay_page_to_batch' );
+add_action( 'admin_post_cmp_reset_plugin_data', 'cmp_handle_reset_plugin_data' );
+add_action( 'admin_post_cmp_save_sms_settings', 'cmp_handle_save_sms_settings' );
+add_action( 'admin_post_cmp_send_fee_reminders', 'cmp_handle_send_fee_reminders' );
+add_action( 'admin_post_cmp_save_attendance_settings', 'cmp_handle_save_attendance_settings' );
+add_action( 'admin_post_cmp_save_attendance', 'cmp_handle_save_attendance' );
 add_action( 'admin_init', 'cmp_handle_csv_export' );
+add_action( 'init', 'cmp_schedule_daily_fee_reminders' );
+add_action( 'cmp_daily_fee_reminders', 'cmp_run_scheduled_fee_reminders' );
 add_action( 'wp_ajax_cmp_filter_all_data', 'cmp_ajax_filter_all_data' );
 add_action( 'wp_ajax_cmp_filter_students', 'cmp_ajax_filter_students' );
 
@@ -142,6 +153,22 @@ function cmp_money_value( $value ) {
 }
 
 /**
+ * Returns the first non-empty scalar from a list.
+ *
+ * @param array $values Candidate values.
+ * @return string
+ */
+function cmp_first_scalar_value( $values ) {
+	foreach ( $values as $value ) {
+		if ( is_scalar( $value ) && '' !== trim( (string) $value ) ) {
+			return trim( (string) $value );
+		}
+	}
+
+	return '';
+}
+
+/**
  * Formats money for display.
  *
  * @param mixed $value Amount.
@@ -188,6 +215,15 @@ function cmp_payment_modes() {
 }
 
 /**
+ * Allowed attendance statuses.
+ *
+ * @return array
+ */
+function cmp_attendance_statuses() {
+	return array( 'present', 'absent', 'leave' );
+}
+
+/**
  * Sanitizes an enum value against an allow-list.
  *
  * @param string $value Raw value.
@@ -199,6 +235,223 @@ function cmp_clean_enum( $value, $allowed, $default ) {
 	$value = sanitize_key( $value );
 
 	return in_array( $value, $allowed, true ) ? $value : $default;
+}
+
+/**
+ * Returns the configured or detected Razorpay credentials.
+ *
+ * @return array
+ */
+function cmp_get_razorpay_credentials() {
+	$key_id = trim( (string) get_option( 'cmp_razorpay_key_id', '' ) );
+	$secret = trim( (string) get_option( 'cmp_razorpay_secret', '' ) );
+
+	if ( '' !== $key_id && '' !== $secret ) {
+		return array(
+			'key_id' => $key_id,
+			'secret' => $secret,
+			'source' => 'class-manager-pro',
+		);
+	}
+
+	if ( function_exists( 'cmp_detect_wordpress_razorpay' ) ) {
+		$detected = cmp_detect_wordpress_razorpay();
+
+		if ( ! empty( $detected ) ) {
+			$first = reset( $detected );
+
+			if ( is_array( $first ) && ! empty( $first['key_id'] ) && ! empty( $first['secret'] ) ) {
+				return array(
+					'key_id' => (string) $first['key_id'],
+					'secret' => (string) $first['secret'],
+					'source' => (string) key( $detected ),
+				);
+			}
+		}
+	}
+
+	return array(
+		'key_id' => '',
+		'secret' => '',
+		'source' => '',
+	);
+}
+
+/**
+ * Returns the effective fee for a batch.
+ *
+ * @param object|int|null $batch Batch object or ID.
+ * @return float
+ */
+function cmp_get_batch_effective_fee( $batch ) {
+	if ( is_numeric( $batch ) ) {
+		$batch = cmp_get_batch( (int) $batch );
+	}
+
+	if ( ! $batch || ! is_object( $batch ) ) {
+		return 0;
+	}
+
+	if ( ! empty( $batch->is_free ) ) {
+		return 0;
+	}
+
+	if ( isset( $batch->batch_fee ) && (float) $batch->batch_fee > 0 ) {
+		return (float) $batch->batch_fee;
+	}
+
+	if ( isset( $batch->class_total_fee ) && (float) $batch->class_total_fee > 0 ) {
+		return (float) $batch->class_total_fee;
+	}
+
+	$class = ! empty( $batch->class_id ) ? cmp_get_class( (int) $batch->class_id ) : null;
+
+	return $class ? (float) $class->total_fee : 0;
+}
+
+/**
+ * Normalizes an entity name for fuzzy import matching.
+ *
+ * @param string $text Raw text.
+ * @return string
+ */
+function cmp_normalize_name_key( $text ) {
+	$text = strtolower( sanitize_text_field( (string) $text ) );
+	$text = preg_replace( '/[|:>]+/', ' ', $text );
+	$text = preg_replace( '/\b(fee|fees|payment|payments|link|page|form|admission|registration)\b/', ' ', $text );
+	$text = preg_replace( '/[^a-z0-9]+/', ' ', $text );
+	$text = trim( preg_replace( '/\s+/', ' ', $text ) );
+
+	return $text;
+}
+
+/**
+ * Cleans a human-facing title.
+ *
+ * @param string $text Raw text.
+ * @return string
+ */
+function cmp_clean_title_text( $text ) {
+	$text = trim( preg_replace( '/\s+/', ' ', sanitize_text_field( (string) $text ) ) );
+
+	return '' === $text ? __( 'Imported Batch', 'class-manager-pro' ) : $text;
+}
+
+/**
+ * Converts a normalized phrase to display case.
+ *
+ * @param string $text Text.
+ * @return string
+ */
+function cmp_import_title_case( $text ) {
+	$text = trim( preg_replace( '/\s+/', ' ', sanitize_text_field( (string) $text ) ) );
+
+	if ( '' === $text ) {
+		return '';
+	}
+
+	return ucwords( strtolower( $text ) );
+}
+
+/**
+ * Builds a stable class name from a Razorpay page title.
+ *
+ * @param string $title Razorpay page title.
+ * @return string
+ */
+function cmp_guess_import_class_name( $title ) {
+	$title = strtolower( cmp_clean_title_text( $title ) );
+	$title = preg_replace( '/[|:>\/_-]+/', ' ', $title );
+	$title = preg_replace( '/\b(fee|fees|payment|payments|link|page|form|admission|registration|razorpay)\b/', ' ', $title );
+	$title = trim( preg_replace( '/\s+/', ' ', $title ) );
+
+	if ( preg_match( '/^(.+?\bclass\b)(?:\s+batch\b.*|\s+\d+.*)?$/', $title, $matches ) ) {
+		return cmp_import_title_case( $matches[1] );
+	}
+
+	$base = preg_replace( '/\bbatch\b.*$/', '', $title );
+	$base = preg_replace( '/\b(group|slot|morning|evening|weekend|weekday)\b.*$/', '', $base );
+	$base = preg_replace( '/\b\d+\b.*$/', '', $base );
+	$base = trim( preg_replace( '/\s+/', ' ', $base ) );
+
+	if ( '' === $base ) {
+		$base = $title;
+	}
+
+	if ( ! preg_match( '/\bclass\b/', $base ) ) {
+		$base .= ' class';
+	}
+
+	return cmp_import_title_case( $base );
+}
+
+/**
+ * Builds a batch name from a Razorpay page title and class name.
+ *
+ * @param string $title Raw title.
+ * @param string $class_name Class name.
+ * @return string
+ */
+function cmp_guess_import_batch_name( $title, $class_name ) {
+	$clean_title = cmp_clean_title_text( $title );
+	$title_key   = cmp_normalize_name_key( $clean_title );
+	$class_key   = cmp_normalize_name_key( $class_name );
+	$class_base  = trim( preg_replace( '/\s+class$/', '', $class_key ) );
+
+	if ( $title_key === $class_key || ( $class_base && $title_key === $class_base ) ) {
+		return cmp_import_title_case( $clean_title );
+	}
+
+	if ( $class_key && 0 === strpos( $title_key, $class_key ) ) {
+		$remainder = trim( substr( $title_key, strlen( $class_key ) ) );
+
+		if ( '' !== $remainder ) {
+			return cmp_import_title_case( 0 === strpos( $remainder, 'batch ' ) ? $remainder : 'Batch ' . $remainder );
+		}
+	}
+
+	if ( $class_base && $class_base !== $class_key && 0 === strpos( $title_key, $class_base ) ) {
+		$remainder = trim( substr( $title_key, strlen( $class_base ) ) );
+
+		if ( '' !== $remainder ) {
+			return cmp_import_title_case( 0 === strpos( $remainder, 'batch ' ) ? $remainder : 'Batch ' . $remainder );
+		}
+	}
+
+	if ( preg_match( '/\bbatch\s*([a-z0-9 -]+)$/i', $clean_title, $matches ) ) {
+		return cmp_import_title_case( 'Batch ' . trim( $matches[1] ) );
+	}
+
+	return cmp_import_title_case( $clean_title );
+}
+
+/**
+ * Builds smart class and batch names from Razorpay naming.
+ *
+ * @param string $title Source title.
+ * @param array  $notes Optional notes array.
+ * @return array
+ */
+function cmp_guess_class_batch_names( $title, $notes = array() ) {
+	$note_class = trim( sanitize_text_field( isset( $notes['class_name'] ) ? $notes['class_name'] : ( isset( $notes['course_name'] ) ? $notes['course_name'] : '' ) ) );
+	$note_batch = trim( sanitize_text_field( isset( $notes['batch_name'] ) ? $notes['batch_name'] : ( isset( $notes['form_name'] ) ? $notes['form_name'] : '' ) ) );
+
+	if ( '' !== $note_class || '' !== $note_batch ) {
+		$class_name = cmp_clean_title_text( '' !== $note_class ? $note_class : cmp_guess_import_class_name( $note_batch ) );
+
+		return array(
+			'class_name' => $class_name,
+			'batch_name' => cmp_clean_title_text( '' !== $note_batch ? $note_batch : cmp_guess_import_batch_name( $note_class, $class_name ) ),
+		);
+	}
+
+	$title      = cmp_clean_title_text( $title );
+	$class_name = cmp_guess_import_class_name( $title );
+
+	return array(
+		'class_name' => $class_name,
+		'batch_name' => cmp_guess_import_batch_name( $title, $class_name ),
+	);
 }
 
 /**
@@ -350,7 +603,7 @@ function cmp_delete_class( $id ) {
 function cmp_get_batches( $class_id = 0 ) {
 	global $wpdb;
 
-	$sql    = 'SELECT b.*, c.name AS class_name FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id';
+	$sql    = 'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id';
 	$params = array();
 
 	if ( $class_id ) {
@@ -374,7 +627,7 @@ function cmp_get_batch( $id ) {
 
 	return $wpdb->get_row(
 		$wpdb->prepare(
-			'SELECT b.*, c.name AS class_name FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id WHERE b.id = %d',
+			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id WHERE b.id = %d',
 			absint( $id )
 		)
 	);
@@ -397,31 +650,8 @@ function cmp_get_batch_by_token( $token ) {
 
 	return $wpdb->get_row(
 		$wpdb->prepare(
-			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id WHERE b.public_token = %s',
+			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id WHERE b.public_token = %s',
 			$token
-		)
-	);
-}
-
-/**
- * Fetches a batch by its saved Razorpay page link URL.
- *
- * @param string $url Razorpay link URL.
- * @return object|null
- */
-function cmp_get_batch_by_razorpay_link( $url ) {
-	global $wpdb;
-
-	$url = esc_url_raw( trim( (string) $url ) );
-
-	if ( '' === $url ) {
-		return null;
-	}
-
-	return $wpdb->get_row(
-		$wpdb->prepare(
-			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee FROM ' . cmp_table( 'batches' ) . ' b LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id WHERE b.razorpay_link = %s LIMIT 1',
-			$url
 		)
 	);
 }
@@ -445,6 +675,119 @@ function cmp_get_batch_public_form_url( $batch ) {
 		),
 		home_url( '/' )
 	);
+}
+
+/**
+ * Builds comparable tokens from a Razorpay URL or payment-link identifier.
+ *
+ * @param mixed $value Razorpay URL, short URL, or identifier.
+ * @return array
+ */
+function cmp_razorpay_reference_candidates( $value ) {
+	if ( ! is_scalar( $value ) ) {
+		return array();
+	}
+
+	$raw = trim( (string) $value );
+
+	if ( '' === $raw ) {
+		return array();
+	}
+
+	$values     = array( $raw );
+	$decoded    = html_entity_decode( $raw, ENT_QUOTES, get_bloginfo( 'charset' ) );
+	$candidates = array();
+
+	if ( $decoded !== $raw ) {
+		$values[] = $decoded;
+	}
+
+	foreach ( $values as $candidate ) {
+		$candidate = trim( (string) $candidate );
+
+		if ( '' === $candidate ) {
+			continue;
+		}
+
+		$candidates[] = $candidate;
+
+		$without_query = preg_replace( '/[?#].*$/', '', $candidate );
+
+		if ( '' !== $without_query ) {
+			$candidates[] = untrailingslashit( $without_query );
+		}
+
+		$parts = wp_parse_url( $candidate );
+		$path  = is_array( $parts ) && isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
+
+		if ( is_array( $parts ) && ! empty( $parts['host'] ) && '' !== $path ) {
+			$candidates[] = strtolower( $parts['host'] ) . '/' . $path;
+		}
+
+		if ( '' !== $path ) {
+			$candidates[] = $path;
+			$segments     = explode( '/', $path );
+			$last_segment = end( $segments );
+
+			if ( is_string( $last_segment ) && strlen( $last_segment ) >= 4 ) {
+				$candidates[] = $last_segment;
+			}
+		}
+
+		if ( preg_match_all( '/(?:plink|pay|order)_[A-Za-z0-9_]+/', $candidate, $matches ) ) {
+			foreach ( $matches[0] as $match ) {
+				$candidates[] = $match;
+			}
+		}
+	}
+
+	$candidates = array_map( 'strtolower', array_filter( array_map( 'trim', $candidates ) ) );
+
+	return array_values( array_unique( $candidates ) );
+}
+
+/**
+ * Finds a batch by a saved Razorpay payment page/link reference.
+ *
+ * @param array|string $references Razorpay references from webhook payload.
+ * @return object|null
+ */
+function cmp_get_batch_by_razorpay_reference( $references ) {
+	global $wpdb;
+
+	$references = is_array( $references ) ? $references : array( $references );
+	$needles    = array();
+
+	foreach ( $references as $reference ) {
+		$needles = array_merge( $needles, cmp_razorpay_reference_candidates( $reference ) );
+	}
+
+	$needles = array_values( array_unique( $needles ) );
+
+	if ( empty( $needles ) ) {
+		return null;
+	}
+
+	$batches = $wpdb->get_results(
+		'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee
+		FROM ' . cmp_table( 'batches' ) . ' b
+		LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+		WHERE ( b.razorpay_link IS NOT NULL AND b.razorpay_link <> "" ) OR ( b.razorpay_page_id IS NOT NULL AND b.razorpay_page_id <> "" )
+		ORDER BY b.created_at DESC, b.id DESC'
+	);
+
+	foreach ( $batches as $batch ) {
+		$haystack = array_merge(
+			cmp_razorpay_reference_candidates( $batch->razorpay_link ),
+			cmp_razorpay_reference_candidates( $batch->razorpay_page_id )
+		);
+
+		if ( array_intersect( $needles, $haystack ) ) {
+			return $batch;
+		}
+	}
+
+	return null;
 }
 
 /**
@@ -475,6 +818,7 @@ function cmp_get_batches_with_metrics() {
 		'SELECT
 			b.*,
 			c.name AS class_name,
+			c.total_fee AS class_total_fee,
 			COALESCE(st.student_count, 0) AS student_count,
 			COALESCE(st.pending_fee, 0) AS pending_fee,
 			COALESCE(pay.revenue, 0) AS revenue
@@ -530,11 +874,16 @@ function cmp_get_batch_metrics( $batch_id ) {
 function cmp_insert_batch( $data ) {
 	global $wpdb;
 
-	$class_id   = absint( cmp_field( $data, 'class_id', 0 ) );
-	$batch_name = sanitize_text_field( cmp_field( $data, 'batch_name' ) );
-	$start_date = sanitize_text_field( cmp_field( $data, 'start_date' ) );
-	$start_date = '' === $start_date ? null : $start_date;
-	$razorpay_link = esc_url_raw( cmp_field( $data, 'razorpay_link' ) );
+	$class_id         = absint( cmp_field( $data, 'class_id', 0 ) );
+	$batch_name       = sanitize_text_field( cmp_field( $data, 'batch_name' ) );
+	$start_date       = sanitize_text_field( cmp_field( $data, 'start_date' ) );
+	$fee_due_date     = sanitize_text_field( cmp_field( $data, 'fee_due_date' ) );
+	$start_date       = '' === $start_date ? null : $start_date;
+	$fee_due_date     = '' === $fee_due_date ? null : $fee_due_date;
+	$razorpay_link    = esc_url_raw( cmp_field( $data, 'razorpay_link' ) );
+	$razorpay_page_id = sanitize_text_field( cmp_field( $data, 'razorpay_page_id' ) );
+	$is_free          = ! empty( $data['is_free'] ) ? 1 : 0;
+	$batch_fee        = $is_free ? 0 : cmp_money_value( cmp_field( $data, 'batch_fee', 0 ) );
 
 	if ( ! $class_id || ! cmp_get_class( $class_id ) || '' === $batch_name ) {
 		return new WP_Error( 'cmp_invalid_batch', __( 'Valid class and batch name are required.', 'class-manager-pro' ) );
@@ -543,15 +892,19 @@ function cmp_insert_batch( $data ) {
 	$result = $wpdb->insert(
 		cmp_table( 'batches' ),
 		array(
-			'class_id'   => $class_id,
-			'batch_name' => $batch_name,
-			'start_date' => $start_date,
-			'status'     => cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' ),
-			'public_token' => cmp_generate_batch_public_token(),
-			'razorpay_link' => $razorpay_link,
-			'created_at' => cmp_current_datetime(),
+			'class_id'         => $class_id,
+			'batch_name'       => $batch_name,
+			'start_date'       => $start_date,
+			'fee_due_date'     => $fee_due_date,
+			'status'           => cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' ),
+			'public_token'     => cmp_generate_batch_public_token(),
+			'razorpay_link'    => $razorpay_link,
+			'batch_fee'        => $batch_fee,
+			'is_free'          => $is_free,
+			'razorpay_page_id' => $razorpay_page_id,
+			'created_at'       => cmp_current_datetime(),
 		),
-		array( '%d', '%s', '%s', '%s', '%s', '%s', '%s' )
+		array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%s', '%s' )
 	);
 
 	if ( false === $result ) {
@@ -571,14 +924,19 @@ function cmp_insert_batch( $data ) {
 function cmp_update_batch( $id, $data ) {
 	global $wpdb;
 
-	$id         = absint( $id );
-	$class_id   = absint( cmp_field( $data, 'class_id', 0 ) );
-	$batch_name = sanitize_text_field( cmp_field( $data, 'batch_name' ) );
-	$start_date = sanitize_text_field( cmp_field( $data, 'start_date' ) );
-	$start_date = '' === $start_date ? null : $start_date;
-	$batch      = cmp_get_batch( $id );
-	$token      = $batch && ! empty( $batch->public_token ) ? $batch->public_token : cmp_generate_batch_public_token();
-	$razorpay_link = esc_url_raw( cmp_field( $data, 'razorpay_link' ) );
+	$id               = absint( $id );
+	$class_id         = absint( cmp_field( $data, 'class_id', 0 ) );
+	$batch_name       = sanitize_text_field( cmp_field( $data, 'batch_name' ) );
+	$start_date       = sanitize_text_field( cmp_field( $data, 'start_date' ) );
+	$fee_due_date     = sanitize_text_field( cmp_field( $data, 'fee_due_date' ) );
+	$start_date       = '' === $start_date ? null : $start_date;
+	$fee_due_date     = '' === $fee_due_date ? null : $fee_due_date;
+	$batch            = cmp_get_batch( $id );
+	$token            = $batch && ! empty( $batch->public_token ) ? $batch->public_token : cmp_generate_batch_public_token();
+	$razorpay_link    = esc_url_raw( cmp_field( $data, 'razorpay_link' ) );
+	$razorpay_page_id = sanitize_text_field( cmp_field( $data, 'razorpay_page_id' ) );
+	$is_free          = ! empty( $data['is_free'] ) ? 1 : 0;
+	$batch_fee        = $is_free ? 0 : cmp_money_value( cmp_field( $data, 'batch_fee', 0 ) );
 
 	if ( ! $id || ! $class_id || ! cmp_get_class( $class_id ) || '' === $batch_name ) {
 		return new WP_Error( 'cmp_invalid_batch', __( 'Valid batch details are required.', 'class-manager-pro' ) );
@@ -587,15 +945,19 @@ function cmp_update_batch( $id, $data ) {
 	$result = $wpdb->update(
 		cmp_table( 'batches' ),
 		array(
-			'class_id'   => $class_id,
-			'batch_name' => $batch_name,
-			'start_date' => $start_date,
-			'status'     => cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' ),
-			'public_token' => $token,
-			'razorpay_link' => $razorpay_link,
+			'class_id'         => $class_id,
+			'batch_name'       => $batch_name,
+			'start_date'       => $start_date,
+			'fee_due_date'     => $fee_due_date,
+			'status'           => cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' ),
+			'public_token'     => $token,
+			'razorpay_link'    => $razorpay_link,
+			'batch_fee'        => $batch_fee,
+			'is_free'          => $is_free,
+			'razorpay_page_id' => $razorpay_page_id,
 		),
 		array( 'id' => $id ),
-		array( '%d', '%s', '%s', '%s', '%s', '%s' ),
+		array( '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%s' ),
 		array( '%d' )
 	);
 
@@ -653,6 +1015,67 @@ function cmp_generate_student_unique_id() {
 }
 
 /**
+ * Returns normalized phone keys used for short-lived intake matching.
+ *
+ * @param string $phone Phone number.
+ * @return array
+ */
+function cmp_phone_match_keys( $phone ) {
+	$digits = preg_replace( '/\D+/', '', (string) $phone );
+
+	if ( '' === $digits ) {
+		return array();
+	}
+
+	$keys = array( $digits );
+
+	if ( strlen( $digits ) > 10 ) {
+		$keys[] = substr( $digits, -10 );
+	}
+
+	if ( 10 === strlen( $digits ) ) {
+		$keys[] = '91' . $digits;
+	}
+
+	return array_values( array_unique( $keys ) );
+}
+
+/**
+ * Returns common phone formats for database contact matching.
+ *
+ * @param string $phone Phone number.
+ * @return array
+ */
+function cmp_phone_match_values( $phone ) {
+	$raw    = sanitize_text_field( $phone );
+	$digits = preg_replace( '/\D+/', '', (string) $phone );
+	$values = array();
+
+	if ( '' !== $raw ) {
+		$values[] = $raw;
+	}
+
+	if ( '' !== $digits ) {
+		$values[] = $digits;
+
+		if ( strlen( $digits ) > 10 ) {
+			$values[] = substr( $digits, -10 );
+		}
+
+		if ( 10 === strlen( $digits ) ) {
+			$values[] = '91' . $digits;
+			$values[] = '+91' . $digits;
+		}
+
+		if ( 12 === strlen( $digits ) && 0 === strpos( $digits, '91' ) ) {
+			$values[] = '+' . $digits;
+		}
+	}
+
+	return array_values( array_unique( array_filter( $values ) ) );
+}
+
+/**
  * Finds a student by phone or email.
  *
  * @param string $phone Phone.
@@ -665,9 +1088,11 @@ function cmp_find_student_by_contact( $phone = '', $email = '' ) {
 	$where  = array();
 	$params = array();
 
-	if ( '' !== $phone ) {
-		$where[]  = 'phone = %s';
-		$params[] = sanitize_text_field( $phone );
+	$phone_values = cmp_phone_match_values( $phone );
+
+	if ( $phone_values ) {
+		$where[] = 'phone IN (' . implode( ', ', array_fill( 0, count( $phone_values ), '%s' ) ) . ')';
+		$params = array_merge( $params, $phone_values );
 	}
 
 	if ( '' !== $email ) {
@@ -702,14 +1127,61 @@ function cmp_find_student_in_batch_by_contact( $batch_id, $phone = '', $email = 
 	$where    = array();
 	$params   = array( $batch_id );
 
-	if ( '' !== $phone ) {
-		$where[]  = 'phone = %s';
-		$params[] = sanitize_text_field( $phone );
+	$phone_values = cmp_phone_match_values( $phone );
+
+	if ( $phone_values ) {
+		$where[] = 'phone IN (' . implode( ', ', array_fill( 0, count( $phone_values ), '%s' ) ) . ')';
+		$params = array_merge( $params, $phone_values );
 	}
 
 	if ( '' !== $email ) {
 		$where[]  = 'email = %s';
 		$params[] = sanitize_email( $email );
+	}
+
+	if ( ! $batch_id || empty( $where ) ) {
+		return null;
+	}
+
+	return $wpdb->get_row(
+		$wpdb->prepare(
+			'SELECT * FROM ' . cmp_table( 'students' ) . ' WHERE batch_id = %d AND (' . implode( ' OR ', $where ) . ') ORDER BY id DESC LIMIT 1',
+			$params
+		)
+	);
+}
+
+/**
+ * Finds a student in a batch by phone, email, or exact normalized name.
+ *
+ * @param int    $batch_id Batch ID.
+ * @param string $name Student name.
+ * @param string $email Email.
+ * @param string $phone Phone.
+ * @return object|null
+ */
+function cmp_find_student_in_batch_by_identity( $batch_id, $name = '', $email = '', $phone = '' ) {
+	global $wpdb;
+
+	$batch_id = absint( $batch_id );
+	$where    = array();
+	$params   = array( $batch_id );
+
+	if ( '' !== trim( (string) $name ) ) {
+		$where[]  = 'LOWER(name) = %s';
+		$params[] = strtolower( sanitize_text_field( $name ) );
+	}
+
+	if ( '' !== trim( (string) $email ) ) {
+		$where[]  = 'email = %s';
+		$params[] = sanitize_email( $email );
+	}
+
+	$phone_values = cmp_phone_match_values( $phone );
+
+	if ( $phone_values ) {
+		$where[] = 'phone IN (' . implode( ', ', array_fill( 0, count( $phone_values ), '%s' ) ) . ')';
+		$params = array_merge( $params, $phone_values );
 	}
 
 	if ( ! $batch_id || empty( $where ) ) {
@@ -756,11 +1228,10 @@ function cmp_store_recent_intake_match( $phone, $email, $student_id, $batch_id )
 		'batch_id'   => (int) $batch_id,
 	);
 
-	$phone = preg_replace( '/\D+/', '', (string) $phone );
 	$email = strtolower( trim( (string) $email ) );
 
-	if ( '' !== $phone ) {
-		set_transient( 'cmp_intake_phone_' . md5( $phone ), $data, DAY_IN_SECONDS * 2 );
+	foreach ( cmp_phone_match_keys( $phone ) as $phone_key ) {
+		set_transient( 'cmp_intake_phone_' . md5( $phone_key ), $data, DAY_IN_SECONDS * 2 );
 	}
 
 	if ( '' !== $email ) {
@@ -776,11 +1247,10 @@ function cmp_store_recent_intake_match( $phone, $email, $student_id, $batch_id )
  * @return array|null
  */
 function cmp_get_recent_intake_match( $phone, $email ) {
-	$phone = preg_replace( '/\D+/', '', (string) $phone );
 	$email = strtolower( trim( (string) $email ) );
 
-	if ( '' !== $phone ) {
-		$data = get_transient( 'cmp_intake_phone_' . md5( $phone ) );
+	foreach ( cmp_phone_match_keys( $phone ) as $phone_key ) {
+		$data = get_transient( 'cmp_intake_phone_' . md5( $phone_key ) );
 
 		if ( is_array( $data ) ) {
 			return $data;
@@ -811,6 +1281,7 @@ function cmp_register_public_student_for_batch( $batch, $data ) {
 	$phone = sanitize_text_field( cmp_field( $data, 'phone' ) );
 	$email = sanitize_email( cmp_field( $data, 'email' ) );
 	$notes = sanitize_textarea_field( cmp_field( $data, 'notes' ) );
+	$fee   = cmp_get_batch_effective_fee( $batch );
 
 	if ( '' === $name || '' === $phone || ! $class ) {
 		return new WP_Error( 'cmp_public_student_invalid', __( 'Name and phone are required.', 'class-manager-pro' ) );
@@ -829,7 +1300,7 @@ function cmp_register_public_student_for_batch( $batch, $data ) {
 				'email'     => $email,
 				'class_id'  => (int) $batch->class_id,
 				'batch_id'  => (int) $batch->id,
-				'total_fee' => (float) $existing->total_fee ? (float) $existing->total_fee : (float) $class->total_fee,
+				'total_fee' => (float) $existing->total_fee ? (float) $existing->total_fee : $fee,
 				'paid_fee'  => (float) $existing->paid_fee,
 				'status'    => in_array( $existing->status, cmp_student_statuses(), true ) ? $existing->status : 'active',
 				'notes'     => cmp_append_note( $existing->notes, $notes ),
@@ -852,7 +1323,7 @@ function cmp_register_public_student_for_batch( $batch, $data ) {
 			'email'     => $email,
 			'class_id'  => (int) $batch->class_id,
 			'batch_id'  => (int) $batch->id,
-			'total_fee' => (float) $class->total_fee,
+			'total_fee' => $fee,
 			'paid_fee'  => 0,
 			'status'    => 'active',
 			'notes'     => $notes,
@@ -877,7 +1348,7 @@ function cmp_get_student( $id ) {
 
 	return $wpdb->get_row(
 		$wpdb->prepare(
-			'SELECT s.*, c.name AS class_name, b.batch_name FROM ' . cmp_table( 'students' ) . ' s LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id WHERE s.id = %d',
+			'SELECT s.*, c.name AS class_name, b.batch_name, b.batch_fee, b.fee_due_date FROM ' . cmp_table( 'students' ) . ' s LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id WHERE s.id = %d',
 			absint( $id )
 		)
 	);
@@ -930,7 +1401,7 @@ function cmp_get_students( $args = array() ) {
 		$params[] = cmp_clean_enum( $args['status'], cmp_student_statuses(), 'active' );
 	}
 
-	$sql = 'SELECT s.*, c.name AS class_name, b.batch_name, (s.total_fee - s.paid_fee) AS remaining_fee
+	$sql = 'SELECT s.*, c.name AS class_name, b.batch_name, b.batch_fee, b.fee_due_date, (s.total_fee - s.paid_fee) AS remaining_fee
 		FROM ' . cmp_table( 'students' ) . ' s
 		LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id
 		LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id';
@@ -968,9 +1439,8 @@ function cmp_insert_student( $data ) {
 		return new WP_Error( 'cmp_invalid_student', __( 'Valid student, class, and batch details are required.', 'class-manager-pro' ) );
 	}
 
-	$class         = cmp_get_class( $class_id );
 	$total_fee_raw = cmp_field( $data, 'total_fee', '' );
-	$total_fee     = '' !== (string) $total_fee_raw ? cmp_money_value( $total_fee_raw ) : (float) $class->total_fee;
+	$total_fee     = '' !== (string) $total_fee_raw ? cmp_money_value( $total_fee_raw ) : cmp_get_batch_effective_fee( $batch );
 	$initial_paid  = cmp_money_value( cmp_field( $data, 'paid_fee', 0 ) );
 	$student_status = cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_student_statuses(), 'active' );
 
@@ -1710,4 +2180,1588 @@ function cmp_handle_save_settings() {
 	update_option( 'cmp_razorpay_webhook_secret', sanitize_text_field( cmp_field( $_POST, 'razorpay_webhook_secret' ) ) );
 
 	cmp_redirect( 'cmp-settings', __( 'Settings saved successfully.', 'class-manager-pro' ) );
+}
+
+/**
+ * Schedules the daily reminder job.
+ */
+function cmp_schedule_daily_fee_reminders() {
+	if ( ! wp_next_scheduled( 'cmp_daily_fee_reminders' ) ) {
+		wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'cmp_daily_fee_reminders' );
+	}
+}
+
+/**
+ * Clears the daily reminder job.
+ */
+function cmp_clear_scheduled_fee_reminders() {
+	$timestamp = wp_next_scheduled( 'cmp_daily_fee_reminders' );
+
+	if ( $timestamp ) {
+		wp_unschedule_event( $timestamp, 'cmp_daily_fee_reminders' );
+	}
+}
+
+/**
+ * Finds a class by normalized name.
+ *
+ * @param string $name Class name.
+ * @return object|null
+ */
+function cmp_find_class_by_name( $name ) {
+	$needle  = cmp_normalize_name_key( $name );
+	$classes = cmp_get_classes();
+
+	foreach ( $classes as $class ) {
+		if ( $needle === cmp_normalize_name_key( $class->name ) ) {
+			return $class;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Finds a batch by Razorpay page ID.
+ *
+ * @param string $page_id Razorpay payment-link ID.
+ * @return object|null
+ */
+function cmp_get_batch_by_razorpay_page_id( $page_id ) {
+	global $wpdb;
+
+	$page_id = sanitize_text_field( $page_id );
+
+	if ( '' === $page_id ) {
+		return null;
+	}
+
+	return $wpdb->get_row(
+		$wpdb->prepare(
+			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee
+			FROM ' . cmp_table( 'batches' ) . ' b
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+			WHERE b.razorpay_page_id = %s
+			LIMIT 1',
+			$page_id
+		)
+	);
+}
+
+/**
+ * Finds a batch by class and normalized batch name.
+ *
+ * @param int    $class_id Class ID.
+ * @param string $batch_name Batch name.
+ * @return object|null
+ */
+function cmp_find_batch_by_name( $class_id, $batch_name ) {
+	$class_id = absint( $class_id );
+	$needle   = cmp_normalize_name_key( $batch_name );
+	$batches  = cmp_get_batches( $class_id );
+
+	foreach ( $batches as $batch ) {
+		if ( $needle === cmp_normalize_name_key( $batch->batch_name ) ) {
+			return $batch;
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Ensures an import class exists.
+ *
+ * @param string $name Class name.
+ * @param string $description Optional description.
+ * @return int|WP_Error
+ */
+function cmp_ensure_import_class( $name, $description = '' ) {
+	$name     = cmp_clean_title_text( $name );
+	$existing = cmp_find_class_by_name( $name );
+
+	if ( $existing ) {
+		return (int) $existing->id;
+	}
+
+	return cmp_insert_class(
+		array(
+			'name'        => $name,
+			'description' => $description,
+			'total_fee'   => 0,
+		)
+	);
+}
+
+/**
+ * Ensures an import batch exists.
+ *
+ * @param int   $class_id Class ID.
+ * @param array $data Batch data.
+ * @return array|WP_Error
+ */
+function cmp_ensure_import_batch( $class_id, $data ) {
+	$class_id         = absint( $class_id );
+	$batch_name       = cmp_clean_title_text( cmp_field( $data, 'batch_name' ) );
+	$razorpay_page_id = sanitize_text_field( cmp_field( $data, 'razorpay_page_id' ) );
+	$existing         = $razorpay_page_id ? cmp_get_batch_by_razorpay_page_id( $razorpay_page_id ) : null;
+
+	if ( ! $existing ) {
+		$existing = cmp_find_batch_by_name( $class_id, $batch_name );
+	}
+
+	$payload = array(
+		'class_id'         => $class_id,
+		'batch_name'       => $batch_name,
+		'start_date'       => cmp_field( $data, 'start_date' ),
+		'fee_due_date'     => cmp_field( $data, 'fee_due_date' ),
+		'status'           => cmp_field( $data, 'status', 'active' ),
+		'razorpay_link'    => cmp_field( $data, 'razorpay_link' ),
+		'batch_fee'        => cmp_field( $data, 'batch_fee', 0 ),
+		'is_free'          => ! empty( $data['is_free'] ) ? 1 : 0,
+		'razorpay_page_id' => $razorpay_page_id,
+	);
+
+	if ( $existing ) {
+		$payload['start_date']    = '' !== (string) $payload['start_date'] ? $payload['start_date'] : $existing->start_date;
+		$payload['fee_due_date']  = '' !== (string) $payload['fee_due_date'] ? $payload['fee_due_date'] : $existing->fee_due_date;
+		$payload['razorpay_link'] = '' !== (string) $payload['razorpay_link'] ? $payload['razorpay_link'] : $existing->razorpay_link;
+		$payload['batch_fee']     = cmp_money_value( $payload['batch_fee'] );
+		$payload['batch_fee']     = $payload['batch_fee'] > 0 ? $payload['batch_fee'] : (float) $existing->batch_fee;
+		$result                   = cmp_update_batch( (int) $existing->id, $payload );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return array(
+			'class_id' => $class_id,
+			'batch_id' => (int) $existing->id,
+			'batch'    => cmp_get_batch( (int) $existing->id ),
+			'created'  => false,
+		);
+	}
+
+	$result = cmp_insert_batch( $payload );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	return array(
+		'class_id' => $class_id,
+		'batch_id' => (int) $result,
+		'batch'    => cmp_get_batch( (int) $result ),
+		'created'  => true,
+	);
+}
+
+/**
+ * Converts Razorpay minor units into a display amount.
+ *
+ * @param mixed $amount Minor-unit amount.
+ * @return float
+ */
+function cmp_razorpay_minor_to_major( $amount ) {
+	return is_numeric( $amount ) ? round( (float) $amount / 100, 2 ) : 0;
+}
+
+/**
+ * Makes a GET request to Razorpay.
+ *
+ * @param string $path API path.
+ * @param array  $query Query args.
+ * @return array|WP_Error
+ */
+function cmp_razorpay_api_get( $path, $query = array() ) {
+	$credentials = cmp_get_razorpay_credentials();
+
+	if ( empty( $credentials['key_id'] ) || empty( $credentials['secret'] ) ) {
+		return new WP_Error( 'cmp_razorpay_credentials_missing', __( 'Razorpay API keys are not configured.', 'class-manager-pro' ) );
+	}
+
+	$url = 'https://api.razorpay.com/v1/' . ltrim( $path, '/' );
+
+	if ( ! empty( $query ) ) {
+		$url = add_query_arg( $query, $url );
+	}
+
+	$response = wp_remote_get(
+		$url,
+		array(
+			'timeout' => 25,
+			'headers' => array(
+				'Authorization' => 'Basic ' . base64_encode( $credentials['key_id'] . ':' . $credentials['secret'] ),
+				'Accept'        => 'application/json',
+			),
+		)
+	);
+
+	if ( is_wp_error( $response ) ) {
+		return $response;
+	}
+
+	$code = (int) wp_remote_retrieve_response_code( $response );
+	$body = json_decode( wp_remote_retrieve_body( $response ), true );
+
+	if ( $code < 200 || $code >= 300 || ! is_array( $body ) ) {
+		return new WP_Error(
+			'cmp_razorpay_api_error',
+			isset( $body['error']['description'] ) ? sanitize_text_field( $body['error']['description'] ) : __( 'Could not fetch data from Razorpay.', 'class-manager-pro' )
+		);
+	}
+
+	return $body;
+}
+
+/**
+ * Fetches a paginated Razorpay collection.
+ *
+ * @param string $path API path.
+ * @param string $items_key Response items key.
+ * @return array|WP_Error
+ */
+function cmp_razorpay_fetch_collection( $path, $items_key ) {
+	$items = array();
+	$skip  = 0;
+	$count = 100;
+
+	do {
+		$response = cmp_razorpay_api_get(
+			$path,
+			array(
+				'count' => $count,
+				'skip'  => $skip,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		$page_items = array();
+
+		if ( isset( $response[ $items_key ] ) && is_array( $response[ $items_key ] ) ) {
+			$page_items = $response[ $items_key ];
+		} elseif ( isset( $response['items'] ) && is_array( $response['items'] ) ) {
+			$page_items = $response['items'];
+		}
+
+		$items = array_merge( $items, $page_items );
+		$skip += count( $page_items );
+	} while ( count( $page_items ) === $count );
+
+	return $items;
+}
+
+/**
+ * Returns a useful import title from a Razorpay entity.
+ *
+ * @param array $entity Razorpay entity.
+ * @return string
+ */
+function cmp_razorpay_entity_title( $entity ) {
+	$notes = isset( $entity['notes'] ) && is_array( $entity['notes'] ) ? $entity['notes'] : array();
+
+	foreach ( array( 'form_name', 'batch_name', 'class_name', 'course_name', 'description', 'reference_id', 'receipt', 'id' ) as $key ) {
+		if ( isset( $notes[ $key ] ) && is_scalar( $notes[ $key ] ) && '' !== trim( (string) $notes[ $key ] ) ) {
+			return cmp_clean_title_text( $notes[ $key ] );
+		}
+
+		if ( isset( $entity[ $key ] ) && is_scalar( $entity[ $key ] ) && '' !== trim( (string) $entity[ $key ] ) ) {
+			return cmp_clean_title_text( $entity[ $key ] );
+		}
+	}
+
+	return __( 'Razorpay Imports', 'class-manager-pro' );
+}
+
+/**
+ * Returns a fallback batch for unmapped imports.
+ *
+ * @return object|null
+ */
+function cmp_get_or_create_fallback_batch() {
+	$class_id = cmp_ensure_import_class( __( 'Razorpay Imports', 'class-manager-pro' ), __( 'Created automatically for imported Razorpay data that had no clear batch mapping.', 'class-manager-pro' ) );
+
+	if ( is_wp_error( $class_id ) ) {
+		return null;
+	}
+
+	$batch = cmp_find_batch_by_name( (int) $class_id, __( 'General Intake', 'class-manager-pro' ) );
+
+	if ( $batch ) {
+		return $batch;
+	}
+
+	$result = cmp_insert_batch(
+		array(
+			'class_id'     => (int) $class_id,
+			'batch_name'   => __( 'General Intake', 'class-manager-pro' ),
+			'status'       => 'active',
+			'batch_fee'    => 0,
+			'is_free'      => 0,
+			'razorpay_link' => '',
+		)
+	);
+
+	if ( is_wp_error( $result ) ) {
+		return null;
+	}
+
+	return cmp_get_batch( (int) $result );
+}
+
+/**
+ * Imports or updates a Razorpay payment link as a batch.
+ *
+ * @param array $payment_link Razorpay payment link.
+ * @return array|WP_Error
+ */
+function cmp_import_razorpay_payment_link( $payment_link ) {
+	$notes        = isset( $payment_link['notes'] ) && is_array( $payment_link['notes'] ) ? $payment_link['notes'] : array();
+	$title        = cmp_razorpay_entity_title( $payment_link );
+	$names        = cmp_guess_class_batch_names( $title, $notes );
+	$class_id     = cmp_ensure_import_class( $names['class_name'], __( 'Created automatically from Razorpay import.', 'class-manager-pro' ) );
+	$batch_fee    = cmp_money_value( isset( $notes['batch_fee'] ) ? $notes['batch_fee'] : 0 );
+	$fee_due_date = sanitize_text_field( isset( $notes['fee_due_date'] ) ? $notes['fee_due_date'] : '' );
+	$start_date   = sanitize_text_field( isset( $notes['start_date'] ) ? $notes['start_date'] : '' );
+
+	if ( is_wp_error( $class_id ) ) {
+		return $class_id;
+	}
+
+	if ( $batch_fee <= 0 && ! empty( $payment_link['amount'] ) ) {
+		$batch_fee = cmp_razorpay_minor_to_major( $payment_link['amount'] );
+	}
+
+	$result = cmp_ensure_import_batch(
+		(int) $class_id,
+		array(
+			'batch_name'       => $names['batch_name'],
+			'start_date'       => $start_date,
+			'fee_due_date'     => $fee_due_date,
+			'status'           => 'active',
+			'razorpay_link'    => isset( $payment_link['short_url'] ) ? esc_url_raw( $payment_link['short_url'] ) : '',
+			'batch_fee'        => $batch_fee,
+			'is_free'          => 0,
+			'razorpay_page_id' => isset( $payment_link['id'] ) ? sanitize_text_field( $payment_link['id'] ) : '',
+		)
+	);
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	return $result;
+}
+
+/**
+ * Determines whether a Razorpay payment is complete.
+ *
+ * @param array $payment Razorpay payment entity.
+ * @return bool
+ */
+function cmp_is_successful_razorpay_payment( $payment ) {
+	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
+
+	if ( 'captured' !== $status ) {
+		return false;
+	}
+
+	if ( isset( $payment['captured'] ) && true !== filter_var( $payment['captured'], FILTER_VALIDATE_BOOLEAN ) ) {
+		return false;
+	}
+
+	if ( ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
+		return false;
+	}
+
+	if ( empty( $payment['amount'] ) || cmp_razorpay_minor_to_major( $payment['amount'] ) <= 0 ) {
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Reads the payment-link/page ID from a Razorpay payment entity.
+ *
+ * @param array $payment Razorpay payment entity.
+ * @return string
+ */
+function cmp_razorpay_payment_link_id_from_payment( $payment ) {
+	if ( ! is_array( $payment ) ) {
+		return '';
+	}
+
+	$notes = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
+
+	foreach ( array( $payment, $notes ) as $source ) {
+		foreach ( array( 'payment_link_id', 'razorpay_page_id', 'payment_page_id', 'page_id' ) as $key ) {
+			if ( isset( $source[ $key ] ) && is_scalar( $source[ $key ] ) && '' !== trim( (string) $source[ $key ] ) ) {
+				return sanitize_text_field( $source[ $key ] );
+			}
+		}
+	}
+
+	return '';
+}
+
+/**
+ * Keeps only captured, paid Razorpay payments, optionally for one page.
+ *
+ * @param array  $payments Razorpay payment rows.
+ * @param string $page_id Optional payment-link/page ID.
+ * @return array
+ */
+function cmp_filter_successful_razorpay_payments( $payments, $page_id = '' ) {
+	$page_id  = sanitize_text_field( $page_id );
+	$filtered = array();
+	$seen     = array();
+
+	foreach ( $payments as $payment ) {
+		if ( ! is_array( $payment ) || ! cmp_is_successful_razorpay_payment( $payment ) ) {
+			continue;
+		}
+
+		if ( '' !== $page_id && $page_id !== cmp_razorpay_payment_link_id_from_payment( $payment ) ) {
+			continue;
+		}
+
+		$payment_id = isset( $payment['id'] ) && is_scalar( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+		if ( '' !== $payment_id ) {
+			if ( isset( $seen[ $payment_id ] ) ) {
+				continue;
+			}
+
+			$seen[ $payment_id ] = true;
+		}
+
+		$filtered[] = $payment;
+	}
+
+	return $filtered;
+}
+
+/**
+ * Returns payment-link IDs that have at least one successful payment.
+ *
+ * @param array $payments Successful Razorpay payments.
+ * @return array
+ */
+function cmp_successful_razorpay_payment_link_ids( $payments ) {
+	$page_ids = array();
+
+	foreach ( $payments as $payment ) {
+		$page_id = cmp_razorpay_payment_link_id_from_payment( $payment );
+
+		if ( '' !== $page_id ) {
+			$page_ids[] = $page_id;
+		}
+	}
+
+	return array_values( array_unique( $page_ids ) );
+}
+
+/**
+ * Creates or updates a student from imported Razorpay payment context.
+ *
+ * @param array       $payment Razorpay payment entity.
+ * @param object|null $batch Batch object.
+ * @return int|WP_Error
+ */
+function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
+	global $wpdb;
+
+	$notes     = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
+	$name      = sanitize_text_field( cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) ) );
+	$email     = sanitize_email( cmp_first_scalar_value( array( $notes['email'] ?? '', $notes['student_email'] ?? '', $notes['customer_email'] ?? '', $payment['email'] ?? '', $payment['customer_email'] ?? '' ) ) );
+	$phone     = sanitize_text_field( cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) ) );
+	$total_fee = cmp_money_value( isset( $notes['total_fee'] ) ? $notes['total_fee'] : 0 );
+
+	if ( '' === $name ) {
+		$name = '' !== $email ? $email : $phone;
+	}
+
+	if ( '' === $phone ) {
+		$phone = '' !== $email ? $email : sanitize_text_field( isset( $payment['id'] ) ? $payment['id'] : '' );
+	}
+
+	if ( ! $batch ) {
+		$batch = cmp_get_or_create_fallback_batch();
+	}
+
+	if ( ! $batch ) {
+		return new WP_Error( 'cmp_import_batch_missing', __( 'A batch could not be created for the imported payment.', 'class-manager-pro' ) );
+	}
+
+	if ( $total_fee <= 0 ) {
+		$total_fee = cmp_get_batch_effective_fee( $batch );
+	}
+
+	$student = cmp_find_student_in_batch_by_identity( (int) $batch->id, $name, $email, $phone );
+
+	if ( ! $student ) {
+		$student = cmp_find_student_by_contact( $phone, $email );
+	}
+
+	if ( $student ) {
+		$notes_text = cmp_append_note( $student->notes, __( 'Matched during Razorpay import.', 'class-manager-pro' ) );
+
+		$wpdb->update(
+			cmp_table( 'students' ),
+			array(
+				'name'      => $name,
+				'phone'     => $phone,
+				'email'     => $email,
+				'class_id'  => (int) $batch->class_id,
+				'batch_id'  => (int) $batch->id,
+				'total_fee' => $student->total_fee > 0 ? (float) $student->total_fee : $total_fee,
+				'notes'     => $notes_text,
+			),
+			array( 'id' => (int) $student->id ),
+			array( '%s', '%s', '%s', '%d', '%d', '%f', '%s' ),
+			array( '%d' )
+		);
+
+		return (int) $student->id;
+	}
+
+	return cmp_insert_student(
+		array(
+			'name'      => $name,
+			'phone'     => $phone,
+			'email'     => $email,
+			'class_id'  => (int) $batch->class_id,
+			'batch_id'  => (int) $batch->id,
+			'total_fee' => $total_fee,
+			'paid_fee'  => 0,
+			'status'    => 'active',
+			'notes'     => __( 'Created during Razorpay import.', 'class-manager-pro' ),
+		)
+	);
+}
+
+/**
+ * Imports a captured Razorpay payment.
+ *
+ * @param array $payment Razorpay payment.
+ * @param array $link_map Imported link map.
+ * @return array
+ */
+function cmp_import_razorpay_payment( $payment, $link_map = array() ) {
+	if ( ! cmp_is_successful_razorpay_payment( $payment ) ) {
+		return array( 'status' => 'skipped' );
+	}
+
+	$amount = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
+
+	if ( $amount <= 0 ) {
+		return array( 'status' => 'skipped' );
+	}
+
+	$transaction_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+	if ( '' !== $transaction_id && cmp_payment_exists( $transaction_id ) ) {
+		return array( 'status' => 'duplicate' );
+	}
+
+	$payment_link_id = cmp_razorpay_payment_link_id_from_payment( $payment );
+	$batch           = $payment_link_id && isset( $link_map[ $payment_link_id ]['batch'] ) ? $link_map[ $payment_link_id ]['batch'] : null;
+
+	if ( ! $batch ) {
+		$batch = cmp_get_batch_by_razorpay_reference(
+			array(
+				$payment_link_id,
+				isset( $payment['description'] ) ? $payment['description'] : '',
+				isset( $payment['payment_link_reference_id'] ) ? $payment['payment_link_reference_id'] : '',
+			)
+		);
+	}
+
+	if ( ! $batch ) {
+		$title       = cmp_razorpay_entity_title( $payment );
+		$link_result = cmp_import_razorpay_payment_link(
+			array(
+				'id'          => $payment_link_id,
+				'description' => $title,
+				'short_url'   => '',
+				'amount'      => isset( $payment['amount'] ) ? $payment['amount'] : 0,
+				'notes'       => isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array(),
+			)
+		);
+
+		if ( ! is_wp_error( $link_result ) && ! empty( $link_result['batch_id'] ) ) {
+			$batch = cmp_get_batch( (int) $link_result['batch_id'] );
+		}
+	}
+
+	$student_id = cmp_upsert_import_student_from_payment( $payment, $batch );
+
+	if ( is_wp_error( $student_id ) ) {
+		return array(
+			'status'  => 'error',
+			'message' => $student_id->get_error_message(),
+		);
+	}
+
+	$payment_date = isset( $payment['created_at'] ) && is_numeric( $payment['created_at'] )
+		? gmdate( 'Y-m-d H:i:s', (int) $payment['created_at'] )
+		: cmp_current_datetime();
+
+	$result = cmp_insert_payment(
+		array(
+			'student_id'     => (int) $student_id,
+			'amount'         => $amount,
+			'payment_mode'   => 'razorpay',
+			'transaction_id' => $transaction_id,
+			'payment_date'   => $payment_date,
+		)
+	);
+
+	if ( is_wp_error( $result ) ) {
+		return array(
+			'status'  => 'error',
+			'message' => $result->get_error_message(),
+		);
+	}
+
+	return array(
+		'status'     => 'imported',
+		'student_id' => (int) $student_id,
+		'payment_id' => (int) $result,
+	);
+}
+
+/**
+ * Imports a captured Razorpay payment into a specific batch.
+ *
+ * @param array  $payment Razorpay payment.
+ * @param object $batch Batch row.
+ * @return array
+ */
+function cmp_import_razorpay_payment_into_batch( $payment, $batch ) {
+	if ( ! $batch || ! cmp_is_successful_razorpay_payment( $payment ) ) {
+		return array( 'status' => 'skipped' );
+	}
+
+	$transaction_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+	if ( '' !== $transaction_id && cmp_payment_exists( $transaction_id ) ) {
+		cmp_upsert_import_student_from_payment( $payment, $batch );
+
+		return array( 'status' => 'duplicate' );
+	}
+
+	$student_id = cmp_upsert_import_student_from_payment( $payment, $batch );
+
+	if ( is_wp_error( $student_id ) ) {
+		return array(
+			'status'  => 'error',
+			'message' => $student_id->get_error_message(),
+		);
+	}
+
+	$amount = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
+
+	if ( $amount <= 0 ) {
+		return array( 'status' => 'skipped' );
+	}
+
+	$payment_date = isset( $payment['created_at'] ) && is_numeric( $payment['created_at'] )
+		? gmdate( 'Y-m-d H:i:s', (int) $payment['created_at'] )
+		: cmp_current_datetime();
+
+	$result = cmp_insert_payment(
+		array(
+			'student_id'     => (int) $student_id,
+			'amount'         => $amount,
+			'payment_mode'   => 'razorpay',
+			'transaction_id' => $transaction_id,
+			'payment_date'   => $payment_date,
+		)
+	);
+
+	if ( is_wp_error( $result ) ) {
+		return array(
+			'status'  => 'error',
+			'message' => $result->get_error_message(),
+		);
+	}
+
+	return array(
+		'status'     => 'imported',
+		'student_id' => (int) $student_id,
+		'payment_id' => (int) $result,
+	);
+}
+
+/**
+ * Gets all Razorpay payment links for selection screens.
+ *
+ * @return array|WP_Error
+ */
+function cmp_get_razorpay_payment_links_for_admin() {
+	return cmp_razorpay_fetch_collection( 'payment_links/', 'payment_links' );
+}
+
+/**
+ * Fetches a single Razorpay payment link.
+ *
+ * @param string $page_id Payment link ID.
+ * @return array|WP_Error
+ */
+function cmp_get_razorpay_payment_link( $page_id ) {
+	return cmp_razorpay_api_get( 'payment_links/' . rawurlencode( sanitize_text_field( $page_id ) ) );
+}
+
+/**
+ * Returns successful captured payments for a Razorpay payment link.
+ *
+ * @param string $page_id Payment link ID.
+ * @return array|WP_Error
+ */
+function cmp_get_successful_razorpay_payments_for_link( $page_id ) {
+	$page_id  = sanitize_text_field( $page_id );
+	$payments = cmp_razorpay_fetch_collection( 'payments', 'items' );
+
+	if ( is_wp_error( $payments ) ) {
+		return $payments;
+	}
+
+	return cmp_filter_successful_razorpay_payments( $payments, $page_id );
+}
+
+/**
+ * Extracts displayable student data from a Razorpay payment.
+ *
+ * @param array $payment Razorpay payment.
+ * @return array
+ */
+function cmp_payment_student_preview( $payment ) {
+	$notes = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
+	$name  = cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+	$email = cmp_first_scalar_value( array( $notes['email'] ?? '', $notes['student_email'] ?? '', $notes['customer_email'] ?? '', $payment['email'] ?? '', $payment['customer_email'] ?? '' ) );
+	$phone = cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) );
+
+	if ( '' === trim( (string) $name ) ) {
+		$name = '' !== trim( (string) $email ) ? $email : $phone;
+	}
+
+	return array(
+		'name'   => sanitize_text_field( $name ),
+		'email'  => sanitize_email( $email ),
+		'phone'  => sanitize_text_field( $phone ),
+		'amount' => cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 ),
+		'id'     => isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '',
+		'date'   => isset( $payment['created_at'] ) && is_numeric( $payment['created_at'] ) ? gmdate( 'Y-m-d H:i:s', (int) $payment['created_at'] ) : '',
+	);
+}
+
+/**
+ * Counts unique students represented by a list of Razorpay payments.
+ *
+ * @param array $payments Razorpay payments.
+ * @return int
+ */
+function cmp_count_unique_razorpay_students( $payments ) {
+	$seen          = array();
+	$active_groups = array();
+	$next_group_id = 0;
+
+	foreach ( $payments as $payment ) {
+		$preview = cmp_payment_student_preview( $payment );
+		$keys    = array();
+
+		if ( '' !== $preview['email'] ) {
+			$keys[] = 'email:' . strtolower( $preview['email'] );
+		}
+
+		if ( '' !== $preview['name'] ) {
+			$keys[] = 'name:' . cmp_normalize_name_key( $preview['name'] );
+		}
+
+		if ( '' !== $preview['phone'] ) {
+			$phone_keys = cmp_phone_match_keys( $preview['phone'] );
+
+			if ( $phone_keys ) {
+				$keys[] = 'phone:' . $phone_keys[0];
+			}
+		}
+
+		if ( empty( $keys ) && '' !== $preview['id'] ) {
+			$keys[] = 'payment:' . $preview['id'];
+		}
+
+		$matched_groups = array();
+
+		foreach ( $keys as $key ) {
+			if ( isset( $seen[ $key ] ) ) {
+				$matched_groups[] = (int) $seen[ $key ];
+			}
+		}
+
+		$matched_groups = array_values( array_unique( array_filter( $matched_groups ) ) );
+
+		if ( $matched_groups ) {
+			$group = min( $matched_groups );
+
+			if ( count( $matched_groups ) > 1 ) {
+				foreach ( $seen as $seen_key => $seen_group ) {
+					if ( in_array( (int) $seen_group, $matched_groups, true ) ) {
+						$seen[ $seen_key ] = $group;
+					}
+				}
+
+				foreach ( $matched_groups as $matched_group ) {
+					unset( $active_groups[ $matched_group ] );
+				}
+			}
+		} else {
+			++$next_group_id;
+			$group = $next_group_id;
+		}
+
+		$active_groups[ $group ] = true;
+
+		foreach ( $keys as $key ) {
+			$seen[ $key ] = $group;
+		}
+	}
+
+	return count( $active_groups );
+}
+
+/**
+ * Imports all successful payments from a Razorpay page into a selected batch.
+ *
+ * @param string $page_id Razorpay payment link ID.
+ * @param int    $batch_id Batch ID.
+ * @return array|WP_Error
+ */
+function cmp_import_razorpay_page_to_batch( $page_id, $batch_id ) {
+	$page_id = sanitize_text_field( $page_id );
+	$batch   = cmp_get_batch( absint( $batch_id ) );
+
+	if ( '' === $page_id || ! $batch ) {
+		return new WP_Error( 'cmp_import_page_invalid', __( 'Please choose a valid Razorpay page and batch.', 'class-manager-pro' ) );
+	}
+
+	$link = cmp_get_razorpay_payment_link( $page_id );
+
+	if ( is_wp_error( $link ) ) {
+		return $link;
+	}
+
+	cmp_update_batch(
+		(int) $batch->id,
+		array(
+			'class_id'         => (int) $batch->class_id,
+			'batch_name'       => $batch->batch_name,
+			'start_date'       => $batch->start_date,
+			'fee_due_date'     => $batch->fee_due_date,
+			'status'           => $batch->status,
+			'razorpay_link'    => isset( $link['short_url'] ) ? esc_url_raw( $link['short_url'] ) : $batch->razorpay_link,
+			'batch_fee'        => (float) $batch->batch_fee,
+			'is_free'          => (int) $batch->is_free,
+			'razorpay_page_id' => $page_id,
+		)
+	);
+
+	$batch    = cmp_get_batch( (int) $batch->id );
+	$payments = cmp_get_successful_razorpay_payments_for_link( $page_id );
+
+	if ( is_wp_error( $payments ) ) {
+		return $payments;
+	}
+
+	$summary = array(
+		'imported'  => 0,
+		'duplicate' => 0,
+		'skipped'   => 0,
+		'failed'    => 0,
+	);
+
+	foreach ( $payments as $payment ) {
+		$result = cmp_import_razorpay_payment_into_batch( $payment, $batch );
+		$status = isset( $result['status'] ) ? $result['status'] : 'failed';
+
+		if ( isset( $summary[ $status ] ) ) {
+			++$summary[ $status ];
+		} else {
+			++$summary['failed'];
+		}
+	}
+
+	return $summary;
+}
+
+/**
+ * Builds a batch map from imported Razorpay payment links.
+ *
+ * @param array $links Payment-link entities.
+ * @param array $paid_page_ids Optional IDs that have successful captured payments.
+ * @return array
+ */
+function cmp_build_razorpay_link_map( $links, $paid_page_ids = null ) {
+	$map           = array();
+	$restricted    = null !== $paid_page_ids;
+	$paid_page_ids = array_map( 'sanitize_text_field', (array) $paid_page_ids );
+	$paid_page_ids = array_fill_keys( array_filter( $paid_page_ids ), true );
+
+	foreach ( $links as $link ) {
+		$link_id = isset( $link['id'] ) ? sanitize_text_field( $link['id'] ) : '';
+
+		if ( $restricted && ( '' === $link_id || ! isset( $paid_page_ids[ $link_id ] ) ) ) {
+			continue;
+		}
+
+		$result = cmp_import_razorpay_payment_link( $link );
+
+		if ( ! is_wp_error( $result ) && '' !== $link_id ) {
+			$map[ $link_id ] = $result;
+		}
+	}
+
+	return $map;
+}
+
+/**
+ * Imports payment links and payments from Razorpay.
+ *
+ * @return array|WP_Error
+ */
+function cmp_import_all_razorpay_data() {
+	$links = cmp_razorpay_fetch_collection( 'payment_links/', 'payment_links' );
+
+	if ( is_wp_error( $links ) ) {
+		return $links;
+	}
+
+	$payments = cmp_razorpay_fetch_collection( 'payments', 'items' );
+
+	if ( is_wp_error( $payments ) ) {
+		return $payments;
+	}
+
+	$successful_payments = cmp_filter_successful_razorpay_payments( $payments );
+	$paid_page_ids       = cmp_successful_razorpay_payment_link_ids( $successful_payments );
+	$link_map            = cmp_build_razorpay_link_map( $links, $paid_page_ids );
+
+	$summary = array(
+		'classes'         => 0,
+		'batches'         => count( $link_map ),
+		'payments'        => 0,
+		'students'        => 0,
+		'skipped'         => max( 0, count( $payments ) - count( $successful_payments ) ),
+		'failed'          => 0,
+		'successful_seen' => count( $successful_payments ),
+	);
+
+	foreach ( $link_map as $result ) {
+		if ( ! empty( $result['created'] ) ) {
+			++$summary['classes'];
+		}
+	}
+
+	foreach ( $successful_payments as $payment ) {
+		$result = cmp_import_razorpay_payment( $payment, $link_map );
+
+		if ( 'imported' === $result['status'] ) {
+			++$summary['payments'];
+			if ( ! empty( $result['student_id'] ) ) {
+				++$summary['students'];
+			}
+		} elseif ( 'skipped' === $result['status'] || 'duplicate' === $result['status'] ) {
+			++$summary['skipped'];
+		} else {
+			++$summary['failed'];
+		}
+	}
+
+	return $summary;
+}
+
+/**
+ * Saves detected Razorpay keys into plugin settings.
+ */
+function cmp_handle_import_detected_razorpay_keys() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_import_detected_razorpay_keys' );
+
+	if ( ! function_exists( 'cmp_detect_wordpress_razorpay' ) ) {
+		cmp_redirect( 'cmp-settings', __( 'No WordPress Razorpay integration could be detected.', 'class-manager-pro' ), 'error' );
+	}
+
+	$detected = cmp_detect_wordpress_razorpay();
+
+	if ( empty( $detected ) ) {
+		cmp_redirect( 'cmp-settings', __( 'No WordPress Razorpay integration could be detected.', 'class-manager-pro' ), 'error' );
+	}
+
+	foreach ( $detected as $source => $keys ) {
+		update_option( 'cmp_razorpay_key_id', sanitize_text_field( $keys['key_id'] ) );
+		update_option( 'cmp_razorpay_secret', sanitize_text_field( $keys['secret'] ) );
+		cmp_redirect( 'cmp-settings', sprintf( __( 'Razorpay keys imported from %s.', 'class-manager-pro' ), $source ) );
+	}
+}
+
+/**
+ * Imports all Razorpay data.
+ */
+function cmp_handle_import_razorpay_data() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_import_razorpay_data' );
+
+	if ( function_exists( 'set_time_limit' ) ) {
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	$result = cmp_import_all_razorpay_data();
+
+	if ( is_wp_error( $result ) ) {
+		cmp_redirect( 'cmp-settings', $result->get_error_message(), 'error' );
+	}
+
+	cmp_redirect(
+		'cmp-settings',
+		sprintf(
+			/* translators: 1: batches 2: payments 3: skipped 4: failed */
+			__( 'Razorpay import finished. %1$d batches synced, %2$d payments imported, %3$d skipped, %4$d failed.', 'class-manager-pro' ),
+			(int) $result['batches'],
+			(int) $result['payments'],
+			(int) $result['skipped'],
+			(int) $result['failed']
+		)
+	);
+}
+
+/**
+ * Imports a single Razorpay entity manually.
+ */
+function cmp_handle_manual_import_razorpay() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_manual_import_razorpay' );
+
+	if ( function_exists( 'set_time_limit' ) ) {
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	$import_type = sanitize_key( cmp_field( $_POST, 'import_type' ) );
+	$razorpay_id = sanitize_text_field( cmp_field( $_POST, 'razorpay_id' ) );
+
+	if ( '' === $razorpay_id ) {
+		cmp_redirect( 'cmp-settings', __( 'Please enter a Razorpay ID to import.', 'class-manager-pro' ), 'error' );
+	}
+
+	if ( 'payment_link' === $import_type ) {
+		$response = cmp_razorpay_api_get( 'payment_links/' . rawurlencode( $razorpay_id ) );
+		$result   = is_wp_error( $response ) ? $response : cmp_import_razorpay_payment_link( $response );
+	} elseif ( 'payment' === $import_type ) {
+		$response = cmp_razorpay_api_get( 'payments/' . rawurlencode( $razorpay_id ) );
+		$result   = is_wp_error( $response ) ? $response : cmp_import_razorpay_payment( $response );
+	} else {
+		$result = new WP_Error( 'cmp_invalid_manual_import', __( 'Unsupported manual import type.', 'class-manager-pro' ) );
+	}
+
+	if ( is_wp_error( $result ) ) {
+		cmp_redirect( 'cmp-settings', $result->get_error_message(), 'error' );
+	}
+
+	cmp_redirect( 'cmp-settings', __( 'Razorpay item imported successfully.', 'class-manager-pro' ) );
+}
+
+/**
+ * Imports the selected Razorpay page into an admin-selected batch.
+ */
+function cmp_handle_import_razorpay_page_to_batch() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_import_razorpay_page_to_batch' );
+
+	if ( function_exists( 'set_time_limit' ) ) {
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	$page_id  = sanitize_text_field( cmp_field( $_POST, 'razorpay_page_id' ) );
+	$batch_id = absint( cmp_field( $_POST, 'batch_id', 0 ) );
+
+	$result = cmp_import_razorpay_page_to_batch( $page_id, $batch_id );
+
+	if ( is_wp_error( $result ) ) {
+		cmp_redirect( 'cmp-razorpay-import', $result->get_error_message(), 'error', array( 'razorpay_page_id' => $page_id ) );
+	}
+
+	cmp_redirect(
+		'cmp-razorpay-import',
+		sprintf(
+			/* translators: 1: imported 2: duplicate 3: skipped 4: failed */
+			__( 'Razorpay page import completed. %1$d payments imported, %2$d duplicates skipped, %3$d non-success payments skipped, %4$d failed.', 'class-manager-pro' ),
+			(int) $result['imported'],
+			(int) $result['duplicate'],
+			(int) $result['skipped'],
+			(int) $result['failed']
+		),
+		'success',
+		array( 'razorpay_page_id' => $page_id )
+	);
+}
+
+/**
+ * Deletes all custom plugin records while keeping settings.
+ */
+function cmp_handle_reset_plugin_data() {
+	global $wpdb;
+
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_reset_plugin_data' );
+
+	$confirmation = sanitize_text_field( cmp_field( $_POST, 'reset_confirmation' ) );
+
+	if ( 'DELETE' !== $confirmation ) {
+		cmp_redirect( 'cmp-settings', __( 'Type DELETE to confirm clearing all Class Manager Pro data.', 'class-manager-pro' ), 'error' );
+	}
+
+	foreach ( array( 'reminders', 'attendance', 'payments', 'students', 'batches', 'classes' ) as $table ) {
+		$table_name = cmp_table( $table );
+		$wpdb->query( "DELETE FROM {$table_name}" );
+		$wpdb->query( "ALTER TABLE {$table_name} AUTO_INCREMENT = 1" );
+	}
+
+	$wpdb->query(
+		$wpdb->prepare(
+			'DELETE FROM ' . $wpdb->options . ' WHERE option_name LIKE %s OR option_name LIKE %s',
+			$wpdb->esc_like( '_transient_cmp_intake_' ) . '%',
+			$wpdb->esc_like( '_transient_timeout_cmp_intake_' ) . '%'
+		)
+	);
+
+	cmp_redirect( 'cmp-settings', __( 'All Class Manager Pro records were deleted. Settings and Razorpay keys were kept.', 'class-manager-pro' ) );
+}
+
+/**
+ * Saves reminder settings.
+ */
+function cmp_handle_save_sms_settings() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_save_sms_settings' );
+
+	$provider = cmp_clean_enum( cmp_field( $_POST, 'notification_provider', 'log_only' ), array( 'log_only', 'custom_webhook' ), 'log_only' );
+	$channels = cmp_clean_enum( cmp_field( $_POST, 'notification_channels', 'both' ), array( 'sms', 'whatsapp', 'both' ), 'both' );
+	$days     = absint( cmp_field( $_POST, 'reminder_days', 7 ) );
+
+	update_option( 'cmp_notifications_enabled', ! empty( $_POST['sms_enabled'] ) ? '1' : '0' );
+	update_option( 'cmp_sms_enabled', ! empty( $_POST['sms_enabled'] ) ? '1' : '0' );
+	update_option( 'cmp_notification_provider', $provider );
+	update_option( 'cmp_notification_webhook_url', esc_url_raw( cmp_field( $_POST, 'notification_webhook_url' ) ) );
+	update_option( 'cmp_notification_auth_token', sanitize_text_field( cmp_field( $_POST, 'notification_auth_token' ) ) );
+	update_option( 'cmp_notification_sender', sanitize_text_field( cmp_field( $_POST, 'sms_sender' ) ) );
+	update_option( 'cmp_notification_channels', $channels );
+	update_option( 'cmp_reminder_days', in_array( $days, array( 1, 3, 7, 14 ), true ) ? $days : 7 );
+	update_option( 'cmp_whatsapp_template', sanitize_textarea_field( cmp_field( $_POST, 'whatsapp_template' ) ) );
+	update_option( 'cmp_sms_template', sanitize_textarea_field( cmp_field( $_POST, 'sms_template' ) ) );
+
+	cmp_redirect( 'cmp-settings', __( 'Reminder settings saved successfully.', 'class-manager-pro' ) );
+}
+
+/**
+ * Saves attendance settings.
+ */
+function cmp_handle_save_attendance_settings() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_save_attendance_settings' );
+
+	update_option( 'cmp_attendance_enabled', ! empty( $_POST['attendance_enabled'] ) ? '1' : '0' );
+	update_option(
+		'cmp_default_attendance_status',
+		cmp_clean_enum( cmp_field( $_POST, 'default_attendance_status', 'present' ), cmp_attendance_statuses(), 'present' )
+	);
+
+	cmp_redirect( 'cmp-settings', __( 'Attendance settings saved successfully.', 'class-manager-pro' ) );
+}
+
+/**
+ * Returns whether attendance is enabled.
+ *
+ * @return bool
+ */
+function cmp_is_attendance_enabled() {
+	return '1' === (string) get_option( 'cmp_attendance_enabled', '1' );
+}
+
+/**
+ * Gets attendance for a batch and date keyed by student ID.
+ *
+ * @param int    $batch_id Batch ID.
+ * @param string $date Attendance date.
+ * @return array
+ */
+function cmp_get_batch_attendance( $batch_id, $date ) {
+	global $wpdb;
+
+	$rows   = $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT * FROM ' . cmp_table( 'attendance' ) . ' WHERE batch_id = %d AND attendance_date = %s',
+			absint( $batch_id ),
+			sanitize_text_field( $date )
+		)
+	);
+	$result = array();
+
+	foreach ( $rows as $row ) {
+		$result[ (int) $row->student_id ] = $row;
+	}
+
+	return $result;
+}
+
+/**
+ * Gets attendance counts for a batch and date.
+ *
+ * @param int    $batch_id Batch ID.
+ * @param string $date Attendance date.
+ * @return array
+ */
+function cmp_get_batch_attendance_summary( $batch_id, $date ) {
+	global $wpdb;
+
+	$rows = $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT status, COUNT(*) AS total FROM ' . cmp_table( 'attendance' ) . ' WHERE batch_id = %d AND attendance_date = %s GROUP BY status',
+			absint( $batch_id ),
+			sanitize_text_field( $date )
+		),
+		OBJECT_K
+	);
+
+	return array(
+		'present' => isset( $rows['present'] ) ? (int) $rows['present']->total : 0,
+		'absent'  => isset( $rows['absent'] ) ? (int) $rows['absent']->total : 0,
+		'leave'   => isset( $rows['leave'] ) ? (int) $rows['leave']->total : 0,
+	);
+}
+
+/**
+ * Saves attendance entries for a batch.
+ *
+ * @param int    $batch_id Batch ID.
+ * @param string $date Date.
+ * @param array  $entries Attendance entries.
+ * @return void
+ */
+function cmp_save_batch_attendance( $batch_id, $date, $entries ) {
+	global $wpdb;
+
+	$batch_id = absint( $batch_id );
+	$date     = sanitize_text_field( $date );
+
+	foreach ( $entries as $student_id => $entry ) {
+		$student_id = absint( $student_id );
+		$status     = cmp_clean_enum( isset( $entry['status'] ) ? $entry['status'] : '', cmp_attendance_statuses(), (string) get_option( 'cmp_default_attendance_status', 'present' ) );
+		$notes      = sanitize_textarea_field( isset( $entry['notes'] ) ? $entry['notes'] : '' );
+
+		if ( ! $student_id ) {
+			continue;
+		}
+
+		$wpdb->replace(
+			cmp_table( 'attendance' ),
+			array(
+				'batch_id'         => $batch_id,
+				'student_id'       => $student_id,
+				'attendance_date'  => $date,
+				'status'           => $status,
+				'notes'            => $notes,
+				'created_at'       => cmp_current_datetime(),
+			),
+			array( '%d', '%d', '%s', '%s', '%s', '%s' )
+		);
+	}
+}
+
+/**
+ * Saves batch attendance from the admin form.
+ */
+function cmp_handle_save_attendance() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_save_attendance' );
+
+	$batch_id = absint( cmp_field( $_POST, 'batch_id', 0 ) );
+	$date     = sanitize_text_field( cmp_field( $_POST, 'attendance_date', current_time( 'Y-m-d' ) ) );
+	$entries  = isset( $_POST['attendance'] ) && is_array( $_POST['attendance'] ) ? wp_unslash( $_POST['attendance'] ) : array();
+
+	if ( ! $batch_id || ! cmp_get_batch( $batch_id ) ) {
+		cmp_redirect( 'cmp-batches', __( 'Attendance could not be saved because the batch was not found.', 'class-manager-pro' ), 'error' );
+	}
+
+	cmp_save_batch_attendance( $batch_id, $date, $entries );
+
+	cmp_redirect(
+		'cmp-batches',
+		__( 'Attendance saved successfully.', 'class-manager-pro' ),
+		'success',
+		array(
+			'action'          => 'view',
+			'id'              => $batch_id,
+			'attendance_date' => $date,
+		)
+	);
+}
+
+/**
+ * Gets students who should receive fee reminders.
+ *
+ * @param int $days Reminder lead time.
+ * @return array
+ */
+function cmp_get_fee_reminder_targets( $days ) {
+	global $wpdb;
+
+	$days = max( 0, absint( $days ) );
+
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT s.*, c.name AS class_name, b.batch_name, b.razorpay_link, b.fee_due_date
+			FROM ' . cmp_table( 'students' ) . ' s
+			INNER JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id
+			WHERE s.status = %s
+				AND GREATEST(s.total_fee - s.paid_fee, 0) > 0
+				AND b.fee_due_date IS NOT NULL
+				AND b.fee_due_date <= DATE_ADD(CURDATE(), INTERVAL %d DAY)
+			ORDER BY b.fee_due_date ASC, s.id ASC',
+			'active',
+			$days
+		)
+	);
+}
+
+/**
+ * Builds a fee reminder message.
+ *
+ * @param object $student Student row.
+ * @param string $channel sms|whatsapp.
+ * @return string
+ */
+function cmp_build_fee_reminder_message( $student, $channel ) {
+	$template = 'whatsapp' === $channel
+		? (string) get_option( 'cmp_whatsapp_template', '' )
+		: (string) get_option( 'cmp_sms_template', '' );
+
+	if ( '' === trim( $template ) ) {
+		$template = __( 'Hello {student_name}, your pending fee for {class_name} - {batch_name} is Rs {pending_fee}. Due date: {due_date}. Payment link: {payment_link}', 'class-manager-pro' );
+	}
+
+	return strtr(
+		$template,
+		array(
+			'{student_name}' => $student->name,
+			'{class_name}'   => $student->class_name,
+			'{batch_name}'   => $student->batch_name,
+			'{pending_fee}'  => cmp_format_money( max( 0, (float) $student->total_fee - (float) $student->paid_fee ) ),
+			'{due_date}'     => $student->fee_due_date ? $student->fee_due_date : __( 'Not set', 'class-manager-pro' ),
+			'{payment_link}' => $student->razorpay_link ? $student->razorpay_link : __( 'Please contact the admin.', 'class-manager-pro' ),
+		)
+	);
+}
+
+/**
+ * Checks whether a reminder was already logged for today.
+ *
+ * @param int    $student_id Student ID.
+ * @param int    $batch_id Batch ID.
+ * @param string $channel Channel.
+ * @return bool
+ */
+function cmp_reminder_already_logged( $student_id, $batch_id, $channel ) {
+	global $wpdb;
+
+	return (bool) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'reminders' ) . ' WHERE student_id = %d AND batch_id = %d AND reminder_date = %s AND channel = %s AND status = %s',
+			absint( $student_id ),
+			absint( $batch_id ),
+			current_time( 'Y-m-d' ),
+			sanitize_key( $channel ),
+			'sent'
+		)
+	);
+}
+
+/**
+ * Logs a reminder attempt.
+ *
+ * @param object $student Student row.
+ * @param string $channel Channel.
+ * @param string $status Result status.
+ * @param string $response_message Provider response.
+ * @return void
+ */
+function cmp_log_reminder( $student, $channel, $status, $response_message = '' ) {
+	global $wpdb;
+
+	$wpdb->replace(
+		cmp_table( 'reminders' ),
+		array(
+			'student_id'        => (int) $student->id,
+			'batch_id'          => (int) $student->batch_id,
+			'reminder_date'     => current_time( 'Y-m-d' ),
+			'due_date'          => $student->fee_due_date,
+			'channel'           => sanitize_key( $channel ),
+			'status'            => sanitize_key( $status ),
+			'provider'          => sanitize_key( (string) get_option( 'cmp_notification_provider', 'log_only' ) ),
+			'response_message'  => sanitize_textarea_field( $response_message ),
+			'created_at'        => cmp_current_datetime(),
+		),
+		array( '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+	);
+}
+
+/**
+ * Sends a reminder to the configured provider.
+ *
+ * @param object $student Student row.
+ * @param string $channel Channel.
+ * @param string $message Message text.
+ * @return array
+ */
+function cmp_send_fee_reminder( $student, $channel, $message ) {
+	$provider = sanitize_key( (string) get_option( 'cmp_notification_provider', 'log_only' ) );
+
+	if ( '' === trim( (string) $student->phone ) ) {
+		return array(
+			'success' => false,
+			'message' => __( 'Student phone number is missing.', 'class-manager-pro' ),
+		);
+	}
+
+	if ( 'custom_webhook' !== $provider ) {
+		return array(
+			'success' => true,
+			'message' => __( 'Reminder logged without external delivery.', 'class-manager-pro' ),
+		);
+	}
+
+	$webhook_url = (string) get_option( 'cmp_notification_webhook_url', '' );
+
+	if ( '' === $webhook_url ) {
+		return array(
+			'success' => false,
+			'message' => __( 'Notification webhook URL is missing.', 'class-manager-pro' ),
+		);
+	}
+
+	$response = wp_remote_post(
+		$webhook_url,
+		array(
+			'timeout' => 20,
+			'headers' => array(
+				'Content-Type' => 'application/json',
+				'X-CMP-Token'  => (string) get_option( 'cmp_notification_auth_token', '' ),
+			),
+			'body'    => wp_json_encode(
+				array(
+					'channel'      => $channel,
+					'sender'       => (string) get_option( 'cmp_notification_sender', '' ),
+					'student_name' => $student->name,
+					'phone'        => $student->phone,
+					'email'        => $student->email,
+					'class_name'   => $student->class_name,
+					'batch_name'   => $student->batch_name,
+					'due_date'     => $student->fee_due_date,
+					'pending_fee'  => max( 0, (float) $student->total_fee - (float) $student->paid_fee ),
+					'payment_link' => $student->razorpay_link,
+					'message'      => $message,
+				)
+			),
+		)
+	);
+
+	if ( is_wp_error( $response ) ) {
+		return array(
+			'success' => false,
+			'message' => $response->get_error_message(),
+		);
+	}
+
+	$code = (int) wp_remote_retrieve_response_code( $response );
+
+	return array(
+		'success' => $code >= 200 && $code < 300,
+		'message' => wp_remote_retrieve_body( $response ),
+	);
+}
+
+/**
+ * Processes reminder delivery for due and overdue students.
+ *
+ * @return array
+ */
+function cmp_process_fee_reminders() {
+	$enabled = '1' === (string) get_option( 'cmp_notifications_enabled', get_option( 'cmp_sms_enabled', '0' ) );
+	$days    = absint( get_option( 'cmp_reminder_days', 7 ) );
+	$targets = $enabled ? cmp_get_fee_reminder_targets( $days ) : array();
+	$counts  = array(
+		'sent'    => 0,
+		'failed'  => 0,
+		'skipped' => 0,
+	);
+
+	if ( ! $enabled ) {
+		return $counts;
+	}
+
+	$channel_setting = sanitize_key( (string) get_option( 'cmp_notification_channels', 'both' ) );
+	$channels        = 'both' === $channel_setting ? array( 'sms', 'whatsapp' ) : array( $channel_setting );
+
+	foreach ( $targets as $student ) {
+		foreach ( $channels as $channel ) {
+			if ( cmp_reminder_already_logged( (int) $student->id, (int) $student->batch_id, $channel ) ) {
+				++$counts['skipped'];
+				continue;
+			}
+
+			$message = cmp_build_fee_reminder_message( $student, $channel );
+			$result  = cmp_send_fee_reminder( $student, $channel, $message );
+
+			if ( ! empty( $result['success'] ) ) {
+				cmp_log_reminder( $student, $channel, 'sent', $result['message'] );
+				++$counts['sent'];
+			} else {
+				cmp_log_reminder( $student, $channel, 'failed', $result['message'] );
+				++$counts['failed'];
+			}
+		}
+	}
+
+	return $counts;
+}
+
+/**
+ * Runs scheduled reminder processing.
+ */
+function cmp_run_scheduled_fee_reminders() {
+	cmp_process_fee_reminders();
+}
+
+/**
+ * Sends reminders immediately from the settings page.
+ */
+function cmp_handle_send_fee_reminders() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_send_fee_reminders' );
+
+	$counts = cmp_process_fee_reminders();
+
+	cmp_redirect(
+		'cmp-settings',
+		sprintf(
+			/* translators: 1: sent count 2: failed count 3: skipped count */
+			__( 'Reminder run completed. %1$d sent, %2$d failed, %3$d skipped.', 'class-manager-pro' ),
+			(int) $counts['sent'],
+			(int) $counts['failed'],
+			(int) $counts['skipped']
+		)
+	);
 }

@@ -1,0 +1,233 @@
+/* =====================================================================
+   Class Manager Pro — Public Form Styles
+   Rendered inside the active WordPress theme (get_header/get_footer).
+   All rules are scoped to .cmp-theme-wrapper to avoid conflicts.
+   ===================================================================== */
+
+/* Theme wrapper — constrains and centres the form inside any theme */
+.cmp-theme-wrapper {
+	box-sizing: border-box;
+	margin: 0 auto;
+	max-width: 1040px;
+	padding: 40px 20px 72px;
+	width: 100%;
+}
+
+
+.cmp-theme-wrapper .cmp-public-page {
+	width: 100%;
+}
+
+.cmp-theme-wrapper .cmp-public-hero {
+	align-items: end;
+	display: grid;
+	gap: 24px;
+	grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr);
+	margin-bottom: 24px;
+}
+
+.cmp-theme-wrapper .cmp-public-eyebrow {
+	color: #2271b1;
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0;
+	margin: 0 0 8px;
+	text-transform: uppercase;
+}
+
+.cmp-theme-wrapper .cmp-public-hero h1 {
+	font-size: clamp(24px, 4vw, 42px);
+	line-height: 1.1;
+	margin: 0 0 12px;
+}
+
+.cmp-theme-wrapper .cmp-public-subtitle {
+	color: #50575e;
+	font-size: 17px;
+	line-height: 1.6;
+	margin: 0;
+}
+
+.cmp-theme-wrapper .cmp-public-panel,
+.cmp-theme-wrapper .cmp-public-summary {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 10px;
+	box-shadow: 0 4px 18px rgba(18, 34, 56, 0.07);
+	box-sizing: border-box;
+	overflow: hidden;
+	width: 100%;
+}
+
+.cmp-theme-wrapper .cmp-public-summary {
+	display: grid;
+	gap: 12px;
+	padding: 20px;
+}
+
+.cmp-theme-wrapper .cmp-public-summary div {
+	background: #f6f8fb;
+	border-radius: 6px;
+	padding: 12px 14px;
+}
+
+.cmp-theme-wrapper .cmp-public-summary span {
+	color: #646970;
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	margin-bottom: 4px;
+	text-transform: uppercase;
+}
+
+.cmp-theme-wrapper .cmp-public-summary strong {
+	display: block;
+	font-size: 17px;
+	word-break: break-word;
+}
+
+.cmp-theme-wrapper .cmp-public-panel {
+	padding: 28px;
+}
+
+.cmp-theme-wrapper .cmp-public-alert {
+	border-radius: 6px;
+	margin-bottom: 18px;
+	padding: 14px 16px;
+}
+
+.cmp-theme-wrapper .cmp-public-alert p,
+.cmp-theme-wrapper .cmp-public-alert strong {
+	margin: 0;
+}
+
+.cmp-theme-wrapper .cmp-public-alert-success {
+	background: #e7f7ed;
+	border: 1px solid #a6d7b8;
+	color: #175d38;
+}
+
+.cmp-theme-wrapper .cmp-public-alert-error {
+	background: #fdebec;
+	border: 1px solid #f0b4b8;
+	color: #8a2424;
+}
+
+.cmp-theme-wrapper .cmp-public-form {
+	display: grid;
+	gap: 20px;
+}
+
+.cmp-theme-wrapper .cmp-public-grid {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cmp-theme-wrapper .cmp-public-grid-span {
+	grid-column: 1 / -1;
+}
+
+.cmp-theme-wrapper .cmp-public-form label {
+	display: grid;
+	gap: 6px;
+}
+
+.cmp-theme-wrapper .cmp-public-form span {
+	color: #1d2327;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+.cmp-theme-wrapper .cmp-public-form input,
+.cmp-theme-wrapper .cmp-public-form textarea {
+	background: #fff;
+	border: 1.5px solid #c3c4c7;
+	border-radius: 6px;
+	box-sizing: border-box;
+	font-family: inherit;
+	font-size: 15px;
+	line-height: 1.5;
+	padding: 10px 13px;
+	transition: border-color 0.15s;
+	width: 100%;
+}
+
+.cmp-theme-wrapper .cmp-public-form input:focus,
+.cmp-theme-wrapper .cmp-public-form textarea:focus {
+	border-color: #2271b1;
+	box-shadow: 0 0 0 2px rgba(34, 113, 177, 0.15);
+	outline: none;
+}
+
+.cmp-theme-wrapper .cmp-public-form input[readonly] {
+	background: #f6f7f7;
+	color: #646970;
+}
+
+.cmp-theme-wrapper .cmp-public-payment {
+	border-top: 1px solid #e5e7eb;
+	margin-top: 24px;
+	padding-top: 24px;
+}
+
+.cmp-theme-wrapper .cmp-public-payment h2 {
+	margin-top: 0;
+}
+
+.cmp-theme-wrapper .cmp-public-button {
+	background: #2271b1;
+	border: 0;
+	border-radius: 6px;
+	color: #fff;
+	cursor: pointer;
+	display: inline-flex;
+	font-size: 15px;
+	font-weight: 700;
+	justify-content: center;
+	padding: 12px 22px;
+	text-decoration: none;
+	transition: background 0.15s;
+}
+
+.cmp-theme-wrapper .cmp-public-button:hover {
+	background: #135e96;
+	color: #fff;
+}
+
+.cmp-theme-wrapper .cmp-public-button-secondary {
+	background: #1d2327;
+}
+
+.cmp-theme-wrapper .cmp-public-button-secondary:hover {
+	background: #3c434a;
+}
+
+@media (max-width: 900px) {
+	.cmp-theme-wrapper .cmp-public-hero {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 640px) {
+	.cmp-theme-wrapper {
+		padding: 24px 16px 48px;
+	}
+
+	.cmp-theme-wrapper .cmp-public-panel {
+		padding: 18px;
+	}
+
+	.cmp-theme-wrapper .cmp-public-summary {
+		padding: 16px;
+	}
+
+	.cmp-theme-wrapper .cmp-public-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.cmp-theme-wrapper .cmp-public-button {
+		width: 100%;
+	}
+}

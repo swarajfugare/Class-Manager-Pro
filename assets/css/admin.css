@@ -1,0 +1,278 @@
+.cmp-wrap {
+	max-width: 1320px;
+}
+
+/* Prevent form-table content from breaking out of panels */
+.cmp-panel .form-table {
+	box-sizing: border-box;
+	table-layout: fixed;
+	width: 100%;
+}
+
+.cmp-panel .form-table td,
+.cmp-panel .form-table th {
+	overflow-wrap: break-word;
+	word-break: break-word;
+}
+
+.cmp-panel .form-table .regular-text,
+.cmp-panel .form-table .large-text,
+.cmp-panel .form-table input[type="url"],
+.cmp-panel .form-table input[type="text"],
+.cmp-panel .form-table input[type="email"],
+.cmp-panel .form-table select,
+.cmp-panel .form-table textarea {
+	box-sizing: border-box;
+	max-width: 100%;
+}
+
+
+.cmp-cards {
+	display: grid;
+	grid-template-columns: repeat(5, minmax(150px, 1fr));
+	gap: 16px;
+	margin: 18px 0;
+}
+
+.cmp-cards-4 {
+	grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.cmp-cards-3 {
+	grid-template-columns: repeat(3, minmax(150px, 1fr));
+}
+
+.cmp-card,
+.cmp-panel {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 6px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.cmp-card {
+	padding: 18px;
+}
+
+.cmp-card span {
+	display: block;
+	color: #646970;
+	font-size: 13px;
+	margin-bottom: 8px;
+}
+
+.cmp-card strong {
+	color: #1d2327;
+	display: block;
+	font-size: 28px;
+	line-height: 1.15;
+}
+
+.cmp-panel {
+	margin: 18px 0;
+	padding: 18px;
+}
+
+.cmp-panel h2,
+.cmp-panel h3 {
+	margin-top: 0;
+}
+
+.cmp-panel-header {
+	align-items: center;
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	margin-bottom: 16px;
+}
+
+.cmp-grid {
+	display: grid;
+	gap: 18px;
+}
+
+.cmp-grid-2 {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cmp-grid-3 {
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cmp-panel-wide {
+	grid-column: 1 / -1;
+}
+
+.cmp-toolbar {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 16px 0;
+}
+
+.cmp-inline-tools {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.cmp-inline-tools .code,
+.cmp-inline-tools .large-text {
+	flex: 1 1 320px;
+}
+
+.cmp-toolbar input[type="search"],
+.cmp-toolbar select {
+	min-height: 32px;
+	min-width: 190px;
+}
+
+.cmp-form .form-table th {
+	width: 150px;
+}
+
+.cmp-form input[type="number"],
+.cmp-form input[type="date"],
+.cmp-form input[type="datetime-local"],
+.cmp-form select {
+	min-width: 220px;
+}
+
+.cmp-chart {
+	height: 300px;
+	position: relative;
+}
+
+.cmp-chart-large {
+	height: 360px;
+}
+
+.cmp-muted {
+	color: #646970;
+	font-size: 12px;
+}
+
+.cmp-status {
+	border-radius: 999px;
+	display: inline-block;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1;
+	padding: 5px 9px;
+}
+
+.cmp-status-active {
+	background: #d7f7e3;
+	color: #0a6b3f;
+}
+
+.cmp-status-completed {
+	background: #dceeff;
+	color: #135e96;
+}
+
+.cmp-status-dropped {
+	background: #f8d7da;
+	color: #8a2424;
+}
+
+.cmp-actions {
+	white-space: nowrap;
+}
+
+.cmp-actions a {
+	margin-right: 8px;
+}
+
+.cmp-delete-link {
+	color: #b32d2e;
+}
+
+.cmp-detail-grid {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat(3, minmax(160px, 1fr));
+	margin-bottom: 18px;
+}
+
+.cmp-detail-grid p {
+	background: #f6f7f7;
+	border-radius: 6px;
+	margin: 0;
+	padding: 12px;
+}
+
+.cmp-detail-grid span {
+	color: #646970;
+	display: block;
+	font-size: 12px;
+	margin-bottom: 4px;
+}
+
+.cmp-detail-grid strong {
+	color: #1d2327;
+}
+
+.cmp-notes {
+	background: #f6f7f7;
+	border-left: 4px solid #2271b1;
+	margin-bottom: 18px;
+	padding: 12px;
+}
+
+.cmp-link-block {
+	background: #f6f7f7;
+	border: 1px solid #e0e0e0;
+	border-radius: 6px;
+	padding: 16px;
+}
+
+.cmp-page-intro {
+	color: #50575e;
+	margin: 8px 0 0;
+	max-width: 900px;
+}
+
+@media (max-width: 1100px) {
+	.cmp-cards,
+	.cmp-cards-4,
+	.cmp-cards-3,
+	.cmp-grid-3 {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 782px) {
+	.cmp-cards,
+	.cmp-cards-4,
+	.cmp-cards-3,
+	.cmp-grid-2,
+	.cmp-grid-3,
+	.cmp-detail-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.cmp-panel {
+		padding: 14px;
+	}
+
+	.cmp-toolbar {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.cmp-toolbar input[type="search"],
+	.cmp-toolbar select,
+	.cmp-toolbar .button,
+	.cmp-inline-tools input,
+	.cmp-inline-tools .button {
+		width: 100%;
+	}
+
+	.cmp-chart,
+	.cmp-chart-large {
+		height: 280px;
+	}
+}

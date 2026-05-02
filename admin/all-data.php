@@ -44,6 +44,7 @@ function cmp_render_all_data_page() {
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'All Data', 'class-manager-pro' ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Review the complete student dataset with class, batch, and fee details in one place.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
 
 		<form method="get" class="cmp-filter-form cmp-toolbar">
@@ -71,11 +72,12 @@ function cmp_render_all_data_page() {
 					<tr>
 						<th><?php esc_html_e( 'Student Name', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
-						<th><?php esc_html_e( 'Remaining Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
 					</tr>
 				</thead>
 				<tbody class="cmp-all-data-results">

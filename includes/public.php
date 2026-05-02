@@ -48,16 +48,53 @@ function cmp_pop_public_duplicate_warning( $token ) {
 }
 
 /**
+ * Returns the frontend URL for a public batch access token.
+ *
+ * @param string $access_type Access type.
+ * @param string $token Token value.
+ * @return string
+ */
+function cmp_get_public_batch_access_url( $access_type, $token ) {
+	$token       = sanitize_text_field( $token );
+
+	return add_query_arg(
+		array(
+			'token' => $token,
+		),
+		home_url( '/register/' )
+	);
+}
+
+/**
  * Renders the public batch form page when a valid token is present.
  */
 function cmp_maybe_render_public_batch_page() {
-	$token = sanitize_text_field( cmp_field( $_GET, 'cmp_batch_form' ) );
+	$temporary_token = sanitize_text_field( cmp_field( $_GET, 'token' ) );
+	$legacy_token    = sanitize_text_field( cmp_field( $_GET, 'cmp_batch_form' ) );
+	$status          = sanitize_key( cmp_field( $_GET, 'cmp_public_status' ) );
+	$is_success      = 'success' === $status;
+	$access_type     = 'temp';
+	$access_token    = '';
+	$batch           = null;
+	$token_row       = null;
 
-	if ( '' === $token || is_admin() ) {
+	if ( is_admin() || ( '' === $legacy_token && '' === $temporary_token ) ) {
 		return;
 	}
 
-	$batch = cmp_get_batch_by_token( $token );
+	if ( '' !== $legacy_token && '' === $temporary_token ) {
+		status_header( 404 );
+		nocache_headers();
+		cmp_render_public_batch_shell(
+			__( 'Form Not Found', 'class-manager-pro' ),
+			'<div class="cmp-public-page"><section class="cmp-public-panel"><h1>' . esc_html__( 'Form Not Found', 'class-manager-pro' ) . '</h1><p>' . esc_html__( 'Permanent intake links are no longer available. Please use a temporary registration link instead.', 'class-manager-pro' ) . '</p></section></div>'
+		);
+		exit;
+	}
+
+	$token_row    = cmp_get_batch_registration_token_record( $temporary_token, $is_success, $is_success );
+	$batch        = $token_row;
+	$access_token = $temporary_token;
 
 	if ( ! $batch ) {
 		status_header( 404 );
@@ -69,9 +106,18 @@ function cmp_maybe_render_public_batch_page() {
 		exit;
 	}
 
-	$status      = sanitize_key( cmp_field( $_GET, 'cmp_public_status' ) );
+	if ( 'temp' === $access_type && $is_success && ( ! $token_row || empty( $token_row->used_at ) ) ) {
+		status_header( 404 );
+		nocache_headers();
+		cmp_render_public_batch_shell(
+			__( 'Form Not Found', 'class-manager-pro' ),
+			'<div class="cmp-public-page"><section class="cmp-public-panel"><h1>' . esc_html__( 'Form Not Found', 'class-manager-pro' ) . '</h1><p>' . esc_html__( 'This student form link is invalid or expired.', 'class-manager-pro' ) . '</p></section></div>'
+		);
+		exit;
+	}
+
 	$error       = sanitize_text_field( cmp_field( $_GET, 'cmp_public_error' ) );
-	$warning     = cmp_pop_public_duplicate_warning( $token );
+	$warning     = cmp_pop_public_duplicate_warning( $access_token );
 	$batch_fee   = cmp_get_batch_effective_fee( $batch );
 	$content     = '';
 	$form_notice = '';
@@ -82,7 +128,7 @@ function cmp_maybe_render_public_batch_page() {
 		if ( ! empty( $batch->is_free ) ) {
 			$form_notice .= '<p>' . esc_html__( 'Your details are saved in this free batch. No payment is required.', 'class-manager-pro' ) . '</p>';
 		} else {
-			$form_notice .= '<p>' . esc_html__( 'Your details are saved in the batch. Continue to payment if the batch payment link is available below.', 'class-manager-pro' ) . '</p>';
+			$form_notice .= '<p>' . esc_html__( 'Your details are saved in the batch. Continue to payment if the batch Payment Page is available below.', 'class-manager-pro' ) . '</p>';
 		}
 		$form_notice .= '</div>';
 	} elseif ( '' !== $error ) {
@@ -91,6 +137,24 @@ function cmp_maybe_render_public_batch_page() {
 
 	if ( '' !== $warning ) {
 		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-error"><p>' . esc_html( $warning ) . '</p></div>';
+	}
+
+	if ( 'temp' === $access_type && $token_row ) {
+		$form_notice .= '<div class="cmp-public-alert cmp-public-alert-success"><p>';
+		if ( ! empty( $token_row->used_at ) ) {
+			$form_notice .= esc_html__( 'This temporary registration link has already been used successfully.', 'class-manager-pro' );
+		} elseif ( strtotime( (string) $token_row->expires_at ) < current_time( 'timestamp' ) ) {
+			$form_notice .= esc_html__( 'This temporary registration link has expired.', 'class-manager-pro' );
+		} else {
+			$form_notice .= esc_html(
+				sprintf(
+					/* translators: %s: expiry datetime */
+					__( 'This temporary registration link expires at %s.', 'class-manager-pro' ),
+					$token_row->expires_at
+				)
+			);
+		}
+		$form_notice .= '</p></div>';
 	}
 
 	ob_start();
@@ -118,11 +182,17 @@ function cmp_maybe_render_public_batch_page() {
 				<div class="cmp-public-alert cmp-public-alert-error">
 					<p><?php esc_html_e( 'This batch is not accepting new submissions right now.', 'class-manager-pro' ); ?></p>
 				</div>
+			<?php elseif ( 'temp' === $access_type && $token_row && ( ! empty( $token_row->used_at ) || strtotime( (string) $token_row->expires_at ) < current_time( 'timestamp' ) ) && ! $is_success ) : ?>
+				<div class="cmp-public-alert cmp-public-alert-error">
+					<p><?php esc_html_e( 'This temporary registration link is no longer active.', 'class-manager-pro' ); ?></p>
+				</div>
 			<?php elseif ( 'success' !== $status ) : ?>
 				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-public-form">
 					<input type="hidden" name="action" value="cmp_submit_public_batch_form">
-					<input type="hidden" name="batch_token" value="<?php echo esc_attr( $batch->public_token ); ?>">
-					<?php wp_nonce_field( 'cmp_public_batch_form_' . $batch->public_token ); ?>
+					<input type="hidden" name="access_type" value="<?php echo esc_attr( $access_type ); ?>">
+					<input type="hidden" name="access_token" value="<?php echo esc_attr( $access_token ); ?>">
+					<input type="hidden" name="notice_token" value="<?php echo esc_attr( $access_token ); ?>">
+					<?php wp_nonce_field( 'cmp_public_batch_form_' . $access_token ); ?>
 
 					<div class="cmp-public-grid">
 						<label>
@@ -176,23 +246,36 @@ function cmp_maybe_render_public_batch_page() {
  * Handles public batch form submissions.
  */
 function cmp_handle_public_batch_form_submission() {
-	$token = sanitize_text_field( cmp_field( $_POST, 'batch_token' ) );
-	$batch = cmp_get_batch_by_token( $token );
+	$access_type  = sanitize_key( cmp_field( $_POST, 'access_type', 'temp' ) );
+	$access_token = sanitize_text_field( cmp_field( $_POST, 'access_token' ) );
+	$token_row    = 'temp' === $access_type ? cmp_get_batch_registration_token_record( $access_token ) : null;
+	$batch        = $token_row;
 
 	if ( ! $batch ) {
 		wp_die( esc_html__( 'Invalid batch form.', 'class-manager-pro' ) );
 	}
 
-	check_admin_referer( 'cmp_public_batch_form_' . $token );
+	check_admin_referer( 'cmp_public_batch_form_' . $access_token );
 
 	if ( 'active' !== $batch->status ) {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'cmp_batch_form'   => $token,
 					'cmp_public_error' => __( 'This batch is not accepting new submissions.', 'class-manager-pro' ),
 				),
-				home_url( '/' )
+				cmp_get_public_batch_access_url( $access_type, $access_token )
+			)
+		);
+		exit;
+	}
+
+	if ( 'temp' === $access_type && ( ! $token_row || ! empty( $token_row->used_at ) || strtotime( (string) $token_row->expires_at ) < current_time( 'timestamp' ) ) ) {
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'cmp_public_error' => __( 'This temporary registration link is invalid or expired.', 'class-manager-pro' ),
+				),
+				cmp_get_public_batch_access_url( $access_type, $access_token )
 			)
 		);
 		exit;
@@ -204,22 +287,24 @@ function cmp_handle_public_batch_form_submission() {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
-					'cmp_batch_form'   => $token,
 					'cmp_public_error' => $result->get_error_message(),
 				),
-				home_url( '/' )
+				cmp_get_public_batch_access_url( $access_type, $access_token )
 			)
 		);
 		exit;
 	}
 
+	if ( 'temp' === $access_type ) {
+		cmp_mark_batch_registration_token_used( $access_token, (int) $result );
+	}
+
 	wp_safe_redirect(
 		add_query_arg(
 			array(
-				'cmp_batch_form'    => $token,
 				'cmp_public_status' => 'success',
 			),
-			home_url( '/' )
+			cmp_get_public_batch_access_url( $access_type, $access_token )
 		)
 	);
 	exit;

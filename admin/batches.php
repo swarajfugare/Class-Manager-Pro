@@ -21,7 +21,6 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 	$courses         = cmp_get_tutor_courses();
 	$teachers        = cmp_get_teacher_users( $is_edit ? (int) $batch->teacher_user_id : 0 );
 	$status          = $is_edit ? $batch->status : 'active';
-	$public_form_url = $is_edit ? cmp_get_batch_public_form_url( $batch ) : '';
 	?>
 	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
 		<input type="hidden" name="action" value="cmp_save_batch">
@@ -32,6 +31,10 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 		<?php wp_nonce_field( 'cmp_save_batch' ); ?>
 
 		<table class="form-table" role="presentation">
+			<tr>
+				<th scope="row"><label for="cmp-batch-name"><?php esc_html_e( 'Batch Name', 'class-manager-pro' ); ?></label></th>
+				<td><input type="text" id="cmp-batch-name" name="batch_name" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->batch_name : '' ); ?>" required></td>
+			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-batch-class"><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></label></th>
 				<td>
@@ -44,11 +47,18 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-batch-name"><?php esc_html_e( 'Batch Name', 'class-manager-pro' ); ?></label></th>
-				<td><input type="text" id="cmp-batch-name" name="batch_name" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->batch_name : '' ); ?>" required></td>
+				<th scope="row"><label for="cmp-batch-teacher"><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<select id="cmp-batch-teacher" name="teacher_user_id">
+						<option value="0"><?php esc_html_e( 'No teacher assigned', 'class-manager-pro' ); ?></option>
+						<?php foreach ( $teachers as $teacher ) : ?>
+							<option value="<?php echo esc_attr( (int) $teacher->ID ); ?>" <?php selected( $is_edit ? (int) $batch->teacher_user_id : 0, (int) $teacher->ID ); ?>><?php echo esc_html( sprintf( '%1$s (#%2$d)', $teacher->display_name, (int) $teacher->ID ) ); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-batch-course"><?php esc_html_e( 'Select Tutor LMS Course', 'class-manager-pro' ); ?></label></th>
+				<th scope="row"><label for="cmp-batch-course"><?php esc_html_e( 'Tutor LMS Course', 'class-manager-pro' ); ?></label></th>
 				<td>
 					<select id="cmp-batch-course" name="course_id">
 						<option value="0"><?php esc_html_e( 'No Tutor LMS course linked', 'class-manager-pro' ); ?></option>
@@ -58,7 +68,7 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 					</select>
 					<p class="description">
 						<?php if ( cmp_is_tutor_lms_available() ) : ?>
-							<?php esc_html_e( 'Students added to this batch are automatically linked to WordPress users and enrolled into the selected Tutor LMS course.', 'class-manager-pro' ); ?>
+							<?php esc_html_e( 'Students added to this batch are enrolled automatically in the selected Tutor LMS course.', 'class-manager-pro' ); ?>
 						<?php else : ?>
 							<?php esc_html_e( 'Tutor LMS is not active right now. You can still save the batch and link a course later.', 'class-manager-pro' ); ?>
 						<?php endif; ?>
@@ -66,64 +76,8 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-batch-teacher"><?php esc_html_e( 'Select Teacher', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<select id="cmp-batch-teacher" name="teacher_user_id">
-						<option value="0"><?php esc_html_e( 'No teacher assigned', 'class-manager-pro' ); ?></option>
-						<?php foreach ( $teachers as $teacher ) : ?>
-							<option value="<?php echo esc_attr( (int) $teacher->ID ); ?>" <?php selected( $is_edit ? (int) $batch->teacher_user_id : 0, (int) $teacher->ID ); ?>><?php echo esc_html( sprintf( '%1$s (#%2$d)', $teacher->display_name, (int) $teacher->ID ) ); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<p class="description"><?php esc_html_e( 'Tutor LMS instructors are loaded from the Tutor instructor role first and then by instructor capabilities if needed.', 'class-manager-pro' ); ?></p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-fee"><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<input type="number" id="cmp-batch-fee" name="batch_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? cmp_get_batch_effective_fee( $batch ) : '' ); ?>">
-					<p class="description"><?php esc_html_e( 'This fee is now the live pricing source for new students in the batch. Class fee acts only as a fallback default.', 'class-manager-pro' ); ?></p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-manual-income"><?php esc_html_e( 'Manual Income', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<input type="number" id="cmp-batch-manual-income" name="manual_income" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? (float) $batch->manual_income : '' ); ?>">
-					<p class="description"><?php esc_html_e( 'Use this for old/offline batches where you want income shown without entering every student.', 'class-manager-pro' ); ?></p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-is-free"><?php esc_html_e( 'Free Class Batch', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<label>
-						<input type="checkbox" id="cmp-batch-is-free" name="is_free" value="1" <?php checked( $is_edit && ! empty( $batch->is_free ), true ); ?>>
-						<?php esc_html_e( 'This is a free batch. Use the form only to collect student details, with no payment required.', 'class-manager-pro' ); ?>
-					</label>
-				</td>
-			</tr>
-			<tr>
 				<th scope="row"><label for="cmp-batch-start-date"><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></label></th>
 				<td><input type="date" id="cmp-batch-start-date" name="start_date" value="<?php echo esc_attr( $is_edit ? $batch->start_date : '' ); ?>"></td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-intake-limit"><?php esc_html_e( 'Intake', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<input type="number" id="cmp-batch-intake-limit" name="intake_limit" min="0" step="1" value="<?php echo esc_attr( $is_edit ? (int) $batch->intake_limit : '' ); ?>">
-					<p class="description"><?php esc_html_e( 'Optional batch seat/intake target for planning.', 'class-manager-pro' ); ?></p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-class-days"><?php esc_html_e( 'Days', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<input type="text" id="cmp-batch-class-days" name="class_days" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->class_days : '' ); ?>" placeholder="<?php esc_attr_e( 'Mon, Wed, Fri', 'class-manager-pro' ); ?>">
-					<p class="description"><?php esc_html_e( 'Class days shown to admin and teacher for this batch.', 'class-manager-pro' ); ?></p>
-				</td>
-			</tr>
-			<tr>
-				<th scope="row"><label for="cmp-batch-fee-due-date"><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></label></th>
-				<td>
-					<input type="date" id="cmp-batch-fee-due-date" name="fee_due_date" value="<?php echo esc_attr( $is_edit ? $batch->fee_due_date : '' ); ?>">
-					<p class="description"><?php esc_html_e( 'Automatic reminders use this date to decide when to notify students with pending fees.', 'class-manager-pro' ); ?></p>
-				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-batch-status"><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></label></th>
@@ -136,35 +90,130 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-batch-razorpay-link"><?php esc_html_e( 'Razorpay Page Link', 'class-manager-pro' ); ?></label></th>
+				<th scope="row"><label for="cmp-batch-fee"><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></label></th>
 				<td>
-					<input type="url" id="cmp-batch-razorpay-link" name="razorpay_link" class="large-text" value="<?php echo esc_attr( $is_edit ? $batch->razorpay_link : '' ); ?>" placeholder="https://rzp.io/...">
-					<p class="description"><?php esc_html_e( 'Students fill the batch intake form first, then continue to this payment link. Matching happens by the saved batch mapping plus the student phone/email.', 'class-manager-pro' ); ?></p>
+					<input type="number" id="cmp-batch-fee" name="batch_fee" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? cmp_get_batch_effective_fee( $batch ) : '' ); ?>">
+					<p class="description"><?php esc_html_e( 'Used as the default fee for new students in this batch.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-batch-razorpay-page-id"><?php esc_html_e( 'Razorpay Page ID', 'class-manager-pro' ); ?></label></th>
+				<th scope="row"><label for="cmp-batch-fee-due-date"><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></label></th>
 				<td>
-					<input type="text" id="cmp-batch-razorpay-page-id" name="razorpay_page_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->razorpay_page_id : '' ); ?>" placeholder="plink_xxx">
-					<p class="description"><?php esc_html_e( 'Optional. The importer fills this automatically when data comes from Razorpay. You can also save it manually for stronger matching.', 'class-manager-pro' ); ?></p>
+					<input type="date" id="cmp-batch-fee-due-date" name="fee_due_date" value="<?php echo esc_attr( $is_edit ? $batch->fee_due_date : '' ); ?>">
+					<p class="description"><?php esc_html_e( 'Automatic reminder emails use this date for pending-fee students.', 'class-manager-pro' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-razorpay-page-id"><?php esc_html_e( 'Razorpay Payment Page ID', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<input type="text" id="cmp-batch-razorpay-page-id" name="razorpay_page_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->razorpay_page_id : '' ); ?>" placeholder="pp_xxx">
+					<p class="description"><?php esc_html_e( 'Save the Payment Page ID here, then use Import Students to pull captured payments into this batch.', 'class-manager-pro' ); ?></p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-intake-limit"><?php esc_html_e( 'Max Students', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<input type="number" id="cmp-batch-intake-limit" name="intake_limit" min="0" step="1" value="<?php echo esc_attr( $is_edit ? (int) $batch->intake_limit : '' ); ?>">
+					<p class="description">
+						<?php
+						echo esc_html(
+							$is_edit
+								? sprintf(
+									/* translators: 1: current students 2: maximum students */
+									__( 'Current students: %1$d. Max students: %2$d. Imports and manual adds stop when this limit is reached. Leave empty or 0 for no limit.', 'class-manager-pro' ),
+									(int) cmp_get_batch_student_count( (int) $batch->id ),
+									(int) $batch->intake_limit
+								)
+								: __( 'Imports and manual adds stop when this limit is reached. Leave empty or 0 for no limit.', 'class-manager-pro' )
+						);
+						?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-class-days"><?php esc_html_e( 'Days', 'class-manager-pro' ); ?></label></th>
+				<td><input type="text" id="cmp-batch-class-days" name="class_days" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->class_days : '' ); ?>" placeholder="<?php esc_attr_e( 'Mon, Wed, Fri', 'class-manager-pro' ); ?>"></td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-manual-income"><?php esc_html_e( 'Manual Income', 'class-manager-pro' ); ?></label></th>
+				<td><input type="number" id="cmp-batch-manual-income" name="manual_income" min="0" step="0.01" value="<?php echo esc_attr( $is_edit ? (float) $batch->manual_income : '' ); ?>"></td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-is-free"><?php esc_html_e( 'Free Batch', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<label>
+						<input type="checkbox" id="cmp-batch-is-free" name="is_free" value="1" <?php checked( $is_edit && ! empty( $batch->is_free ), true ); ?>>
+						<?php esc_html_e( 'Students fill the intake form without Razorpay payment.', 'class-manager-pro' ); ?>
+					</label>
 				</td>
 			</tr>
 			<?php if ( $is_edit ) : ?>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Student Form Link', 'class-manager-pro' ); ?></th>
-					<td>
-						<div class="cmp-inline-tools">
-							<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $public_form_url ); ?>" id="cmp-batch-public-link-<?php echo esc_attr( (int) $batch->id ); ?>">
-							<button type="button" class="button" data-cmp-copy-target="#cmp-batch-public-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
-							<a class="button" href="<?php echo esc_url( $public_form_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Form', 'class-manager-pro' ); ?></a>
-						</div>
-					</td>
-				</tr>
+				<?php if ( ! empty( $batch->razorpay_link ) ) : ?>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Payment Page URL', 'class-manager-pro' ); ?></th>
+						<td>
+							<div class="cmp-inline-tools">
+								<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $batch->razorpay_link ); ?>" id="cmp-batch-razorpay-url-<?php echo esc_attr( (int) $batch->id ); ?>">
+								<button type="button" class="button" data-cmp-copy-target="#cmp-batch-razorpay-url-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy URL', 'class-manager-pro' ); ?></button>
+								<a class="button" href="<?php echo esc_url( $batch->razorpay_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Page', 'class-manager-pro' ); ?></a>
+							</div>
+						</td>
+					</tr>
+				<?php endif; ?>
 			<?php endif; ?>
 		</table>
 
 		<?php submit_button( $is_edit ? __( 'Update Batch', 'class-manager-pro' ) : __( 'Add Batch', 'class-manager-pro' ) ); ?>
 	</form>
+	<?php
+}
+
+/**
+ * Renders the batch import tools panel.
+ *
+ * @param object $batch Batch row.
+ * @param string $return_page Return page.
+ * @param string $return_action Return action.
+ */
+function cmp_render_batch_import_tools( $batch, $return_page = 'cmp-batches', $return_action = 'view' ) {
+	$import_workspace_url = cmp_admin_url(
+		'cmp-razorpay-import',
+		array(
+			'class_id'         => (int) $batch->class_id,
+			'batch_id'         => (int) $batch->id,
+			'razorpay_page_id' => $batch->razorpay_page_id,
+		)
+	);
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Use the saved Payment Page ID to create or update students in this batch and store only new payment IDs.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
+		<?php if ( empty( $batch->razorpay_page_id ) ) : ?>
+			<div class="cmp-callout cmp-callout-warning">
+				<p><?php esc_html_e( 'Save a Razorpay Payment Page ID on this batch before importing students.', 'class-manager-pro' ); ?></p>
+			</div>
+		<?php else : ?>
+			<div class="cmp-toolbar">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form" data-cmp-ajax-import="razorpay-page" data-cmp-feedback="#cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>">
+					<input type="hidden" name="action" value="cmp_import_razorpay_page_to_batch">
+					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+					<input type="hidden" name="razorpay_page_id" value="<?php echo esc_attr( $batch->razorpay_page_id ); ?>">
+					<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
+					<input type="hidden" name="return_action" value="<?php echo esc_attr( $return_action ); ?>">
+					<?php wp_nonce_field( 'cmp_import_razorpay_page_to_batch' ); ?>
+					<?php submit_button( __( 'Import Students', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
+				</form>
+				<a class="button" href="<?php echo esc_url( $import_workspace_url ); ?>"><?php esc_html_e( 'Preview Payments', 'class-manager-pro' ); ?></a>
+				<a class="button" href="<?php echo esc_url( $import_workspace_url . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import CSV / Excel', 'class-manager-pro' ); ?></a>
+			</div>
+			<p class="cmp-muted" id="cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Imports run without leaving this batch workspace.', 'class-manager-pro' ); ?></p>
+		<?php endif; ?>
+	</section>
 	<?php
 }
 
@@ -176,26 +225,95 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
  * @return void
  */
 function cmp_render_batch_attendance_panel( $batch, $return_page = 'cmp-batches' ) {
-	$date    = sanitize_text_field( cmp_field( $_GET, 'attendance_date', current_time( 'Y-m-d' ) ) );
-	$students = cmp_get_students( array( 'batch_id' => (int) $batch->id ) );
-	$records  = cmp_get_batch_attendance( (int) $batch->id, $date );
-	$summary  = cmp_get_batch_attendance_summary( (int) $batch->id, $date );
-	$default  = (string) get_option( 'cmp_default_attendance_status', 'present' );
+	$date              = sanitize_text_field( cmp_field( $_GET, 'attendance_date', current_time( 'Y-m-d' ) ) );
+	$students          = cmp_get_students( array( 'batch_id' => (int) $batch->id ) );
+	$records           = cmp_get_batch_attendance( (int) $batch->id, $date );
+	$summary           = cmp_get_batch_attendance_summary( (int) $batch->id, $date );
+	$default           = 'present';
+	$teacher_user_id   = absint( cmp_field( $_GET, 'teacher_user_id', 0 ) );
+	$date_strip        = cmp_get_batch_attendance_date_strip( (int) $batch->id, $date, 14 );
+	$load_date_args    = array(
+		'id'              => (int) $batch->id,
+		'attendance_date' => $date,
+	);
+	$status_labels     = array(
+		'present' => __( 'Present', 'class-manager-pro' ),
+		'absent'  => __( 'Absent', 'class-manager-pro' ),
+		'leave'   => __( 'Leave', 'class-manager-pro' ),
+	);
+
+	if ( 'cmp-teacher-console' === $return_page ) {
+		$load_date_args['teacher_view'] = 'attendance';
+
+		if ( $teacher_user_id ) {
+			$load_date_args['teacher_user_id'] = $teacher_user_id;
+		}
+	} else {
+		$load_date_args['action'] = 'view';
+		$load_date_args['tab']    = 'attendance';
+	}
 	?>
 	<section class="cmp-panel">
 		<div class="cmp-panel-header">
 			<div>
-				<h3><?php esc_html_e( 'Attendance Quick View', 'class-manager-pro' ); ?></h3>
-				<p class="cmp-muted"><?php esc_html_e( 'Mark batch attendance for the selected date and review the daily summary without leaving this batch workspace.', 'class-manager-pro' ); ?></p>
+				<h2><?php esc_html_e( 'Attendance Workspace', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted">
+					<?php esc_html_e( 'Choose a date, check the saved dots, and mark each student with simple attendance buttons.', 'class-manager-pro' ); ?>
+					<?php if ( current_user_can( 'manage_options' ) ) : ?>
+						<?php esc_html_e( ' Admins can edit any saved attendance from here.', 'class-manager-pro' ); ?>
+					<?php endif; ?>
+				</p>
 			</div>
 			<form method="get" class="cmp-inline-form">
 				<input type="hidden" name="page" value="<?php echo esc_attr( $return_page ); ?>">
-				<input type="hidden" name="action" value="view">
 				<input type="hidden" name="id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+				<?php if ( 'cmp-teacher-console' === $return_page ) : ?>
+					<input type="hidden" name="teacher_view" value="attendance">
+					<?php if ( $teacher_user_id ) : ?>
+						<input type="hidden" name="teacher_user_id" value="<?php echo esc_attr( $teacher_user_id ); ?>">
+					<?php endif; ?>
+				<?php else : ?>
+					<input type="hidden" name="action" value="view">
+					<input type="hidden" name="tab" value="attendance">
+				<?php endif; ?>
 				<input type="date" name="attendance_date" value="<?php echo esc_attr( $date ); ?>">
 				<button type="submit" class="button"><?php esc_html_e( 'Load Date', 'class-manager-pro' ); ?></button>
 			</form>
 		</div>
+
+		<div class="cmp-attendance-date-strip" aria-label="<?php esc_attr_e( 'Recent attendance dates', 'class-manager-pro' ); ?>">
+			<?php foreach ( $date_strip as $date_item ) : ?>
+				<?php
+				$item_args = $load_date_args;
+				$item_args['attendance_date'] = $date_item['date'];
+				$item_classes = 'cmp-attendance-date-pill';
+
+				if ( ! empty( $date_item['is_selected'] ) ) {
+					$item_classes .= ' is-active';
+				}
+
+				if ( ! empty( $date_item['has_records'] ) ) {
+					$item_classes .= ' is-recorded';
+				}
+
+				$item_title = ! empty( $date_item['has_records'] )
+					? sprintf(
+						/* translators: 1: present count 2: absent count 3: leave count */
+						__( 'Present: %1$d, Absent: %2$d, Leave: %3$d', 'class-manager-pro' ),
+						(int) $date_item['summary']['present'],
+						(int) $date_item['summary']['absent'],
+						(int) $date_item['summary']['leave']
+					)
+					: __( 'No attendance saved yet.', 'class-manager-pro' );
+				?>
+				<a class="<?php echo esc_attr( $item_classes ); ?>" href="<?php echo esc_url( cmp_admin_url( $return_page, $item_args ) ); ?>" title="<?php echo esc_attr( $item_title ); ?>">
+					<span><?php echo esc_html( $date_item['day_label'] ); ?></span>
+					<strong><?php echo esc_html( $date_item['date_label'] ); ?></strong>
+					<i class="cmp-attendance-dot<?php echo ! empty( $date_item['has_records'] ) ? ' is-visible' : ''; ?>" data-cmp-attendance-date-dot="<?php echo esc_attr( $date_item['date'] ); ?>"></i>
+				</a>
+			<?php endforeach; ?>
+		</div>
+		<p class="cmp-muted"><?php esc_html_e( 'A small dot means attendance is already saved for that date.', 'class-manager-pro' ); ?></p>
 
 		<div class="cmp-cards cmp-cards-3">
 			<div class="cmp-card">
@@ -220,36 +338,52 @@ function cmp_render_batch_attendance_panel( $batch, $return_page = 'cmp-batches'
 				<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
 				<input type="hidden" name="attendance_date" value="<?php echo esc_attr( $date ); ?>">
 				<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
+				<?php if ( 'cmp-teacher-console' === $return_page ) : ?>
+					<input type="hidden" name="teacher_view" value="attendance">
+					<?php if ( $teacher_user_id ) : ?>
+						<input type="hidden" name="teacher_user_id" value="<?php echo esc_attr( $teacher_user_id ); ?>">
+					<?php endif; ?>
+				<?php endif; ?>
 				<?php wp_nonce_field( 'cmp_save_attendance' ); ?>
 
-				<div class="cmp-table-scroll">
-					<table class="widefat striped cmp-attendance-table">
-						<thead>
-							<tr>
-								<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php foreach ( $students as $student ) : ?>
-								<?php $record = isset( $records[ (int) $student->id ] ) ? $records[ (int) $student->id ] : null; ?>
-								<tr>
-									<td><?php echo esc_html( $student->name ); ?><br><span class="cmp-muted"><?php echo esc_html( $student->unique_id ); ?></span></td>
-									<td><?php echo esc_html( $student->phone ); ?></td>
-									<td>
-										<select name="attendance[<?php echo esc_attr( (int) $student->id ); ?>][status]">
-											<?php foreach ( cmp_attendance_statuses() as $status ) : ?>
-												<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $record ? $record->status : $default, $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
-											<?php endforeach; ?>
-										</select>
-									</td>
-									<td><input type="text" name="attendance[<?php echo esc_attr( (int) $student->id ); ?>][notes]" value="<?php echo esc_attr( $record ? $record->notes : '' ); ?>" class="large-text"></td>
-								</tr>
-							<?php endforeach; ?>
-						</tbody>
-					</table>
+				<div class="cmp-attendance-grid">
+					<?php foreach ( $students as $student ) : ?>
+						<?php
+						$record         = isset( $records[ (int) $student->id ] ) ? $records[ (int) $student->id ] : null;
+						$current_status = $record ? $record->status : $default;
+						?>
+						<article class="cmp-attendance-student-card">
+							<div class="cmp-attendance-student-head">
+								<div>
+									<h3><?php echo esc_html( $student->name ); ?></h3>
+									<p class="cmp-muted"><?php echo esc_html( $student->unique_id ); ?></p>
+								</div>
+								<div class="cmp-attendance-student-meta">
+									<span><?php echo esc_html( $student->phone ? $student->phone : __( 'Phone not set', 'class-manager-pro' ) ); ?></span>
+									<?php if ( ! empty( $student->email ) ) : ?>
+										<span><?php echo esc_html( $student->email ); ?></span>
+									<?php endif; ?>
+								</div>
+							</div>
+
+							<div class="cmp-attendance-options" data-cmp-attendance-toggle="1">
+								<input type="hidden" name="attendance[<?php echo esc_attr( (int) $student->id ); ?>][status]" value="<?php echo esc_attr( $current_status ); ?>" data-cmp-attendance-status-input>
+								<?php foreach ( cmp_attendance_statuses() as $status ) : ?>
+									<?php
+									$option_classes = 'button cmp-attendance-option';
+
+									if ( $current_status === $status ) {
+										$option_classes .= ' is-selected is-' . sanitize_html_class( $status );
+									}
+									?>
+									<button type="button" class="<?php echo esc_attr( $option_classes ); ?>" data-cmp-attendance-set="<?php echo esc_attr( $status ); ?>">
+										<?php echo esc_html( isset( $status_labels[ $status ] ) ? $status_labels[ $status ] : ucfirst( $status ) ); ?>
+									</button>
+								<?php endforeach; ?>
+							</div>
+
+						</article>
+					<?php endforeach; ?>
 				</div>
 
 				<p class="cmp-muted" data-cmp-attendance-feedback><?php esc_html_e( 'Attendance updates save directly to this batch.', 'class-manager-pro' ); ?></p>
@@ -261,66 +395,504 @@ function cmp_render_batch_attendance_panel( $batch, $return_page = 'cmp-batches'
 }
 
 /**
+ * Renders the batch students tab.
+ *
+ * @param object $batch Batch row.
+ */
+function cmp_render_batch_students_tab( $batch ) {
+	$students = cmp_get_students( array( 'batch_id' => (int) $batch->id ) );
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Manage students for this batch from one focused workspace.', 'class-manager-pro' ); ?></p>
+			</div>
+			<div class="cmp-toolbar">
+				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'class_id' => (int) $batch->class_id, 'batch_id' => (int) $batch->id ) ) ); ?>#cmp-add-student"><?php esc_html_e( 'Add Student', 'class-manager-pro' ); ?></a>
+				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'class_id' => (int) $batch->class_id, 'batch_id' => (int) $batch->id ) ) ); ?>"><?php esc_html_e( 'Open Full Student List', 'class-manager-pro' ); ?></a>
+				<span class="cmp-muted" id="cmp-batch-students-feedback"></span>
+			</div>
+		</div>
+
+		<div class="cmp-table-scroll">
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if ( empty( $students ) ) : ?>
+						<tr><td colspan="6"><?php esc_html_e( 'No students in this batch yet.', 'class-manager-pro' ); ?></td></tr>
+					<?php else : ?>
+						<?php foreach ( $students as $student ) : ?>
+							<?php
+							$email_url    = cmp_get_email_reminder_url(
+								$student,
+								'cmp-batches',
+								array(
+									'action' => 'view',
+									'id'     => (int) $batch->id,
+									'tab'    => 'students',
+								)
+							);
+							$whatsapp_url = cmp_get_whatsapp_reminder_url( $student );
+							$view_url     = cmp_admin_url( 'cmp-students', array( 'action' => 'view', 'id' => (int) $student->id ) );
+							?>
+							<tr>
+								<td><?php echo esc_html( $student->name ); ?><br><span class="cmp-muted"><?php echo esc_html( $student->unique_id ); ?></span></td>
+								<td><?php echo esc_html( $student->phone ); ?></td>
+								<td><?php echo esc_html( $student->email ? $student->email : __( 'Not set', 'class-manager-pro' ) ); ?></td>
+								<td><?php echo esc_html( cmp_format_money( $student->paid_fee ) ); ?></td>
+								<td><?php echo esc_html( cmp_format_money( max( 0, (float) $student->total_fee - (float) $student->paid_fee ) ) ); ?></td>
+								<td class="cmp-actions">
+									<a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View', 'class-manager-pro' ); ?></a>
+									<?php if ( $email_url ) : ?>
+										<a class="cmp-send-email-link" href="<?php echo esc_url( $email_url ); ?>" data-cmp-send-email="1" data-cmp-student-id="<?php echo esc_attr( (int) $student->id ); ?>" data-cmp-feedback="#cmp-batch-students-feedback"><?php esc_html_e( 'Send Email', 'class-manager-pro' ); ?></a>
+									<?php endif; ?>
+									<?php if ( $whatsapp_url ) : ?>
+										<a href="<?php echo esc_url( $whatsapp_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'WhatsApp', 'class-manager-pro' ); ?></a>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
+		</div>
+	</section>
+	<?php
+}
+
+/**
+ * Renders the batch expenses tab.
+ *
+ * @param object $batch Batch row.
+ * @param array  $metrics Batch metrics.
+ * @return void
+ */
+function cmp_render_batch_expenses_tab( $batch, $metrics ) {
+	$totals            = cmp_get_batch_expense_totals( (int) $batch->id );
+	$expenses          = cmp_get_batch_expenses( (int) $batch->id );
+	$category_labels   = cmp_expense_category_labels();
+	$default_date      = current_time( 'Y-m-d' );
+	$expenses_count    = count( $expenses );
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Track teacher payment, Meta ads spend, ads material cost, and other expenses directly inside this batch.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
+		<div class="cmp-cards cmp-cards-3">
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Teacher Payment', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $totals['teacher_payment'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Meta Ads Spend', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $totals['meta_ads'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Ads Material Cost', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $totals['ad_material'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Other Expenses', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $totals['other'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Total Expense', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $totals['total_expense'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
+			</div>
+		</div>
+
+		<div class="cmp-grid cmp-grid-2">
+			<section class="cmp-panel cmp-panel-nested">
+				<div class="cmp-panel-header">
+					<div>
+						<h3><?php esc_html_e( 'Add Expense', 'class-manager-pro' ); ?></h3>
+						<p class="cmp-muted"><?php esc_html_e( 'Save each spend entry against the correct category so batch profitability stays accurate.', 'class-manager-pro' ); ?></p>
+					</div>
+				</div>
+
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+					<input type="hidden" name="action" value="cmp_save_expense">
+					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+					<input type="hidden" name="return_tab" value="expenses">
+					<?php wp_nonce_field( 'cmp_save_expense' ); ?>
+
+					<table class="form-table" role="presentation">
+						<tr>
+							<th scope="row"><label for="cmp-expense-category"><?php esc_html_e( 'Category', 'class-manager-pro' ); ?></label></th>
+							<td>
+								<select id="cmp-expense-category" name="category">
+									<?php foreach ( $category_labels as $category_key => $category_label ) : ?>
+										<option value="<?php echo esc_attr( $category_key ); ?>"><?php echo esc_html( $category_label ); ?></option>
+									<?php endforeach; ?>
+								</select>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="cmp-expense-amount"><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></label></th>
+							<td><input type="number" id="cmp-expense-amount" name="amount" min="0" step="0.01" required></td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="cmp-expense-date"><?php esc_html_e( 'Expense Date', 'class-manager-pro' ); ?></label></th>
+							<td><input type="date" id="cmp-expense-date" name="expense_date" value="<?php echo esc_attr( $default_date ); ?>"></td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="cmp-expense-notes"><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></label></th>
+							<td><textarea id="cmp-expense-notes" name="notes" rows="4" class="large-text" placeholder="<?php esc_attr_e( 'Add a short note for this expense entry', 'class-manager-pro' ); ?>"></textarea></td>
+						</tr>
+					</table>
+
+					<?php submit_button( __( 'Save Expense', 'class-manager-pro' ) ); ?>
+				</form>
+			</section>
+
+			<section class="cmp-panel cmp-panel-nested">
+				<div class="cmp-panel-header">
+					<div>
+						<h3><?php esc_html_e( 'Expense Summary', 'class-manager-pro' ); ?></h3>
+						<p class="cmp-muted"><?php echo esc_html( sprintf( _n( '%d expense entry recorded for this batch.', '%d expense entries recorded for this batch.', $expenses_count, 'class-manager-pro' ), $expenses_count ) ); ?></p>
+					</div>
+				</div>
+
+				<div class="cmp-detail-grid">
+					<p><span><?php esc_html_e( 'Collected Revenue', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['revenue'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Pending Fees', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['pending_fee'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Teacher Payment', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['teacher_payment'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Ads Spend', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['ads_spend'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Other Expenses', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['other'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong></p>
+				</div>
+			</section>
+		</div>
+
+		<section class="cmp-panel cmp-panel-nested">
+			<div class="cmp-panel-header">
+				<div>
+					<h3><?php esc_html_e( 'Expense Entries', 'class-manager-pro' ); ?></h3>
+					<p class="cmp-muted"><?php esc_html_e( 'Review every expense entry saved for this batch.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+
+			<div class="cmp-table-scroll">
+				<table class="widefat striped">
+					<thead>
+						<tr>
+							<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Category', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php if ( empty( $expenses ) ) : ?>
+							<tr><td colspan="5"><?php esc_html_e( 'No expense entries added for this batch yet.', 'class-manager-pro' ); ?></td></tr>
+						<?php else : ?>
+							<?php foreach ( $expenses as $expense ) : ?>
+								<?php
+								$delete_url = wp_nonce_url(
+									admin_url(
+										'admin-post.php?action=cmp_delete_expense&id=' . (int) $expense->id . '&batch_id=' . (int) $batch->id . '&tab=expenses'
+									),
+									'cmp_delete_expense_' . (int) $expense->id
+								);
+								?>
+								<tr>
+									<td><?php echo esc_html( $expense->expense_date ); ?></td>
+									<td><?php echo esc_html( isset( $category_labels[ $expense->category ] ) ? $category_labels[ $expense->category ] : ucfirst( str_replace( '_', ' ', $expense->category ) ) ); ?></td>
+									<td><?php echo esc_html( $expense->notes ? $expense->notes : __( 'No notes', 'class-manager-pro' ) ); ?></td>
+									<td><?php echo esc_html( cmp_format_money( $expense->amount ) ); ?></td>
+									<td class="cmp-actions">
+										<a class="cmp-delete-link" href="<?php echo esc_url( $delete_url ); ?>" data-cmp-confirm="<?php esc_attr_e( 'Delete this expense entry?', 'class-manager-pro' ); ?>"><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></a>
+									</td>
+								</tr>
+							<?php endforeach; ?>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</div>
+		</section>
+	</section>
+	<?php
+}
+
+/**
+ * Renders the batch registration links panel.
+ *
+ * @param object $batch Batch row.
+ * @return void
+ */
+function cmp_render_batch_registration_links_panel( $batch ) {
+	$temp_token      = cmp_get_batch_registration_token_for_batch( (int) $batch->id );
+	$temp_link_url   = $temp_token ? cmp_get_batch_temporary_registration_url( $temp_token ) : '';
+	?>
+	<section class="cmp-panel" id="cmp-batch-registration-links">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Registration Links', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Generate a temporary registration link that stays active for 10 minutes from creation time unless you close it earlier.', 'class-manager-pro' ); ?></p>
+			</div>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+				<input type="hidden" name="action" value="cmp_generate_batch_registration_link">
+				<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+				<?php wp_nonce_field( 'cmp_generate_batch_registration_link_' . (int) $batch->id ); ?>
+				<button type="submit" class="button button-primary"><?php esc_html_e( 'Generate Link', 'class-manager-pro' ); ?></button>
+			</form>
+		</div>
+
+		<section class="cmp-panel cmp-panel-nested">
+			<div class="cmp-panel-header">
+				<div>
+					<h3><?php esc_html_e( 'Temporary Registration Link', 'class-manager-pro' ); ?></h3>
+					<p class="cmp-muted"><?php esc_html_e( 'Only temporary registration links are available for this batch.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+
+			<?php if ( $temp_token && $temp_link_url ) : ?>
+				<div class="cmp-inline-tools">
+					<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $temp_link_url ); ?>" id="cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>">
+					<button type="button" class="button" data-cmp-copy-target="#cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
+					<a class="button" href="<?php echo esc_url( $temp_link_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Form', 'class-manager-pro' ); ?></a>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+						<input type="hidden" name="action" value="cmp_close_batch_registration_link">
+						<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+						<?php wp_nonce_field( 'cmp_close_batch_registration_link_' . (int) $batch->id ); ?>
+						<button type="submit" class="button"><?php esc_html_e( 'Close Link', 'class-manager-pro' ); ?></button>
+					</form>
+				</div>
+				<p class="description">
+					<?php
+					echo esc_html(
+						sprintf(
+							/* translators: %s: expiry datetime */
+							__( 'Active until %s.', 'class-manager-pro' ),
+							$temp_token->expires_at
+						)
+					);
+					?>
+				</p>
+			<?php else : ?>
+				<p><?php esc_html_e( 'No active temporary registration link is available right now.', 'class-manager-pro' ); ?></p>
+			<?php endif; ?>
+		</section>
+	</section>
+	<?php
+}
+
+/**
+ * Renders the batch announcements tab.
+ *
+ * @param object $batch Batch row.
+ * @return void
+ */
+function cmp_render_batch_announcements_tab( $batch ) {
+	$announcements     = cmp_get_batch_announcements( (int) $batch->id, 20 );
+	$whatsapp_enabled  = cmp_is_whatsapp_delivery_enabled();
+	$email_formats     = cmp_get_announcement_email_formats();
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Send Announcement', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Send one message to every student in this batch by email, with optional WhatsApp delivery when notifications are enabled.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
+		<div class="cmp-grid cmp-grid-2">
+			<section class="cmp-panel cmp-panel-nested">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+					<input type="hidden" name="action" value="cmp_send_batch_announcement">
+					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+					<?php wp_nonce_field( 'cmp_send_batch_announcement_' . (int) $batch->id ); ?>
+
+					<table class="form-table" role="presentation">
+						<tr>
+							<th scope="row"><label for="cmp-announcement-subject"><?php esc_html_e( 'Subject', 'class-manager-pro' ); ?></label></th>
+							<td><input type="text" id="cmp-announcement-subject" name="subject" class="regular-text" placeholder="<?php esc_attr_e( 'Batch announcement subject', 'class-manager-pro' ); ?>"></td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="cmp-announcement-message"><?php esc_html_e( 'Message', 'class-manager-pro' ); ?></label></th>
+							<td>
+								<textarea id="cmp-announcement-message" name="message" rows="8" class="large-text" required placeholder="<?php esc_attr_e( 'Write the announcement you want every student in this batch to receive.', 'class-manager-pro' ); ?>"></textarea>
+								<p class="description"><?php esc_html_e( 'Email is always sent. Keep the message clear and short so it also works well on WhatsApp.', 'class-manager-pro' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><label for="cmp-announcement-email-format"><?php esc_html_e( 'Email Format', 'class-manager-pro' ); ?></label></th>
+							<td>
+								<select id="cmp-announcement-email-format" name="email_format">
+									<?php foreach ( $email_formats as $format_key => $format_label ) : ?>
+										<option value="<?php echo esc_attr( $format_key ); ?>"><?php echo esc_html( $format_label ); ?></option>
+									<?php endforeach; ?>
+								</select>
+								<p class="description"><?php esc_html_e( 'Choose HTML Email when you want to send styled email content. WhatsApp delivery always uses a plain-text version.', 'class-manager-pro' ); ?></p>
+							</td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e( 'WhatsApp', 'class-manager-pro' ); ?></th>
+							<td>
+								<?php if ( $whatsapp_enabled ) : ?>
+									<label>
+										<input type="checkbox" name="send_whatsapp" value="1">
+										<?php esc_html_e( 'Also send through the configured WhatsApp/webhook channel.', 'class-manager-pro' ); ?>
+									</label>
+								<?php else : ?>
+									<p><?php esc_html_e( 'WhatsApp delivery is currently disabled in Settings. Email delivery will still be sent.', 'class-manager-pro' ); ?></p>
+								<?php endif; ?>
+							</td>
+						</tr>
+					</table>
+
+					<?php submit_button( __( 'Send Announcement', 'class-manager-pro' ) ); ?>
+				</form>
+			</section>
+
+			<section class="cmp-panel cmp-panel-nested">
+				<div class="cmp-panel-header">
+					<div>
+						<h3><?php esc_html_e( 'Announcement History', 'class-manager-pro' ); ?></h3>
+						<p class="cmp-muted"><?php esc_html_e( 'Review the latest announcement runs for this batch.', 'class-manager-pro' ); ?></p>
+					</div>
+				</div>
+
+				<div class="cmp-table-scroll">
+					<table class="widefat striped">
+						<thead>
+							<tr>
+								<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Subject', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Channels', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Results', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'By', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php if ( empty( $announcements ) ) : ?>
+								<tr><td colspan="6"><?php esc_html_e( 'No announcements have been sent for this batch yet.', 'class-manager-pro' ); ?></td></tr>
+							<?php else : ?>
+								<?php foreach ( $announcements as $announcement ) : ?>
+									<?php
+									$announcement_email_format = isset( $announcement->email_format ) ? $announcement->email_format : 'plain';
+									$announcement_retry_count  = isset( $announcement->retry_count ) ? (int) $announcement->retry_count : 0;
+									$has_failed_recipients     = ! empty( $announcement->failed_email_recipients );
+									?>
+									<tr>
+										<td><?php echo esc_html( $announcement->created_at ); ?></td>
+										<td><?php echo esc_html( $announcement->subject ); ?></td>
+										<td>
+											<?php echo esc_html( strtoupper( str_replace( ',', ' + ', $announcement->channels ) ) ); ?>
+											<br><span class="cmp-muted"><?php echo esc_html( isset( $email_formats[ $announcement_email_format ] ) ? $email_formats[ $announcement_email_format ] : ucfirst( $announcement_email_format ) ); ?></span>
+										</td>
+										<td>
+											<?php
+											echo esc_html(
+												sprintf(
+													/* translators: 1: email sent 2: email failed 3: WhatsApp sent 4: WhatsApp failed */
+													__( 'Email %1$d sent / %2$d failed. WhatsApp %3$d sent / %4$d failed.', 'class-manager-pro' ),
+													(int) $announcement->email_sent,
+													(int) $announcement->email_failed,
+													(int) $announcement->whatsapp_sent,
+													(int) $announcement->whatsapp_failed
+												)
+											);
+											?>
+											<?php if ( $announcement_retry_count > 0 ) : ?>
+												<br><span class="cmp-muted"><?php echo esc_html( sprintf( __( 'Retries: %d', 'class-manager-pro' ), $announcement_retry_count ) ); ?></span>
+											<?php endif; ?>
+										</td>
+										<td><?php echo esc_html( $announcement->created_by_name ? $announcement->created_by_name : __( 'System', 'class-manager-pro' ) ); ?></td>
+										<td class="cmp-actions">
+											<?php if ( (int) $announcement->email_failed > 0 && $has_failed_recipients ) : ?>
+												<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+													<input type="hidden" name="action" value="cmp_retry_batch_announcement_failed_emails">
+													<input type="hidden" name="announcement_id" value="<?php echo esc_attr( (int) $announcement->id ); ?>">
+													<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+													<?php wp_nonce_field( 'cmp_retry_batch_announcement_failed_emails_' . (int) $announcement->id ); ?>
+													<button type="submit" class="button button-small"><?php esc_html_e( 'Send Failed Emails', 'class-manager-pro' ); ?></button>
+												</form>
+											<?php else : ?>
+												<span class="cmp-muted"><?php esc_html_e( 'No failed emails', 'class-manager-pro' ); ?></span>
+											<?php endif; ?>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							<?php endif; ?>
+						</tbody>
+					</table>
+				</div>
+			</section>
+		</div>
+	</section>
+	<?php
+}
+
+/**
  * Renders the batch detail panel.
  *
  * @param object $batch Batch row.
  */
 function cmp_render_batch_detail_panel( $batch ) {
-	$metrics            = cmp_get_batch_metrics( (int) $batch->id );
-	$students           = cmp_get_students( array( 'batch_id' => (int) $batch->id ) );
-	$payments           = cmp_get_payments(
-		array(
-			'batch_id' => (int) $batch->id,
-			'limit'    => 12,
-		)
-	);
-	$public_form_url    = cmp_get_batch_public_form_url( $batch );
-	$expenses           = cmp_get_batch_expenses( (int) $batch->id );
-	$expense_labels     = cmp_expense_category_labels();
-	$attendance_total   = cmp_get_batch_attendance_totals( (int) $batch->id );
-	$student_attendance = cmp_get_student_attendance_totals_for_batch( (int) $batch->id );
-	$activity_logs      = cmp_get_activity_logs(
-		array(
-			'batch_id' => (int) $batch->id,
-			'limit'    => 15,
-		)
-	);
-	$course_title       = ! empty( $batch->course_id ) ? cmp_get_tutor_course_title( (int) $batch->course_id ) : __( 'Not linked', 'class-manager-pro' );
-	$course_url         = ! empty( $batch->course_id ) ? cmp_get_tutor_course_url( (int) $batch->course_id ) : '';
-	$student_list_url   = cmp_admin_url(
-		'cmp-students',
-		array(
-			'batch_id' => (int) $batch->id,
-			'class_id' => (int) $batch->class_id,
-		)
-	);
+	$metrics         = cmp_get_batch_metrics( (int) $batch->id );
+	$course_title    = ! empty( $batch->course_id ) ? cmp_get_tutor_course_title( (int) $batch->course_id ) : __( 'Not linked', 'class-manager-pro' );
+	$course_url      = ! empty( $batch->course_id ) ? cmp_get_tutor_course_url( (int) $batch->course_id ) : '';
+	$current_tab     = sanitize_key( cmp_field( $_GET, 'tab', 'students' ) );
+
+	if ( ! in_array( $current_tab, array( 'students', 'attendance', 'expenses', 'announcements' ), true ) ) {
+		$current_tab = 'students';
+	}
 	?>
-	<section class="cmp-panel">
-		<div class="cmp-panel-header">
-			<div>
-				<h2><?php echo esc_html( $batch->batch_name ); ?></h2>
-				<p class="cmp-muted"><?php echo esc_html( $batch->class_name ); ?><?php echo $batch->start_date ? ' | ' . esc_html( $batch->start_date ) : ''; ?><?php echo ! empty( $batch->is_free ) ? ' | ' . esc_html__( 'Free Batch', 'class-manager-pro' ) : ''; ?><?php echo (int) $batch->teacher_user_id ? ' | ' . esc_html( cmp_get_teacher_label( (int) $batch->teacher_user_id ) ) : ''; ?></p>
-			</div>
-			<div class="cmp-toolbar">
-				<a class="button" href="<?php echo esc_url( $student_list_url ); ?>"><?php esc_html_e( 'Open Students', 'class-manager-pro' ); ?></a>
-				<a class="button" href="<?php echo esc_url( $public_form_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Intake Form', 'class-manager-pro' ); ?></a>
-				<?php if ( $course_url ) : ?>
-					<a class="button" href="<?php echo esc_url( $course_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Course', 'class-manager-pro' ); ?></a>
-				<?php endif; ?>
-				<?php if ( ! empty( $batch->razorpay_link ) ) : ?>
-					<a class="button button-primary" href="<?php echo esc_url( $batch->razorpay_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Razorpay Page', 'class-manager-pro' ); ?></a>
-				<?php endif; ?>
-			</div>
+	<div class="wrap cmp-wrap">
+		<h1><?php echo esc_html( $batch->batch_name ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'This page is focused on one batch only: students, attendance, expenses, import, and linked learning details.', 'class-manager-pro' ); ?></p>
+		<?php cmp_render_notice(); ?>
+
+		<div class="cmp-toolbar">
+			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Back to Batches', 'class-manager-pro' ); ?></a>
+			<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'edit', 'id' => (int) $batch->id ) ) ); ?>"><?php esc_html_e( 'Edit Batch Info', 'class-manager-pro' ); ?></a>
+			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'class_id' => (int) $batch->class_id, 'batch_id' => (int) $batch->id ) ) ); ?>#cmp-add-student"><?php esc_html_e( 'Add Student', 'class-manager-pro' ); ?></a>
+			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import', array( 'class_id' => (int) $batch->class_id, 'batch_id' => (int) $batch->id, 'razorpay_page_id' => $batch->razorpay_page_id ) ) ); ?>"><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></a>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+				<input type="hidden" name="action" value="cmp_generate_batch_registration_link">
+				<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+				<?php wp_nonce_field( 'cmp_generate_batch_registration_link_' . (int) $batch->id ); ?>
+				<button type="submit" class="button"><?php esc_html_e( 'Generate Link', 'class-manager-pro' ); ?></button>
+			</form>
+			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'announcements' ) ) ); ?>"><?php esc_html_e( 'Send Announcement', 'class-manager-pro' ); ?></a>
+			<?php if ( $course_url ) : ?>
+				<a class="button" href="<?php echo esc_url( $course_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Course', 'class-manager-pro' ); ?></a>
+			<?php endif; ?>
 		</div>
 
-		<div class="cmp-cards cmp-cards-4">
+		<div class="cmp-cards cmp-cards-3">
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( number_format_i18n( $metrics['student_count'] ) ); ?></strong>
 			</div>
 			<div class="cmp-card">
-				<span><?php esc_html_e( 'Total Income', 'class-manager-pro' ); ?></span>
+				<span><?php esc_html_e( 'Collected', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $metrics['revenue'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Pending Fees', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( cmp_format_money( $metrics['pending_fee'] ) ); ?></strong>
 			</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Total Expense', 'class-manager-pro' ); ?></span>
@@ -331,264 +903,46 @@ function cmp_render_batch_detail_panel( $batch ) {
 				<strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
 			</div>
 			<div class="cmp-card">
-				<span><?php esc_html_e( 'Pending Fees', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['pending_fee'] ) ); ?></strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Completion', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( number_format_i18n( (float) $metrics['completion_percentage'], 2 ) ); ?>%</strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Teacher Payment', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['teacher_pay'] ) ); ?></strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Ads Spend', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['ads_spend'] ) ); ?></strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Attendance', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $attendance_total['rate'] ) ); ?>%</strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></span>
-				<strong><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free', 'class-manager-pro' ) : esc_html( cmp_format_money( cmp_get_batch_effective_fee( $batch ) ) ); ?></strong>
+				<span><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( ucfirst( $batch->status ) ); ?></strong>
 			</div>
 		</div>
 
-		<div class="cmp-detail-grid">
-			<p><span><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->start_date ? $batch->start_date : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->fee_due_date ? $batch->fee_due_date : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_get_teacher_label( (int) $batch->teacher_user_id ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Tutor LMS Course', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $course_title ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Intake', 'class-manager-pro' ); ?></span><strong><?php echo (int) $batch->intake_limit ? esc_html( number_format_i18n( (int) $batch->intake_limit ) ) : esc_html__( 'Not set', 'class-manager-pro' ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Days', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_days ? $batch->class_days : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Manual Income', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $batch->manual_income ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Total Revenue', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['revenue'] ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Total Expense', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['expense'] ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Profit', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Razorpay Page ID', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->razorpay_page_id ? $batch->razorpay_page_id : __( 'Manual mapping', 'class-manager-pro' ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Payment Type', 'class-manager-pro' ); ?></span><strong><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free form only', 'class-manager-pro' ) : esc_html__( 'Paid', 'class-manager-pro' ); ?></strong></p>
-		</div>
-
-		<div class="cmp-grid cmp-grid-2">
-			<div class="cmp-link-block">
-				<h3><?php esc_html_e( 'Student Intake Link', 'class-manager-pro' ); ?></h3>
-				<p class="cmp-muted"><?php esc_html_e( 'Share this single form link with students. Class and batch are already fixed by the plugin, so students never need to type IDs.', 'class-manager-pro' ); ?></p>
-				<div class="cmp-inline-tools">
-					<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $public_form_url ); ?>" id="cmp-batch-share-link-<?php echo esc_attr( (int) $batch->id ); ?>">
-					<button type="button" class="button" data-cmp-copy-target="#cmp-batch-share-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
-				</div>
+		<section class="cmp-panel">
+			<div class="cmp-detail-grid">
+				<p><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_name ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_get_teacher_label( (int) $batch->teacher_user_id ) ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Tutor LMS Course', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $course_title ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->start_date ? $batch->start_date : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></span><strong><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free', 'class-manager-pro' ) : esc_html( cmp_format_money( cmp_get_batch_effective_fee( $batch ) ) ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->fee_due_date ? $batch->fee_due_date : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Payment Page ID', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->razorpay_page_id ? $batch->razorpay_page_id : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
+				<p><span><?php esc_html_e( 'Days', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_days ? $batch->class_days : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
 			</div>
-			<div class="cmp-link-block">
-				<h3><?php esc_html_e( 'Payment Mapping', 'class-manager-pro' ); ?></h3>
-				<p class="cmp-muted"><?php echo ! empty( $batch->is_free ) ? esc_html__( 'This is a free batch, so students only need the intake form. No Razorpay payment is required.', 'class-manager-pro' ) : esc_html__( 'Save the Razorpay link and page ID here. Webhooks and imports use them to place payments in the right batch automatically.', 'class-manager-pro' ); ?></p>
-				<?php if ( ! empty( $batch->razorpay_link ) && empty( $batch->is_free ) ) : ?>
-					<div class="cmp-inline-tools">
-						<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $batch->razorpay_link ); ?>" id="cmp-batch-razorpay-display-<?php echo esc_attr( (int) $batch->id ); ?>">
-						<button type="button" class="button" data-cmp-copy-target="#cmp-batch-razorpay-display-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Razorpay Link', 'class-manager-pro' ); ?></button>
-					</div>
-				<?php else : ?>
-					<p><?php esc_html_e( 'No Razorpay page link is saved for this batch yet.', 'class-manager-pro' ); ?></p>
-				<?php endif; ?>
-			</div>
-		</div>
+		</section>
 
-		<div class="cmp-grid cmp-grid-2">
-			<div>
-				<h3><?php esc_html_e( 'Students in This Batch', 'class-manager-pro' ); ?></h3>
-				<div class="cmp-table-scroll">
-					<table class="widefat striped">
-						<thead>
-							<tr>
-								<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Paid', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Pending', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Profile', 'class-manager-pro' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php if ( empty( $students ) ) : ?>
-								<tr><td colspan="5"><?php esc_html_e( 'No students in this batch yet.', 'class-manager-pro' ); ?></td></tr>
-							<?php else : ?>
-								<?php foreach ( array_slice( $students, 0, 10 ) as $student ) : ?>
-									<?php $profile_url = cmp_get_student_profile_url( $student ); ?>
-									<tr>
-										<td><?php echo esc_html( $student->name ); ?><br><span class="cmp-muted"><?php echo esc_html( $student->unique_id ); ?></span></td>
-										<td><?php echo esc_html( $student->phone ); ?></td>
-										<td><?php echo esc_html( cmp_format_money( $student->paid_fee ) ); ?></td>
-										<td><?php echo esc_html( cmp_format_money( max( 0, (float) $student->total_fee - (float) $student->paid_fee ) ) ); ?></td>
-										<td>
-											<?php if ( $profile_url ) : ?>
-												<a class="button button-small" href="<?php echo esc_url( $profile_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'View Profile', 'class-manager-pro' ); ?></a>
-											<?php else : ?>
-												<span class="cmp-muted"><?php esc_html_e( 'Not linked', 'class-manager-pro' ); ?></span>
-											<?php endif; ?>
-										</td>
-									</tr>
-								<?php endforeach; ?>
-							<?php endif; ?>
-						</tbody>
-					</table>
-				</div>
-			</div>
-			<div>
-				<h3><?php esc_html_e( 'Recent Payments', 'class-manager-pro' ); ?></h3>
-				<div class="cmp-table-scroll">
-					<table class="widefat striped">
-						<thead>
-							<tr>
-								<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Mode', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php if ( empty( $payments ) ) : ?>
-								<tr><td colspan="4"><?php esc_html_e( 'No payments in this batch yet.', 'class-manager-pro' ); ?></td></tr>
-							<?php else : ?>
-								<?php foreach ( $payments as $payment ) : ?>
-									<tr>
-										<td><?php echo esc_html( $payment->student_name ); ?></td>
-										<td><?php echo esc_html( cmp_format_money( $payment->amount ) ); ?></td>
-										<td><?php echo esc_html( ucfirst( $payment->payment_mode ) ); ?></td>
-										<td><?php echo esc_html( $payment->payment_date ); ?></td>
-									</tr>
-								<?php endforeach; ?>
-							<?php endif; ?>
-						</tbody>
-					</table>
-				</div>
-			</div>
-		</div>
+		<?php cmp_render_batch_registration_links_panel( $batch ); ?>
+		<?php cmp_render_batch_import_tools( $batch, 'cmp-batches', 'view' ); ?>
 
-		<div class="cmp-grid cmp-grid-2">
-			<div>
-				<h3><?php esc_html_e( 'Batch Expenses', 'class-manager-pro' ); ?></h3>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form cmp-compact-form">
-					<input type="hidden" name="action" value="cmp_save_expense">
-					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
-					<?php wp_nonce_field( 'cmp_save_expense' ); ?>
-					<div class="cmp-grid cmp-grid-2">
-						<label>
-							<span><?php esc_html_e( 'Category', 'class-manager-pro' ); ?></span>
-							<select name="category">
-								<?php foreach ( $expense_labels as $category => $label ) : ?>
-									<option value="<?php echo esc_attr( $category ); ?>"><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-							</select>
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></span>
-							<input type="number" name="amount" min="0" step="0.01" required>
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></span>
-							<input type="date" name="expense_date" value="<?php echo esc_attr( current_time( 'Y-m-d' ) ); ?>">
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></span>
-							<input type="text" name="notes" class="regular-text">
-						</label>
-					</div>
-					<?php submit_button( __( 'Add Expense', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
-				</form>
+		<nav class="nav-tab-wrapper cmp-tab-nav" aria-label="<?php esc_attr_e( 'Batch sections', 'class-manager-pro' ); ?>">
+			<a class="nav-tab <?php echo 'students' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'students' ) ) ); ?>"><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></a>
+			<?php if ( cmp_is_attendance_enabled() ) : ?>
+				<a class="nav-tab <?php echo 'attendance' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'attendance' ) ) ); ?>"><?php esc_html_e( 'Attendance', 'class-manager-pro' ); ?></a>
+			<?php endif; ?>
+			<a class="nav-tab <?php echo 'expenses' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'expenses' ) ) ); ?>"><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></a>
+			<a class="nav-tab <?php echo 'announcements' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'announcements' ) ) ); ?>"><?php esc_html_e( 'Announcements', 'class-manager-pro' ); ?></a>
+		</nav>
 
-				<div class="cmp-table-scroll cmp-space-top">
-					<table class="widefat striped">
-						<thead>
-							<tr>
-								<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Category', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Action', 'class-manager-pro' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php if ( empty( $expenses ) ) : ?>
-								<tr><td colspan="5"><?php esc_html_e( 'No expenses added yet.', 'class-manager-pro' ); ?></td></tr>
-							<?php else : ?>
-								<?php foreach ( $expenses as $expense ) : ?>
-									<?php $delete_url = wp_nonce_url( admin_url( 'admin-post.php?action=cmp_delete_expense&id=' . (int) $expense->id . '&batch_id=' . (int) $batch->id ), 'cmp_delete_expense_' . (int) $expense->id ); ?>
-									<tr>
-										<td><?php echo esc_html( $expense->expense_date ); ?></td>
-										<td><?php echo esc_html( isset( $expense_labels[ $expense->category ] ) ? $expense_labels[ $expense->category ] : $expense->category ); ?></td>
-										<td><?php echo esc_html( cmp_format_money( $expense->amount ) ); ?></td>
-										<td><?php echo esc_html( wp_trim_words( $expense->notes, 10 ) ); ?></td>
-										<td><a class="cmp-delete-link" href="<?php echo esc_url( $delete_url ); ?>"><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></a></td>
-									</tr>
-								<?php endforeach; ?>
-							<?php endif; ?>
-						</tbody>
-					</table>
-				</div>
-			</div>
-
-			<div>
-				<h3><?php esc_html_e( 'Student Attendance Analysis', 'class-manager-pro' ); ?></h3>
-				<div class="cmp-table-scroll">
-					<table class="widefat striped">
-						<thead>
-							<tr>
-								<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Present', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Absent', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Leave', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Rate', 'class-manager-pro' ); ?></th>
-							</tr>
-						</thead>
-						<tbody>
-							<?php if ( empty( $student_attendance ) ) : ?>
-								<tr><td colspan="5"><?php esc_html_e( 'No students are available for attendance analysis.', 'class-manager-pro' ); ?></td></tr>
-							<?php else : ?>
-								<?php foreach ( $student_attendance as $row ) : ?>
-									<?php
-									$total_marked = (int) $row->total_marked;
-									$rate         = $total_marked > 0 ? round( ( (int) $row->present_count / $total_marked ) * 100, 2 ) : 0;
-									?>
-									<tr>
-										<td><?php echo esc_html( $row->name ); ?><br><span class="cmp-muted"><?php echo esc_html( $row->phone ); ?></span></td>
-										<td><?php echo esc_html( number_format_i18n( (int) $row->present_count ) ); ?></td>
-										<td><?php echo esc_html( number_format_i18n( (int) $row->absent_count ) ); ?></td>
-										<td><?php echo esc_html( number_format_i18n( (int) $row->leave_count ) ); ?></td>
-										<td><?php echo esc_html( cmp_format_money( $rate ) ); ?>%</td>
-									</tr>
-								<?php endforeach; ?>
-							<?php endif; ?>
-						</tbody>
-					</table>
-				</div>
-			</div>
-		</div>
-
-		<div class="cmp-grid cmp-grid-2">
-			<div class="cmp-panel cmp-panel-nested">
-				<h3><?php esc_html_e( 'Activity Timeline', 'class-manager-pro' ); ?></h3>
-				<?php if ( empty( $activity_logs ) ) : ?>
-					<p><?php esc_html_e( 'No activity has been recorded for this batch yet.', 'class-manager-pro' ); ?></p>
-				<?php else : ?>
-					<ul class="cmp-activity-timeline">
-						<?php foreach ( $activity_logs as $log ) : ?>
-							<li>
-								<strong><?php echo esc_html( $log->message ); ?></strong>
-								<span><?php echo esc_html( $log->created_at ); ?></span>
-								<?php if ( ! empty( $log->student_name ) ) : ?>
-									<em><?php echo esc_html( $log->student_name ); ?></em>
-								<?php endif; ?>
-							</li>
-						<?php endforeach; ?>
-					</ul>
-				<?php endif; ?>
-			</div>
-		</div>
-	</section>
-
-	<?php if ( cmp_is_attendance_enabled() ) : ?>
-		<?php cmp_render_batch_attendance_panel( $batch ); ?>
-	<?php endif; ?>
+		<?php if ( 'attendance' === $current_tab && cmp_is_attendance_enabled() ) : ?>
+			<?php cmp_render_batch_attendance_panel( $batch ); ?>
+		<?php elseif ( 'expenses' === $current_tab ) : ?>
+			<?php cmp_render_batch_expenses_tab( $batch, $metrics ); ?>
+		<?php elseif ( 'announcements' === $current_tab ) : ?>
+			<?php cmp_render_batch_announcements_tab( $batch ); ?>
+		<?php else : ?>
+			<?php cmp_render_batch_students_tab( $batch ); ?>
+		<?php endif; ?>
+	</div>
 	<?php
 }
 
@@ -598,20 +952,47 @@ function cmp_render_batch_detail_panel( $batch ) {
 function cmp_render_batches_page() {
 	cmp_require_manage_options();
 
-	$action     = sanitize_key( cmp_field( $_GET, 'action' ) );
-	$id         = absint( cmp_field( $_GET, 'id', 0 ) );
-	$batch      = $id ? cmp_get_batch( $id ) : null;
-	$edit_batch = ( 'edit' === $action && $batch ) ? $batch : null;
-	$view_batch = ( 'view' === $action && $batch ) ? $batch : null;
-	$classes    = cmp_get_classes();
-	$metrics    = cmp_get_batch_overview_metrics();
-	$batch_rows = cmp_get_batches_with_metrics();
-	$template_url = wp_nonce_url( admin_url( 'admin-post.php?action=cmp_download_batch_import_template' ), 'cmp_download_batch_import_template' );
+	$action      = sanitize_key( cmp_field( $_GET, 'action' ) );
+	$id          = absint( cmp_field( $_GET, 'id', 0 ) );
+	$batch       = $id ? cmp_get_batch( $id ) : null;
+	$edit_batch  = ( 'edit' === $action && $batch ) ? $batch : null;
+	$view_batch  = ( 'view' === $action && $batch ) ? $batch : null;
+	$metrics     = cmp_get_batch_overview_metrics();
+	$batch_rows  = cmp_get_batches_with_metrics();
+	$list_url    = cmp_admin_url( 'cmp-batches' );
+	$import_url  = cmp_admin_url( 'cmp-razorpay-import' );
+	$add_url     = cmp_admin_url( 'cmp-batches', array( 'action' => 'add' ) );
+
+	if ( $view_batch ) {
+		cmp_render_batch_detail_panel( $view_batch );
+		return;
+	}
 	?>
 	<div class="wrap cmp-wrap">
-		<h1><?php esc_html_e( 'Batches', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'This is the main enrollment workspace now. Save the batch fee, due date, and Razorpay mapping here, then share the generated intake form link with students.', 'class-manager-pro' ); ?></p>
+		<h1><?php echo esc_html( $edit_batch ? __( 'Edit Batch', 'class-manager-pro' ) : ( 'add' === $action ? __( 'Add Batch', 'class-manager-pro' ) : __( 'Batches', 'class-manager-pro' ) ) ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Keep the batch list simple, then open a single batch when you need students, attendance, or Razorpay import.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+
+		<?php if ( $edit_batch || 'add' === $action ) : ?>
+			<div class="cmp-toolbar">
+				<a class="button" href="<?php echo esc_url( $list_url ); ?>"><?php esc_html_e( 'Back to Batch List', 'class-manager-pro' ); ?></a>
+				<?php if ( $edit_batch ) : ?>
+					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $edit_batch->id ) ) ); ?>"><?php esc_html_e( 'View Batch', 'class-manager-pro' ); ?></a>
+				<?php endif; ?>
+			</div>
+
+			<section class="cmp-panel">
+				<?php cmp_render_batch_form( $edit_batch, 'cmp-batches' ); ?>
+			</section>
+
+			<?php if ( $edit_batch ) : ?>
+				<?php cmp_render_batch_import_tools( $edit_batch, 'cmp-batches', 'view' ); ?>
+			<?php endif; ?>
+			</div>
+			<?php
+			return;
+		endif;
+		?>
 
 		<div class="cmp-cards cmp-cards-4">
 			<div class="cmp-card">
@@ -630,26 +1011,18 @@ function cmp_render_batches_page() {
 				<span><?php esc_html_e( 'Revenue', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $metrics['total_revenue'] ) ); ?></strong>
 			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['total_expense'] ) ); ?></strong>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
-			</div>
 		</div>
-
-		<?php if ( $view_batch ) : ?>
-			<?php cmp_render_batch_detail_panel( $view_batch ); ?>
-		<?php endif; ?>
 
 		<section class="cmp-panel">
 			<div class="cmp-panel-header">
-				<h2><?php esc_html_e( 'Batch Workspace', 'class-manager-pro' ); ?></h2>
-				<?php if ( $view_batch || $edit_batch ) : ?>
-					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Back to Batch List', 'class-manager-pro' ); ?></a>
-				<?php endif; ?>
+				<div>
+					<h2><?php esc_html_e( 'Batch List', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Open one batch at a time for students, attendance, import, and linked course details.', 'class-manager-pro' ); ?></p>
+				</div>
+				<div class="cmp-toolbar">
+					<a class="button button-primary" href="<?php echo esc_url( $add_url ); ?>"><?php esc_html_e( 'Add Batch', 'class-manager-pro' ); ?></a>
+					<a class="button" href="<?php echo esc_url( $import_url ); ?>"><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></a>
+				</div>
 			</div>
 
 			<div class="cmp-toolbar cmp-bulk-toolbar">
@@ -657,7 +1030,14 @@ function cmp_render_batches_page() {
 				<select id="cmp-batch-bulk-action">
 					<option value=""><?php esc_html_e( 'Bulk actions', 'class-manager-pro' ); ?></option>
 					<option value="delete"><?php esc_html_e( 'Delete selected', 'class-manager-pro' ); ?></option>
+					<option value="change_status"><?php esc_html_e( 'Change status', 'class-manager-pro' ); ?></option>
 					<option value="export"><?php esc_html_e( 'Export selected', 'class-manager-pro' ); ?></option>
+				</select>
+				<select id="cmp-batch-bulk-status">
+					<option value=""><?php esc_html_e( 'Choose status', 'class-manager-pro' ); ?></option>
+					<?php foreach ( cmp_batch_statuses() as $status ) : ?>
+						<option value="<?php echo esc_attr( $status ); ?>"><?php echo esc_html( ucfirst( $status ) ); ?></option>
+					<?php endforeach; ?>
 				</select>
 				<button
 					type="button"
@@ -665,6 +1045,7 @@ function cmp_render_batches_page() {
 					data-cmp-bulk-apply="1"
 					data-cmp-entity-type="batch"
 					data-cmp-action-select="#cmp-batch-bulk-action"
+					data-cmp-status-select="#cmp-batch-bulk-status"
 					data-cmp-checkbox=".cmp-batch-select"
 					data-cmp-feedback="#cmp-batch-bulk-feedback"
 				><?php esc_html_e( 'Apply', 'class-manager-pro' ); ?></button>
@@ -678,52 +1059,41 @@ function cmp_render_batches_page() {
 							<th><input type="checkbox" id="cmp-batch-select-all" data-cmp-select-all=".cmp-batch-select"></th>
 							<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Tutor Course', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Intake', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Fee Due', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Tutor Course', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Payment Page ID', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Income', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Completion', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Expense', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Net', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
 						<?php if ( empty( $batch_rows ) ) : ?>
-							<tr><td colspan="16"><?php esc_html_e( 'No batches found.', 'class-manager-pro' ); ?></td></tr>
+							<tr><td colspan="10"><?php esc_html_e( 'No batches found.', 'class-manager-pro' ); ?></td></tr>
 						<?php else : ?>
 							<?php foreach ( $batch_rows as $row ) : ?>
 								<?php
 								$view_url        = cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $row->id ) );
 								$edit_url        = cmp_admin_url( 'cmp-batches', array( 'action' => 'edit', 'id' => (int) $row->id ) );
+								$import_row_url  = cmp_admin_url( 'cmp-razorpay-import', array( 'class_id' => (int) $row->class_id, 'batch_id' => (int) $row->id, 'razorpay_page_id' => $row->razorpay_page_id ) );
 								$delete_url      = wp_nonce_url( admin_url( 'admin-post.php?action=cmp_delete_batch&id=' . (int) $row->id ), 'cmp_delete_batch_' . (int) $row->id );
-								$public_form_url = cmp_get_batch_public_form_url( $row );
+								$course_title    = ! empty( $row->course_id ) ? cmp_get_tutor_course_title( (int) $row->course_id ) : __( 'Not linked', 'class-manager-pro' );
 								?>
 								<tr data-cmp-row-id="batch-<?php echo esc_attr( (int) $row->id ); ?>">
 									<td><input type="checkbox" class="cmp-batch-select" value="<?php echo esc_attr( (int) $row->id ); ?>"></td>
 									<td><?php echo esc_html( $row->batch_name ); ?></td>
 									<td><?php echo esc_html( $row->class_name ); ?></td>
-									<td><?php echo esc_html( ! empty( $row->course_id ) ? cmp_get_tutor_course_title( (int) $row->course_id ) : __( 'Not linked', 'class-manager-pro' ) ); ?></td>
-									<td><?php echo ! empty( $row->is_free ) ? esc_html__( 'Free', 'class-manager-pro' ) : esc_html( cmp_format_money( cmp_get_batch_effective_fee( $row ) ) ); ?></td>
 									<td><?php echo esc_html( cmp_get_teacher_label( (int) $row->teacher_user_id ) ); ?></td>
-									<td><?php echo (int) $row->intake_limit ? esc_html( number_format_i18n( (int) $row->intake_limit ) ) : '-'; ?></td>
-									<td><?php echo esc_html( $row->fee_due_date ? $row->fee_due_date : '-' ); ?></td>
+									<td><?php echo esc_html( $course_title ); ?></td>
+									<td><?php echo esc_html( $row->razorpay_page_id ? $row->razorpay_page_id : __( 'Not set', 'class-manager-pro' ) ); ?></td>
 									<td><?php echo esc_html( number_format_i18n( $row->student_count ) ); ?></td>
-									<td><?php echo esc_html( cmp_format_money( $row->revenue ) ); ?></td>
-									<td><?php echo esc_html( number_format_i18n( (float) $row->completion_percentage, 2 ) ); ?>%</td>
-									<td><?php echo esc_html( cmp_format_money( $row->total_expense ) ); ?></td>
-									<td><?php echo esc_html( cmp_format_money( $row->net_income ) ); ?></td>
-									<td><?php echo esc_html( cmp_format_money( $row->pending_fee ) ); ?></td>
-									<td><span class="cmp-status cmp-status-<?php echo esc_attr( $row->status ); ?>"><?php echo esc_html( ucfirst( $row->status ) ); ?></span></td>
+									<td><?php echo esc_html( $row->start_date ? $row->start_date : __( 'Not set', 'class-manager-pro' ) ); ?></td>
+									<td><span class="cmp-status cmp-status-<?php echo esc_attr( $row->status ); ?>" data-cmp-status-badge="batch-<?php echo esc_attr( (int) $row->id ); ?>"><?php echo esc_html( ucfirst( $row->status ) ); ?></span></td>
 									<td class="cmp-actions">
-										<a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'Manage', 'class-manager-pro' ); ?></a>
+										<a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View Batch', 'class-manager-pro' ); ?></a>
 										<a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'class-manager-pro' ); ?></a>
-										<a href="<?php echo esc_url( $public_form_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Form', 'class-manager-pro' ); ?></a>
+										<a href="<?php echo esc_url( $import_row_url ); ?>"><?php esc_html_e( 'Import', 'class-manager-pro' ); ?></a>
 										<a
 											class="cmp-delete-link"
 											href="<?php echo esc_url( $delete_url ); ?>"
@@ -742,57 +1112,6 @@ function cmp_render_batches_page() {
 					</tbody>
 				</table>
 			</div>
-		</section>
-
-		<section class="cmp-panel">
-			<div class="cmp-panel-header">
-				<div>
-					<h2><?php esc_html_e( 'Import Old Batch Data from Sheet', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'Use this for old sheet data where you have batch-level totals instead of full student details. Numeric batch values become batch names like Batch 3.', 'class-manager-pro' ); ?></p>
-				</div>
-				<a class="button" href="<?php echo esc_url( $template_url ); ?>"><?php esc_html_e( 'Download CSV Template', 'class-manager-pro' ); ?></a>
-			</div>
-
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" enctype="multipart/form-data">
-				<input type="hidden" name="action" value="cmp_import_batch_sheet_data">
-				<?php wp_nonce_field( 'cmp_import_batch_sheet_data' ); ?>
-
-				<div class="cmp-grid cmp-grid-2">
-					<label>
-						<span><?php esc_html_e( 'Import Into Existing Class', 'class-manager-pro' ); ?></span>
-						<select name="import_class_id">
-							<option value="0"><?php esc_html_e( 'Choose class', 'class-manager-pro' ); ?></option>
-							<?php foreach ( $classes as $class ) : ?>
-								<option value="<?php echo esc_attr( (int) $class->id ); ?>"><?php echo esc_html( $class->name ); ?></option>
-							<?php endforeach; ?>
-						</select>
-					</label>
-					<label>
-						<span><?php esc_html_e( 'Or Create New Class', 'class-manager-pro' ); ?></span>
-						<input type="text" name="import_new_class_name" class="regular-text" placeholder="<?php esc_attr_e( 'Example: Aari Work Class', 'class-manager-pro' ); ?>">
-					</label>
-					<label>
-						<span><?php esc_html_e( 'Upload CSV File', 'class-manager-pro' ); ?></span>
-						<input type="file" name="sheet_file" accept=".csv,.txt">
-					</label>
-					<div class="cmp-callout">
-						<p><strong><?php esc_html_e( 'Expected columns', 'class-manager-pro' ); ?>:</strong> <?php esc_html_e( 'Batch No., Batch Date, Batch Addmition, Class Fee, Total Fee, Ad Expainse, Teacher Payment, Net Profit', 'class-manager-pro' ); ?></p>
-						<p class="cmp-muted"><?php esc_html_e( 'Total Fee becomes Manual Income. Ad Expainse and Teacher Payment become batch expenses automatically.', 'class-manager-pro' ); ?></p>
-					</div>
-				</div>
-
-				<label class="cmp-space-top">
-					<span><?php esc_html_e( 'Or Paste Rows from Sheet', 'class-manager-pro' ); ?></span>
-					<textarea name="sheet_rows_text" rows="8" class="large-text" placeholder="<?php esc_attr_e( "Batch No.\tBatch Date\tBatch Addmition\tClass Fee\tTotal Fee\tAd Expainse\tTeacher Payment\tNet Profit", 'class-manager-pro' ); ?>"></textarea>
-				</label>
-
-				<?php submit_button( __( 'Import Batch Sheet Data', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
-			</form>
-		</section>
-
-		<section class="cmp-panel">
-			<h2><?php echo esc_html( $edit_batch ? __( 'Edit Batch', 'class-manager-pro' ) : __( 'Add Batch', 'class-manager-pro' ) ); ?></h2>
-			<?php cmp_render_batch_form( $edit_batch, 'cmp-batches' ); ?>
 		</section>
 	</div>
 	<?php

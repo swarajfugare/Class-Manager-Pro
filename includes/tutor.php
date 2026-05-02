@@ -166,10 +166,11 @@ function cmp_get_tutor_student_role() {
  */
 function cmp_build_wordpress_username_from_email( $email ) {
 	$email    = sanitize_email( $email );
-	$username = sanitize_user( $email, true );
+	$parts    = explode( '@', $email );
+	$username = sanitize_user( isset( $parts[0] ) ? $parts[0] : $email, true );
 
 	if ( '' === $username ) {
-		$local_part = current( explode( '@', $email ) );
+		$local_part = isset( $parts[0] ) ? $parts[0] : '';
 		$username   = sanitize_user( $local_part, true );
 	}
 
@@ -186,6 +187,38 @@ function cmp_build_wordpress_username_from_email( $email ) {
 	}
 
 	return $candidate;
+}
+
+/**
+ * Sends a course enrollment email after a student is enrolled.
+ *
+ * @param object $student Student row.
+ * @param int    $course_id Course ID.
+ * @return void
+ */
+function cmp_send_course_enrollment_email( $student, $course_id ) {
+	$student = is_array( $student ) ? (object) $student : $student;
+	$email   = isset( $student->email ) ? sanitize_email( $student->email ) : '';
+
+	if ( ! $student || '' === $email ) {
+		return;
+	}
+
+	$course_title = cmp_get_tutor_course_title( $course_id );
+	$batch_name   = ! empty( $student->batch_name ) ? sanitize_text_field( $student->batch_name ) : __( 'your batch', 'class-manager-pro' );
+	$message      = sprintf(
+		/* translators: 1: student name 2: course title 3: batch name */
+		__( "Hello %1\$s,\n\nYou are enrolled in a course.\nYou have been assigned to a course from Matoshree Collection.\n\nCourse: %2\$s\nBatch: %3\$s\n\nThank you.", 'class-manager-pro' ),
+		! empty( $student->name ) ? sanitize_text_field( $student->name ) : __( 'Student', 'class-manager-pro' ),
+		$course_title,
+		$batch_name
+	);
+
+	wp_mail(
+		$email,
+		__( 'You are enrolled in a course', 'class-manager-pro' ),
+		$message
+	);
 }
 
 /**
@@ -293,11 +326,7 @@ function cmp_sync_student_wordpress_user( $student_id, $student_data = null ) {
 	}
 
 	if ( ! $user ) {
-		$user_result = wp_create_user( $email, 'password', $email );
-
-		if ( is_wp_error( $user_result ) && 'existing_user_login' === $user_result->get_error_code() ) {
-			$user_result = wp_create_user( cmp_build_wordpress_username_from_email( $email ), 'password', $email );
-		}
+		$user_result = wp_create_user( cmp_build_wordpress_username_from_email( $email ), 'password', $email );
 
 		if ( is_wp_error( $user_result ) ) {
 			cmp_log_event(
@@ -431,6 +460,159 @@ function cmp_is_user_enrolled_in_tutor_course( $course_id, $user_id ) {
 }
 
 /**
+ * Returns the Tutor LMS enrollment post ID for a course/user pair.
+ *
+ * @param int $course_id Course ID.
+ * @param int $user_id User ID.
+ * @return int
+ */
+function cmp_get_tutor_enrollment_post_id( $course_id, $user_id ) {
+	$course_id = absint( $course_id );
+	$user_id   = absint( $user_id );
+
+	if ( ! $course_id || ! $user_id ) {
+		return 0;
+	}
+
+	$existing = get_posts(
+		array(
+			'post_type'      => 'tutor_enrolled',
+			'post_status'    => array( 'completed', 'publish', 'pending', 'private' ),
+			'author'         => $user_id,
+			'post_parent'    => $course_id,
+			'fields'         => 'ids',
+			'posts_per_page' => 1,
+			'no_found_rows'  => true,
+		)
+	);
+
+	return ! empty( $existing[0] ) ? (int) $existing[0] : 0;
+}
+
+/**
+ * Ensures a Tutor LMS enrollment record grants course access.
+ *
+ * @param int $course_id Course ID.
+ * @param int $user_id User ID.
+ * @return bool
+ */
+function cmp_complete_tutor_enrollment_access( $course_id, $user_id ) {
+	$course_id = absint( $course_id );
+	$user_id   = absint( $user_id );
+	$updated   = false;
+
+	if ( ! $course_id || ! $user_id ) {
+		return false;
+	}
+
+	$table_details = cmp_get_tutor_enrollment_table_details();
+
+	if ( ! empty( $table_details['table'] ) && ! empty( $table_details['columns'] ) && in_array( 'status', $table_details['columns'], true ) ) {
+		global $wpdb;
+
+		$course_column = '';
+
+		if ( in_array( 'course_id', $table_details['columns'], true ) ) {
+			$course_column = 'course_id';
+		} elseif ( in_array( 'post_id', $table_details['columns'], true ) ) {
+			$course_column = 'post_id';
+		}
+
+		if ( $course_column ) {
+			$result = $wpdb->update(
+				$table_details['table'],
+				array( 'status' => 'completed' ),
+				array(
+					'user_id'          => $user_id,
+					$course_column     => $course_id,
+				),
+				array( '%s' ),
+				array( '%d', '%d' )
+			);
+
+			if ( false !== $result ) {
+				$updated = true;
+			}
+		}
+	}
+
+	$enrollment_post_id = cmp_get_tutor_enrollment_post_id( $course_id, $user_id );
+
+	if ( $enrollment_post_id ) {
+		$post_update = wp_update_post(
+			array(
+				'ID'          => $enrollment_post_id,
+				'post_status' => 'completed',
+			),
+			true
+		);
+
+		if ( ! is_wp_error( $post_update ) ) {
+			$updated = true;
+		}
+	}
+
+	if ( $updated ) {
+		update_user_meta( $user_id, '_is_tutor_student', time() );
+	}
+
+	return $updated;
+}
+
+/**
+ * Enrolls a user into Tutor LMS with completed access when possible.
+ *
+ * @param int $course_id Course ID.
+ * @param int $user_id User ID.
+ * @return bool
+ */
+function cmp_do_tutor_course_enrollment( $course_id, $user_id ) {
+	$course_id = absint( $course_id );
+	$user_id   = absint( $user_id );
+
+	if ( ! $course_id || ! $user_id || ! function_exists( 'tutor_utils' ) || ! is_callable( array( tutor_utils(), 'do_enroll' ) ) ) {
+		return false;
+	}
+
+	$force_completed = static function ( $enroll_data ) use ( $course_id, $user_id ) {
+		if ( ! is_array( $enroll_data ) ) {
+			return $enroll_data;
+		}
+
+		$enroll_data['post_parent'] = $course_id;
+		$enroll_data['post_author'] = $user_id;
+		$enroll_data['post_status'] = 'completed';
+
+		return $enroll_data;
+	};
+
+	add_filter( 'tutor_enroll_data', $force_completed, 10, 1 );
+
+	try {
+		$enrolled = (bool) tutor_utils()->do_enroll( $course_id, 0, $user_id );
+	} catch ( Exception $exception ) {
+		$enrolled = false;
+		cmp_log_event(
+			'error',
+			'Tutor LMS do_enroll threw an exception.',
+			array(
+				'course_id' => $course_id,
+				'user_id'   => $user_id,
+				'message'   => $exception->getMessage(),
+			)
+		);
+	}
+
+	remove_filter( 'tutor_enroll_data', $force_completed, 10 );
+
+	if ( $enrolled ) {
+		cmp_complete_tutor_enrollment_access( $course_id, $user_id );
+	}
+
+	return $enrolled;
+}
+
+/**
  * Creates a fallback Tutor LMS enrollment record when helper methods are unavailable.
  *
  * @param int $course_id Course ID.
@@ -558,14 +740,16 @@ function cmp_enroll_student_in_specific_tutor_course( $student_id, $course_id ) 
 	$student_id = absint( $student_id );
 	$course_id  = absint( $course_id );
 	$student    = cmp_get_student( $student_id );
+	$course     = $course_id ? get_post( $course_id ) : null;
 
-	if ( ! $student || ! $course_id ) {
+	if ( ! $student || ! $course_id || ! $course || 'courses' !== $course->post_type ) {
 		return false;
 	}
 
 	$user_id = ! empty( $student->user_id ) ? absint( $student->user_id ) : cmp_sync_student_wordpress_user( $student_id, $student );
+	$user    = $user_id ? get_userdata( $user_id ) : null;
 
-	if ( ! $user_id ) {
+	if ( ! $user_id || ! $user ) {
 		cmp_log_event(
 			'error',
 			'Tutor LMS enrollment failed because the WordPress user could not be resolved.',
@@ -579,14 +763,13 @@ function cmp_enroll_student_in_specific_tutor_course( $student_id, $course_id ) 
 	}
 
 	if ( cmp_is_user_enrolled_in_tutor_course( $course_id, $user_id ) ) {
+		cmp_complete_tutor_enrollment_access( $course_id, $user_id );
 		return true;
 	}
 
 	$enrolled = false;
 
-	if ( function_exists( 'tutor_utils' ) && is_callable( array( tutor_utils(), 'do_enroll' ) ) ) {
-		$enrolled = (bool) tutor_utils()->do_enroll( $course_id, $user_id );
-	}
+	$enrolled = cmp_do_tutor_course_enrollment( $course_id, $user_id );
 
 	if ( ! $enrolled ) {
 		$enrolled = cmp_create_tutor_enrollment_row( $course_id, $user_id );
@@ -608,6 +791,10 @@ function cmp_enroll_student_in_specific_tutor_course( $student_id, $course_id ) 
 		);
 	}
 
+	if ( $enrolled ) {
+		cmp_complete_tutor_enrollment_access( $course_id, $user_id );
+	}
+
 	if ( $enrolled && function_exists( 'cmp_log_activity' ) ) {
 		cmp_log_activity(
 			array(
@@ -626,6 +813,10 @@ function cmp_enroll_student_in_specific_tutor_course( $student_id, $course_id ) 
 				),
 			)
 		);
+	}
+
+	if ( $enrolled ) {
+		cmp_send_course_enrollment_email( $student, $course_id );
 	}
 
 	return $enrolled;

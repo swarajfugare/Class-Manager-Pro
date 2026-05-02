@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Class Manager Pro
  * Description: Advanced Class, Batch, Student and Payment Management System with Tutor LMS and Razorpay Integration
- * Version: 1.0.0
+ * Version: 1.2.1
  * Author: Swaraj Fugare
  * Author URI: https://portfolio.matoshreecollection.in
  * Text Domain: class-manager-pro
@@ -14,13 +14,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CMP_VERSION', '1.0.0' );
+define( 'CMP_VERSION', '1.2.1' );
 define( 'CMP_PLUGIN_FILE', __FILE__ );
 define( 'CMP_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CMP_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
 require_once CMP_PLUGIN_DIR . 'includes/db.php';
 require_once CMP_PLUGIN_DIR . 'includes/functions.php';
+require_once CMP_PLUGIN_DIR . 'includes/next-version.php';
 require_once CMP_PLUGIN_DIR . 'includes/tutor.php';
 require_once CMP_PLUGIN_DIR . 'includes/razorpay.php';
 require_once CMP_PLUGIN_DIR . 'includes/public.php';
@@ -30,6 +31,7 @@ require_once CMP_PLUGIN_DIR . 'admin/all-data.php';
 require_once CMP_PLUGIN_DIR . 'admin/classes.php';
 require_once CMP_PLUGIN_DIR . 'admin/batches.php';
 require_once CMP_PLUGIN_DIR . 'admin/students.php';
+require_once CMP_PLUGIN_DIR . 'admin/interested-students.php';
 require_once CMP_PLUGIN_DIR . 'admin/add-new.php';
 require_once CMP_PLUGIN_DIR . 'admin/payments.php';
 require_once CMP_PLUGIN_DIR . 'admin/razorpay-import.php';
@@ -61,15 +63,16 @@ function cmp_register_admin_menu() {
 	);
 
 	add_submenu_page( 'cmp-dashboard', __( 'Dashboard', 'class-manager-pro' ), __( 'Dashboard', 'class-manager-pro' ), 'manage_options', 'cmp-dashboard', 'cmp_render_dashboard_page' );
-	add_submenu_page( 'cmp-dashboard', __( 'All Data', 'class-manager-pro' ), __( 'All Data', 'class-manager-pro' ), 'manage_options', 'cmp-all-data', 'cmp_render_all_data_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Classes', 'class-manager-pro' ), __( 'Classes', 'class-manager-pro' ), 'manage_options', 'cmp-classes', 'cmp_render_classes_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Batches', 'class-manager-pro' ), __( 'Batches', 'class-manager-pro' ), 'manage_options', 'cmp-batches', 'cmp_render_batches_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Students', 'class-manager-pro' ), __( 'Students', 'class-manager-pro' ), 'manage_options', 'cmp-students', 'cmp_render_students_page' );
-	add_submenu_page( 'cmp-dashboard', __( 'Add New', 'class-manager-pro' ), __( 'Add New', 'class-manager-pro' ), 'manage_options', 'cmp-add-new', 'cmp_render_add_new_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Interested Students', 'class-manager-pro' ), __( 'Interested Students', 'class-manager-pro' ), 'manage_options', 'cmp-interested-students', 'cmp_render_interested_students_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'All Data', 'class-manager-pro' ), __( 'All Data', 'class-manager-pro' ), 'manage_options', 'cmp-all-data', 'cmp_render_all_data_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Payments', 'class-manager-pro' ), __( 'Payments', 'class-manager-pro' ), 'manage_options', 'cmp-payments', 'cmp_render_payments_page' );
-	add_submenu_page( 'cmp-dashboard', __( 'Razorpay Import', 'class-manager-pro' ), __( 'Razorpay Import', 'class-manager-pro' ), 'manage_options', 'cmp-razorpay-import', 'cmp_render_razorpay_import_page' );
-	add_submenu_page( 'cmp-dashboard', __( 'Teacher Console', 'class-manager-pro' ), __( 'Teacher Console', 'class-manager-pro' ), 'manage_options', 'cmp-teacher-console', 'cmp_render_teacher_console_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Payment Trash', 'class-manager-pro' ), __( 'Payment Trash', 'class-manager-pro' ), 'manage_options', 'cmp-payments-trash', 'cmp_render_payment_trash_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Analytics', 'class-manager-pro' ), __( 'Analytics', 'class-manager-pro' ), 'manage_options', 'cmp-analytics', 'cmp_render_analytics_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Import', 'class-manager-pro' ), __( 'Import', 'class-manager-pro' ), 'manage_options', 'cmp-razorpay-import', 'cmp_render_razorpay_import_page' );
+	add_submenu_page( 'cmp-dashboard', __( 'Teacher Console', 'class-manager-pro' ), __( 'Teacher Console', 'class-manager-pro' ), 'manage_options', 'cmp-teacher-console', 'cmp_render_teacher_console_page' );
 	add_submenu_page( 'cmp-dashboard', __( 'Settings', 'class-manager-pro' ), __( 'Settings', 'class-manager-pro' ), 'manage_options', 'cmp-settings', 'cmp_render_settings_page' );
 
 	if ( ! current_user_can( 'manage_options' ) && function_exists( 'cmp_current_user_has_teacher_batches' ) && cmp_current_user_has_teacher_batches() ) {
@@ -106,7 +109,7 @@ function cmp_enqueue_admin_assets( $hook ) {
 		CMP_VERSION
 	);
 
-	if ( in_array( $page, array( 'cmp-dashboard', 'cmp-analytics' ), true ) ) {
+	if ( in_array( $page, array( 'cmp-analytics', 'cmp-dashboard' ), true ) ) {
 		wp_enqueue_script(
 			'chart-js',
 			'https://cdn.jsdelivr.net/npm/chart.js',

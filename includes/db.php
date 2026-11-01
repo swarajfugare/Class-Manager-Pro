@@ -53,6 +53,7 @@ function cmp_install() {
 		intake_limit int(11) unsigned NOT NULL DEFAULT 0,
 		class_days varchar(191) NULL,
 		manual_income float NOT NULL DEFAULT 0,
+		permanent_registration_enabled tinyint(1) NOT NULL DEFAULT 0,
 		razorpay_page_id varchar(191) NULL,
 		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY  (id),
@@ -72,6 +73,9 @@ function cmp_install() {
 		name varchar(191) NOT NULL,
 		phone varchar(50) NOT NULL,
 		email varchar(191) NULL,
+		lead_source varchar(50) NOT NULL DEFAULT '',
+		city_original varchar(191) NULL,
+		city_normalized varchar(191) NULL,
 		user_id bigint(20) unsigned NOT NULL DEFAULT 0,
 		class_id int(11) unsigned NOT NULL,
 		batch_id int(11) unsigned NOT NULL,
@@ -125,6 +129,14 @@ function cmp_install() {
 	$interested_students = $wpdb->prefix . 'cmp_interested_students';
 	$batch_announcements = $wpdb->prefix . 'cmp_batch_announcements';
 	$registration_tokens = $wpdb->prefix . 'cmp_batch_registration_tokens';
+	$interested_timeline = $wpdb->prefix . 'cmp_interested_student_timelines';
+	$communication_templates = $wpdb->prefix . 'cmp_communication_templates';
+	$communication_campaigns = $wpdb->prefix . 'cmp_communication_campaigns';
+	$communication_messages = $wpdb->prefix . 'cmp_communication_messages';
+	$communication_rules = $wpdb->prefix . 'cmp_communication_automation_rules';
+	$operations_events = $wpdb->prefix . 'cmp_operations_events';
+	$operations_documents = $wpdb->prefix . 'cmp_operations_documents';
+	$operations_goals = $wpdb->prefix . 'cmp_operations_goals';
 
 	$sql[] = "CREATE TABLE {$attendance} (
 		id int(11) unsigned NOT NULL AUTO_INCREMENT,
@@ -261,6 +273,15 @@ function cmp_install() {
 		follow_up_notes longtext NULL,
 		follow_up_updated_at datetime NULL,
 		follow_up_updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		last_contact_at datetime NULL,
+		next_follow_up_at datetime NULL,
+		assigned_teacher_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		contact_attempts int(11) unsigned NOT NULL DEFAULT 0,
+		email_status varchar(50) NOT NULL DEFAULT '',
+		whatsapp_status varchar(50) NOT NULL DEFAULT '',
+		lead_source varchar(50) NOT NULL DEFAULT '',
+		city_original varchar(191) NULL,
+		city_normalized varchar(191) NULL,
 		payment_meta longtext NULL,
 		last_attempt_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -306,6 +327,7 @@ function cmp_install() {
 		token varchar(64) NOT NULL,
 		expires_at datetime NOT NULL,
 		used_at datetime NULL,
+		closed_at datetime NULL,
 		used_student_id int(11) unsigned NOT NULL DEFAULT 0,
 		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
 		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -315,6 +337,246 @@ function cmp_install() {
 		KEY expires_at (expires_at),
 		KEY used_at (used_at),
 		KEY created_by (created_by)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$interested_timeline} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		lead_id bigint(20) unsigned NOT NULL,
+		event_type varchar(100) NOT NULL DEFAULT '',
+		status varchar(50) NOT NULL DEFAULT '',
+		channel varchar(50) NOT NULL DEFAULT '',
+		notes longtext NULL,
+		context longtext NULL,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY lead_id (lead_id),
+		KEY event_type (event_type),
+		KEY status (status),
+		KEY channel (channel),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$communication_templates} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		template_name varchar(191) NOT NULL,
+		template_type varchar(50) NOT NULL DEFAULT 'general',
+		channel varchar(20) NOT NULL DEFAULT 'email',
+		subject varchar(191) NULL,
+		body longtext NULL,
+		variables longtext NULL,
+		status varchar(20) NOT NULL DEFAULT 'active',
+		version_number int(11) unsigned NOT NULL DEFAULT 1,
+		parent_template_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		is_default tinyint(1) NOT NULL DEFAULT 0,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY template_type (template_type),
+		KEY channel (channel),
+		KEY status (status),
+		KEY is_default (is_default),
+		KEY parent_template_id (parent_template_id),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$communication_campaigns} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		campaign_type varchar(50) NOT NULL DEFAULT 'email',
+		channel varchar(20) NOT NULL DEFAULT 'email',
+		title varchar(191) NOT NULL,
+		subject varchar(191) NULL,
+		message longtext NULL,
+		template_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		recipient_scope varchar(50) NOT NULL DEFAULT 'all',
+		recipient_ids longtext NULL,
+		status varchar(20) NOT NULL DEFAULT 'draft',
+		scheduled_at datetime NULL,
+		completed_at datetime NULL,
+		sent_count int(11) unsigned NOT NULL DEFAULT 0,
+		failed_count int(11) unsigned NOT NULL DEFAULT 0,
+		open_count int(11) unsigned NOT NULL DEFAULT 0,
+		click_count int(11) unsigned NOT NULL DEFAULT 0,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY campaign_type (campaign_type),
+		KEY channel (channel),
+		KEY status (status),
+		KEY recipient_scope (recipient_scope),
+		KEY template_id (template_id),
+		KEY scheduled_at (scheduled_at),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$communication_messages} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		campaign_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		template_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		channel varchar(20) NOT NULL DEFAULT 'email',
+		message_type varchar(50) NOT NULL DEFAULT 'notification',
+		recipient_type varchar(50) NOT NULL DEFAULT 'student',
+		recipient_name varchar(191) NOT NULL DEFAULT '',
+		recipient_email varchar(191) NULL,
+		recipient_phone varchar(50) NULL,
+		subject varchar(191) NULL,
+		body longtext NULL,
+		status varchar(20) NOT NULL DEFAULT 'queued',
+		delivery_status varchar(20) NOT NULL DEFAULT 'pending',
+		priority varchar(20) NOT NULL DEFAULT 'normal',
+		action_url text NULL,
+		attachment_url text NULL,
+		provider_response longtext NULL,
+		context longtext NULL,
+		sent_at datetime NULL,
+		read_at datetime NULL,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY campaign_id (campaign_id),
+		KEY template_id (template_id),
+		KEY channel (channel),
+		KEY message_type (message_type),
+		KEY recipient_type (recipient_type),
+		KEY status (status),
+		KEY delivery_status (delivery_status),
+		KEY priority (priority),
+		KEY recipient_email (recipient_email),
+		KEY recipient_phone (recipient_phone),
+		KEY sent_at (sent_at),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$communication_rules} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		rule_name varchar(191) NOT NULL,
+		trigger_key varchar(100) NOT NULL,
+		channel varchar(20) NOT NULL DEFAULT 'email',
+		action_type varchar(50) NOT NULL DEFAULT 'send_email',
+		template_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		recipient_scope varchar(50) NOT NULL DEFAULT 'student',
+		status varchar(20) NOT NULL DEFAULT 'active',
+		conditions longtext NULL,
+		action_config longtext NULL,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY trigger_key (trigger_key),
+		KEY channel (channel),
+		KEY action_type (action_type),
+		KEY status (status),
+		KEY recipient_scope (recipient_scope),
+		KEY template_id (template_id),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$operations_events} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		title varchar(191) NOT NULL,
+		event_type varchar(50) NOT NULL DEFAULT 'other',
+		status varchar(50) NOT NULL DEFAULT 'planned',
+		priority varchar(20) NOT NULL DEFAULT 'normal',
+		source_type varchar(50) NOT NULL DEFAULT 'manual',
+		source_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		class_id int(11) unsigned NOT NULL DEFAULT 0,
+		batch_id int(11) unsigned NOT NULL DEFAULT 0,
+		teacher_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		assigned_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		start_at datetime NULL,
+		end_at datetime NULL,
+		all_day tinyint(1) NOT NULL DEFAULT 0,
+		recurrence_rule longtext NULL,
+		location varchar(191) NULL,
+		meet_link text NULL,
+		notes longtext NULL,
+		color varchar(20) NULL,
+		reminder_at datetime NULL,
+		reminder_channel varchar(20) NOT NULL DEFAULT 'email',
+		reminder_sent_at datetime NULL,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY event_type (event_type),
+		KEY status (status),
+		KEY priority (priority),
+		KEY source_type_source_id (source_type, source_id),
+		KEY class_id (class_id),
+		KEY batch_id (batch_id),
+		KEY teacher_user_id (teacher_user_id),
+		KEY assigned_user_id (assigned_user_id),
+		KEY start_at (start_at),
+		KEY end_at (end_at),
+		KEY reminder_at (reminder_at),
+		KEY reminder_sent_at (reminder_sent_at),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$operations_documents} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		batch_id int(11) unsigned NOT NULL DEFAULT 0,
+		class_id int(11) unsigned NOT NULL DEFAULT 0,
+		document_type varchar(50) NOT NULL DEFAULT 'other',
+		title varchar(191) NOT NULL,
+		file_url text NULL,
+		file_name varchar(191) NULL,
+		file_mime varchar(100) NULL,
+		version_number int(11) unsigned NOT NULL DEFAULT 1,
+		parent_document_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		notes longtext NULL,
+		is_teacher_visible tinyint(1) NOT NULL DEFAULT 1,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY batch_id (batch_id),
+		KEY class_id (class_id),
+		KEY document_type (document_type),
+		KEY parent_document_id (parent_document_id),
+		KEY version_number (version_number),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
+	) {$charset_collate};";
+
+	$sql[] = "CREATE TABLE {$operations_goals} (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		goal_type varchar(50) NOT NULL,
+		period varchar(20) NOT NULL DEFAULT 'monthly',
+		title varchar(191) NOT NULL,
+		target_value decimal(18,2) NOT NULL DEFAULT 0,
+		current_value decimal(18,2) NOT NULL DEFAULT 0,
+		start_date date NULL,
+		end_date date NULL,
+		status varchar(50) NOT NULL DEFAULT 'active',
+		priority varchar(20) NOT NULL DEFAULT 'normal',
+		batch_id int(11) unsigned NOT NULL DEFAULT 0,
+		teacher_user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+		notes longtext NULL,
+		created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		updated_by bigint(20) unsigned NOT NULL DEFAULT 0,
+		created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at datetime NULL,
+		PRIMARY KEY  (id),
+		KEY goal_type (goal_type),
+		KEY period (period),
+		KEY status (status),
+		KEY priority (priority),
+		KEY batch_id (batch_id),
+		KEY teacher_user_id (teacher_user_id),
+		KEY created_by (created_by),
+		KEY created_at (created_at)
 	) {$charset_collate};";
 
 	foreach ( $sql as $statement ) {
@@ -330,6 +592,7 @@ function cmp_install() {
 	cmp_migrate_failed_import_students_to_interested();
 
 	update_option( 'cmp_db_version', CMP_VERSION );
+	set_transient( 'cmp_schema_verified_' . CMP_VERSION, 1, 12 * HOUR_IN_SECONDS );
 }
 
 /**
@@ -338,8 +601,26 @@ function cmp_install() {
 function cmp_maybe_upgrade() {
 	$installed_version = (string) get_option( 'cmp_db_version', '' );
 
-	if ( CMP_VERSION !== $installed_version || cmp_payment_context_schema_needs_upgrade() ) {
+	// Version difference requires installation/upgrade routines.
+	if ( CMP_VERSION !== $installed_version ) {
 		cmp_install();
+		return;
+	}
+
+	// Never run deep schema inspection queries on public frontend visitor requests.
+	if ( ! is_admin() ) {
+		return;
+	}
+
+	// In admin, cache the schema verification for 12 hours to avoid running 45+ SHOW COLUMNS queries on every admin page load.
+	$cache_key       = 'cmp_schema_verified_' . CMP_VERSION;
+	$schema_verified = get_transient( $cache_key );
+
+	if ( false === $schema_verified ) {
+		if ( cmp_payment_context_schema_needs_upgrade() ) {
+			cmp_install();
+		}
+		set_transient( $cache_key, 1, 12 * HOUR_IN_SECONDS );
 	}
 }
 
@@ -356,6 +637,14 @@ function cmp_payment_context_schema_needs_upgrade() {
 	$interested_table = $wpdb->prefix . 'cmp_interested_students';
 	$announcements_table = $wpdb->prefix . 'cmp_batch_announcements';
 	$registration_table = $wpdb->prefix . 'cmp_batch_registration_tokens';
+	$timeline_table     = $wpdb->prefix . 'cmp_interested_student_timelines';
+	$communication_templates_table = $wpdb->prefix . 'cmp_communication_templates';
+	$communication_campaigns_table = $wpdb->prefix . 'cmp_communication_campaigns';
+	$communication_messages_table   = $wpdb->prefix . 'cmp_communication_messages';
+	$communication_rules_table      = $wpdb->prefix . 'cmp_communication_automation_rules';
+	$operations_events_table    = $wpdb->prefix . 'cmp_operations_events';
+	$operations_documents_table = $wpdb->prefix . 'cmp_operations_documents';
+	$operations_goals_table     = $wpdb->prefix . 'cmp_operations_goals';
 	$found       = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $table ) );
 
 	if ( ! is_string( $found ) || $table !== $found ) {
@@ -370,13 +659,45 @@ function cmp_payment_context_schema_needs_upgrade() {
 		}
 	}
 
+	$student_table = $wpdb->prefix . 'cmp_students';
+	$found         = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $student_table ) );
+
+	if ( ! is_string( $found ) || $student_table !== $found ) {
+		return true;
+	}
+
+	foreach ( array( 'email', 'lead_source', 'city_original', 'city_normalized' ) as $column ) {
+		$found = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$student_table} LIKE %s", $column ) );
+
+		if ( ! is_string( $found ) || $column !== $found ) {
+			return true;
+		}
+	}
+
+	$batch_table = $wpdb->prefix . 'cmp_batches';
+	$found       = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $batch_table ) );
+
+	if ( ! is_string( $found ) || $batch_table !== $found ) {
+		return true;
+	}
+
+	$batch_columns = array( 'permanent_registration_enabled' );
+
+	foreach ( $batch_columns as $column ) {
+		$found = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$batch_table} LIKE %s", $column ) );
+
+		if ( ! is_string( $found ) || $column !== $found ) {
+			return true;
+		}
+	}
+
 	$audit_found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $audit_table ) );
 
 	if ( ! is_string( $audit_found ) || $audit_table !== $audit_found ) {
 		return true;
 	}
 
-	foreach ( array( $interested_table, $announcements_table, $registration_table ) as $support_table ) {
+	foreach ( array( $interested_table, $announcements_table, $registration_table, $timeline_table ) as $support_table ) {
 		$support_found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $support_table ) );
 
 		if ( ! is_string( $support_found ) || $support_table !== $support_found ) {
@@ -384,11 +705,40 @@ function cmp_payment_context_schema_needs_upgrade() {
 		}
 	}
 
+	foreach ( array( $communication_templates_table, $communication_campaigns_table, $communication_messages_table, $communication_rules_table, $operations_events_table, $operations_documents_table, $operations_goals_table ) as $support_table ) {
+		$support_found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $support_table ) );
+
+		if ( ! is_string( $support_found ) || $support_table !== $support_found ) {
+			return true;
+		}
+	}
+
+	foreach ( array( $operations_events_table, $operations_documents_table, $operations_goals_table ) as $operations_table ) {
+		$operations_found = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $operations_table ) );
+
+		if ( ! is_string( $operations_found ) || $operations_table !== $operations_found ) {
+			return true;
+		}
+	}
+
+	if ( function_exists( 'cmp_operations_schema_needs_upgrade' ) && cmp_operations_schema_needs_upgrade() ) {
+		return true;
+	}
+
 	$interested_columns = array(
 		'follow_up_status',
 		'follow_up_notes',
 		'follow_up_updated_at',
 		'follow_up_updated_by',
+		'last_contact_at',
+		'next_follow_up_at',
+		'assigned_teacher_user_id',
+		'contact_attempts',
+		'email_status',
+		'whatsapp_status',
+		'lead_source',
+		'city_original',
+		'city_normalized',
 	);
 
 	foreach ( $interested_columns as $column ) {
@@ -408,6 +758,16 @@ function cmp_payment_context_schema_needs_upgrade() {
 
 	foreach ( $announcement_columns as $column ) {
 		$found = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$announcements_table} LIKE %s", $column ) );
+
+		if ( ! is_string( $found ) || $column !== $found ) {
+			return true;
+		}
+	}
+
+	$registration_columns = array( 'closed_at' );
+
+	foreach ( $registration_columns as $column ) {
+		$found = $wpdb->get_var( $wpdb->prepare( "SHOW COLUMNS FROM {$registration_table} LIKE %s", $column ) );
 
 		if ( ! is_string( $found ) || $column !== $found ) {
 			return true;

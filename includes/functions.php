@@ -20,9 +20,12 @@ add_action( 'admin_post_cmp_delete_payment', 'cmp_handle_delete_payment' );
 add_action( 'admin_post_cmp_restore_payment', 'cmp_handle_restore_payment' );
 add_action( 'admin_post_cmp_force_delete_payment', 'cmp_handle_force_delete_payment' );
 add_action( 'admin_post_cmp_save_settings', 'cmp_handle_save_settings' );
+add_action( 'admin_post_cmp_save_smartcertify_settings', 'cmp_handle_save_smartcertify_settings' );
+add_action( 'admin_post_cmp_generate_batch_certificates_again', 'cmp_handle_generate_batch_certificates_again' );
 add_action( 'admin_post_cmp_import_detected_razorpay_keys', 'cmp_handle_import_detected_razorpay_keys' );
 add_action( 'admin_post_cmp_manual_import_razorpay', 'cmp_handle_manual_import_razorpay' );
 add_action( 'admin_post_cmp_import_razorpay_page_to_batch', 'cmp_handle_import_razorpay_page_to_batch' );
+add_action( 'admin_post_cmp_test_razorpay_connection', 'cmp_handle_test_razorpay_connection' );
 add_action( 'admin_post_cmp_import_batch_sheet_data', 'cmp_handle_import_batch_sheet_data' );
 add_action( 'admin_post_cmp_import_students_file', 'cmp_handle_import_students_file' );
 add_action( 'admin_post_cmp_download_batch_import_template', 'cmp_handle_download_batch_import_template' );
@@ -39,16 +42,32 @@ add_action( 'admin_init', 'cmp_handle_csv_export' );
 add_action( 'init', 'cmp_schedule_daily_fee_reminders' );
 add_action( 'init', 'cmp_disable_razorpay_payment_sync_automation' );
 add_action( 'cmp_daily_fee_reminders', 'cmp_run_scheduled_fee_reminders' );
+add_action( 'cmp_smartcertify_class_saved', 'cmp_flush_dashboard_cache' );
+add_action( 'cmp_smartcertify_batch_saved', 'cmp_flush_dashboard_cache' );
+add_action( 'cmp_smartcertify_student_saved', 'cmp_flush_dashboard_cache' );
+add_action( 'cmp_student_registered', 'cmp_flush_dashboard_cache' );
+add_action( 'cmp_payment_recorded', 'cmp_flush_dashboard_cache' );
 add_action( 'wp_ajax_cmp_filter_all_data', 'cmp_ajax_filter_all_data' );
 add_action( 'wp_ajax_cmp_filter_students', 'cmp_ajax_filter_students' );
+add_action( 'wp_ajax_cmp_filter_classes', 'cmp_ajax_filter_classes' );
+add_action( 'wp_ajax_cmp_filter_batches', 'cmp_ajax_filter_batches' );
+add_action( 'wp_ajax_cmp_filter_payments', 'cmp_ajax_filter_payments' );
+add_action( 'wp_ajax_cmp_filter_interested_students', 'cmp_ajax_filter_interested_students' );
 add_action( 'wp_ajax_cmp_delete_item', 'cmp_delete_item' );
 add_action( 'wp_ajax_cmp_admin_entity_action', 'cmp_ajax_admin_entity_action' );
 add_action( 'wp_ajax_cmp_bulk_student_action', 'cmp_ajax_bulk_student_action' );
 add_action( 'wp_ajax_cmp_save_attendance_quick', 'cmp_ajax_save_attendance_quick' );
 add_action( 'wp_ajax_cmp_send_student_follow_up_email', 'cmp_ajax_send_student_follow_up_email' );
 add_action( 'wp_ajax_cmp_import_razorpay_page_to_batch', 'cmp_ajax_import_razorpay_page_to_batch' );
+add_action( 'wp_ajax_cmp_process_razorpay_page_import_chunk', 'cmp_ajax_process_razorpay_page_import_chunk' );
+add_action( 'wp_ajax_cmp_test_razorpay_connection', 'cmp_ajax_test_razorpay_connection' );
 add_action( 'wp_ajax_cmp_import_students_file', 'cmp_ajax_import_students_file' );
 add_action( 'wp_ajax_cmp_process_student_import_chunk', 'cmp_ajax_process_student_import_chunk' );
+add_action( 'wp_ajax_cmp_save_class_ajax', 'cmp_ajax_save_class' );
+add_action( 'wp_ajax_cmp_save_batch_ajax', 'cmp_ajax_save_batch' );
+add_action( 'wp_ajax_cmp_save_student_ajax', 'cmp_ajax_save_student' );
+add_action( 'wp_ajax_cmp_save_payment_ajax', 'cmp_ajax_save_payment' );
+add_action( 'wp_ajax_cmp_save_interested_student_follow_up_ajax', 'cmp_ajax_save_interested_student_follow_up' );
 
 /**
  * Returns a plugin table name.
@@ -158,6 +177,81 @@ function cmp_admin_url( $page, $args = array() ) {
 		array_merge( array( 'page' => $page ), $args ),
 		admin_url( 'admin.php' )
 	);
+}
+
+/**
+ * Renders a compact workflow tab bar.
+ *
+ * @param array  $tabs List of tab definitions.
+ * @param string $current Current tab key.
+ * @param string $label Accessible nav label.
+ * @return void
+ */
+function cmp_render_workflow_tabs( $tabs, $current, $label = '' ) {
+	if ( empty( $tabs ) || ! is_array( $tabs ) ) {
+		return;
+	}
+
+	?>
+	<nav class="nav-tab-wrapper cmp-tab-nav cmp-workflow-tabs" aria-label="<?php echo esc_attr( $label ? $label : __( 'Workflow sections', 'class-manager-pro' ) ); ?>">
+		<?php foreach ( $tabs as $tab ) : ?>
+			<?php
+			$key   = sanitize_key( cmp_field( $tab, 'key' ) );
+			$title = (string) cmp_field( $tab, 'label' );
+			$url   = (string) cmp_field( $tab, 'url' );
+			?>
+			<a class="nav-tab <?php echo esc_attr( $key === $current ? 'nav-tab-active' : '' ); ?>" href="<?php echo esc_url( $url ); ?>"><?php echo esc_html( $title ); ?></a>
+		<?php endforeach; ?>
+	</nav>
+	<?php
+}
+
+/**
+ * Renders the top-level admin workflow navigation.
+ *
+ * @param string $active Active page slug.
+ * @return void
+ */
+function cmp_render_admin_workflow_nav( $active = '' ) {
+	$active = sanitize_key( $active ? $active : cmp_field( $_GET, 'page', 'cmp-dashboard' ) );
+	$groups = array(
+		'cmp-dashboard'           => 'dashboard',
+		'cmp-students'            => 'admissions',
+		'cmp-interested-students'  => 'admissions',
+		'cmp-classes'             => 'academics',
+		'cmp-batches'             => 'academics',
+		'cmp-payments'            => 'finance',
+		'cmp-payments-trash'      => 'finance',
+		'cmp-razorpay-import'     => 'finance',
+		'cmp-analytics'           => 'reports',
+		'cmp-teacher-console'     => 'teachers',
+		'cmp-communication-center' => 'communication',
+		'cmp-communication-center-email' => 'communication',
+		'cmp-communication-center-whatsapp' => 'communication',
+		'cmp-communication-center-campaigns' => 'communication',
+		'cmp-communication-center-templates' => 'communication',
+		'cmp-communication-center-automation' => 'communication',
+		'cmp-communication-center-history' => 'communication',
+		'cmp-communication-center-statistics' => 'communication',
+		'cmp-communication-center-settings' => 'communication',
+		'cmp-settings'            => 'settings',
+		'cmp-all-data'            => 'settings',
+	);
+	$current_group = isset( $groups[ $active ] ) ? $groups[ $active ] : 'dashboard';
+	$tabs = array(
+		array( 'key' => 'dashboard', 'label' => __( 'Dashboard', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-dashboard' ) ),
+		array( 'key' => 'admissions', 'label' => __( 'Admissions', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students' ) ),
+		array( 'key' => 'academics', 'label' => __( 'Classes & Batches', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-batches' ) ),
+		array( 'key' => 'finance', 'label' => __( 'Finance', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-payments' ) ),
+		array( 'key' => 'reports', 'label' => __( 'Reports', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-analytics' ) ),
+		array( 'key' => 'teachers', 'label' => __( 'Teachers', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-teacher-console' ) ),
+		array( 'key' => 'communication', 'label' => __( 'Communication', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-communication-center' ) ),
+		array( 'key' => 'settings', 'label' => __( 'Settings', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-settings' ) ),
+	);
+
+	echo '<div class="cmp-global-nav">';
+	cmp_render_workflow_tabs( $tabs, $current_group, __( 'Class Manager Pro sections', 'class-manager-pro' ) );
+	echo '</div>';
 }
 
 /**
@@ -680,8 +774,8 @@ function cmp_get_payment_audit_snapshot_summary( $value ) {
 
 	$parts = array(
 		sprintf(
-			/* translators: %s: payment amount */
-			__( 'Amount: %s', 'class-manager-pro' ),
+			/* translators: %s: student fee amount */
+			__( 'Student Fee: %s', 'class-manager-pro' ),
 			cmp_format_money( cmp_field( $data, 'amount', 0 ) )
 		),
 		sprintf(
@@ -698,8 +792,8 @@ function cmp_get_payment_audit_snapshot_summary( $value ) {
 
 	if ( (float) cmp_field( $data, 'charge_amount', 0 ) > 0 ) {
 		$parts[] = sprintf(
-			/* translators: %s: payment final amount */
-			__( 'Final: %s', 'class-manager-pro' ),
+			/* translators: %s: net amount received */
+			__( 'Net Received: %s', 'class-manager-pro' ),
 			cmp_format_money( cmp_field( $data, 'final_amount', cmp_field( $data, 'amount', 0 ) ) )
 		);
 	}
@@ -1428,6 +1522,50 @@ function cmp_current_user_can_manage_batch_attendance( $batch_id ) {
 }
 
 /**
+ * Checks teacher/admin access to a student follow-up action.
+ *
+ * @param int|object $student Student row or ID.
+ * @return bool
+ */
+function cmp_current_user_can_manage_student_follow_up( $student ) {
+	if ( current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+
+	if ( is_numeric( $student ) ) {
+		$student = cmp_get_student( (int) $student );
+	}
+
+	if ( ! $student || empty( $student->batch_id ) ) {
+		return false;
+	}
+
+	return cmp_current_user_can_manage_batch_attendance( (int) $student->batch_id );
+}
+
+/**
+ * Checks teacher/admin access to an interested-student follow-up action.
+ *
+ * @param int|object $lead Interested student row or ID.
+ * @return bool
+ */
+function cmp_current_user_can_manage_interested_student_follow_up( $lead ) {
+	if ( current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+
+	if ( is_numeric( $lead ) ) {
+		$lead = cmp_get_interested_student( (int) $lead );
+	}
+
+	if ( ! $lead || empty( $lead->batch_id ) ) {
+		return false;
+	}
+
+	return cmp_current_user_can_manage_batch_attendance( (int) $lead->batch_id );
+}
+
+/**
  * Gets batches visible in the teacher console.
  *
  * @return array
@@ -2073,6 +2211,20 @@ function cmp_insert_class( $data ) {
 		)
 	);
 
+	do_action(
+		'cmp_smartcertify_class_saved',
+		array(
+			'source_plugin' => 'class-manager-pro',
+			'event'         => 'class_saved',
+			'action'        => 'insert',
+			'class_id'      => $class_id,
+			'class_name'    => $name,
+			'class'         => cmp_get_class( $class_id ),
+			'timestamp'     => cmp_current_datetime(),
+			'plugin_version'=> defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
+
 	return $class_id;
 }
 
@@ -2118,6 +2270,20 @@ function cmp_update_class( $id, $data ) {
 			/* translators: %s: class name */
 			__( 'Class "%s" updated.', 'class-manager-pro' ),
 			$name
+		)
+	);
+
+	do_action(
+		'cmp_smartcertify_class_saved',
+		array(
+			'source_plugin' => 'class-manager-pro',
+			'event'         => 'class_saved',
+			'action'        => 'update',
+			'class_id'      => $id,
+			'class_name'    => $name,
+			'class'         => cmp_get_class( $id ),
+			'timestamp'     => cmp_current_datetime(),
+			'plugin_version'=> defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
 		)
 	);
 
@@ -2379,7 +2545,7 @@ function cmp_get_batch_by_token( $token ) {
 function cmp_get_batch_public_form_url( $batch ) {
 	$batch = is_object( $batch ) ? $batch : cmp_get_batch( (int) $batch );
 
-	if ( ! $batch || empty( $batch->public_token ) ) {
+	if ( ! $batch || empty( $batch->public_token ) || empty( $batch->is_free ) || empty( $batch->permanent_registration_enabled ) ) {
 		return '';
 	}
 
@@ -2389,6 +2555,16 @@ function cmp_get_batch_public_form_url( $batch ) {
 		),
 		home_url( '/' )
 	);
+}
+
+/**
+ * Builds the public student form URL for a free batch with a permanent link enabled.
+ *
+ * @param object|int $batch Batch row or ID.
+ * @return string
+ */
+function cmp_get_batch_permanent_registration_url( $batch ) {
+	return cmp_get_batch_public_form_url( $batch );
 }
 
 /**
@@ -2687,6 +2863,7 @@ function cmp_insert_batch( $data ) {
 	$intake_limit     = absint( cmp_field( $data, 'intake_limit', 0 ) );
 	$class_days       = sanitize_text_field( cmp_field( $data, 'class_days' ) );
 	$manual_income    = cmp_money_value( cmp_field( $data, 'manual_income', 0 ) );
+	$permanent_registration_enabled = ! empty( $data['permanent_registration_enabled'] ) && $is_free ? 1 : 0;
 
 	if ( ! $class_id || ! cmp_get_class( $class_id ) || '' === $batch_name ) {
 		return new WP_Error( 'cmp_invalid_batch', __( 'Valid class and batch name are required.', 'class-manager-pro' ) );
@@ -2715,10 +2892,11 @@ function cmp_insert_batch( $data ) {
 			'intake_limit'     => $intake_limit,
 			'class_days'       => $class_days,
 			'manual_income'    => $manual_income,
+			'permanent_registration_enabled' => $permanent_registration_enabled,
 			'razorpay_page_id' => $razorpay_page_id,
 			'created_at'       => cmp_current_datetime(),
 		),
-		array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%d', '%d', '%s', '%f', '%s', '%s' )
+		array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%d', '%d', '%s', '%f', '%d', '%s', '%s' )
 	);
 
 	if ( false === $result ) {
@@ -2726,6 +2904,8 @@ function cmp_insert_batch( $data ) {
 	}
 
 	$batch_id = (int) $wpdb->insert_id;
+	$class_row = cmp_get_class( $class_id );
+	$status    = cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' );
 
 	cmp_log_activity(
 		array(
@@ -2753,6 +2933,43 @@ function cmp_insert_batch( $data ) {
 			$batch_name
 		)
 	);
+
+	do_action(
+		'cmp_smartcertify_batch_saved',
+		array(
+			'source_plugin' => 'class-manager-pro',
+			'event'         => 'batch_saved',
+			'action'        => 'insert',
+			'batch_id'      => $batch_id,
+			'class_id'      => $class_id,
+			'batch_name'    => $batch_name,
+			'class_name'    => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+			'status'        => $status,
+			'batch'         => cmp_get_batch( $batch_id ),
+			'timestamp'     => cmp_current_datetime(),
+			'plugin_version'=> defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
+
+	if ( 'completed' === $status ) {
+		do_action(
+			'cmp_smartcertify_batch_completed',
+			array(
+				'source_plugin'  => 'class-manager-pro',
+				'event'          => 'batch_completed',
+				'batch_id'       => $batch_id,
+				'class_id'       => $class_id,
+				'batch_name'     => $batch_name,
+				'class_name'     => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+				'previous_status'=> 'active',
+				'status'         => 'completed',
+				'batch'          => cmp_get_batch( $batch_id ),
+				'completion_date'=> current_time( 'Y-m-d' ),
+				'timestamp'      => cmp_current_datetime(),
+				'plugin_version' => defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+			)
+		);
+	}
 
 	return $batch_id;
 }
@@ -2785,6 +3002,7 @@ function cmp_update_batch( $id, $data ) {
 	$intake_limit     = absint( cmp_field( $data, 'intake_limit', 0 ) );
 	$class_days       = sanitize_text_field( cmp_field( $data, 'class_days' ) );
 	$manual_income    = cmp_money_value( cmp_field( $data, 'manual_income', 0 ) );
+	$permanent_registration_enabled = ! empty( cmp_field( $data, 'permanent_registration_enabled', $batch && isset( $batch->permanent_registration_enabled ) ? (int) $batch->permanent_registration_enabled : 0 ) ) && $is_free ? 1 : 0;
 
 	if ( ! $id || ! $class_id || ! cmp_get_class( $class_id ) || '' === $batch_name ) {
 		return new WP_Error( 'cmp_invalid_batch', __( 'Valid batch details are required.', 'class-manager-pro' ) );
@@ -2813,16 +3031,21 @@ function cmp_update_batch( $id, $data ) {
 			'intake_limit'     => $intake_limit,
 			'class_days'       => $class_days,
 			'manual_income'    => $manual_income,
+			'permanent_registration_enabled' => $permanent_registration_enabled,
 			'razorpay_page_id' => $razorpay_page_id,
 		),
 		array( 'id' => $id ),
-		array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%d', '%d', '%s', '%f', '%s' ),
+		array( '%d', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%d', '%d', '%d', '%s', '%f', '%d', '%s' ),
 		array( '%d' )
 	);
 
 	if ( false === $result ) {
 		return new WP_Error( 'cmp_db_error', __( 'Could not update batch.', 'class-manager-pro' ) );
 	}
+
+	$previous_status = isset( $batch->status ) ? sanitize_key( $batch->status ) : 'active';
+	$new_status      = cmp_clean_enum( cmp_field( $data, 'status', 'active' ), cmp_batch_statuses(), 'active' );
+	$class_row       = cmp_get_class( $class_id );
 
 	cmp_log_activity(
 		array(
@@ -2850,6 +3073,61 @@ function cmp_update_batch( $id, $data ) {
 			$batch_name
 		)
 	);
+
+	do_action(
+		'cmp_smartcertify_batch_saved',
+		array(
+			'source_plugin'  => 'class-manager-pro',
+			'event'          => 'batch_saved',
+			'action'         => 'update',
+			'batch_id'       => $id,
+			'class_id'       => $class_id,
+			'batch_name'     => $batch_name,
+			'class_name'     => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+			'previous_status'=> $previous_status,
+			'status'         => $new_status,
+			'batch'          => cmp_get_batch( $id ),
+			'timestamp'      => cmp_current_datetime(),
+			'plugin_version' => defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
+
+	do_action(
+		'cmp_smartcertify_batch_status_changed',
+		array(
+			'source_plugin'  => 'class-manager-pro',
+			'event'          => 'batch_status_changed',
+			'batch_id'       => $id,
+			'class_id'       => $class_id,
+			'batch_name'     => $batch_name,
+			'class_name'     => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+			'previous_status'=> $previous_status,
+			'status'         => $new_status,
+			'batch'          => cmp_get_batch( $id ),
+			'timestamp'      => cmp_current_datetime(),
+			'plugin_version' => defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
+
+	if ( 'completed' === $new_status && 'completed' !== $previous_status ) {
+		do_action(
+			'cmp_smartcertify_batch_completed',
+			array(
+				'source_plugin'  => 'class-manager-pro',
+				'event'          => 'batch_completed',
+				'batch_id'       => $id,
+				'class_id'       => $class_id,
+				'batch_name'     => $batch_name,
+				'class_name'     => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+				'previous_status'=> $previous_status,
+				'status'         => 'completed',
+				'batch'          => cmp_get_batch( $id ),
+				'completion_date'=> current_time( 'Y-m-d' ),
+				'timestamp'      => cmp_current_datetime(),
+				'plugin_version' => defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+			)
+		);
+	}
 
 	return true;
 }
@@ -2884,6 +3162,10 @@ function cmp_delete_batch( $id ) {
 			$batch && ! empty( $batch->batch_name ) ? $batch->batch_name : __( 'Unknown', 'class-manager-pro' )
 		)
 	);
+
+	if ( function_exists( 'cmp_sync_operations_batch_event' ) ) {
+		cmp_sync_operations_batch_event( $id, 'delete' );
+	}
 
 	return true;
 }
@@ -3183,6 +3465,1068 @@ function cmp_find_reusable_import_student( $batch, $name = '', $email = '', $pho
 }
 
 /**
+ * Returns the mergeable student for a batch registration flow.
+ *
+ * Existing students may be reassigned within the same class, but registrations do
+ * not merge across classes so older enrollments stay intact.
+ *
+ * @param object $batch Batch row.
+ * @param string $phone Student phone.
+ * @param string $email Student email.
+ * @return object|null
+ */
+function cmp_find_mergeable_student_for_batch( $batch, $phone = '', $email = '' ) {
+	$batch = $batch ? cmp_get_batch( (int) $batch->id ) : null;
+
+	if ( ! $batch ) {
+		return null;
+	}
+
+	$existing = cmp_find_student_in_batch_by_contact( (int) $batch->id, $phone, $email );
+
+	if ( $existing ) {
+		return $existing;
+	}
+
+	$existing = cmp_find_student_by_contact( $phone, $email );
+
+	if ( ! $existing || (int) $existing->class_id !== (int) $batch->class_id ) {
+		return null;
+	}
+
+	return $existing;
+}
+
+/**
+ * Maps a registration method key to a human label.
+ *
+ * @param string $method Registration method.
+ * @return string
+ */
+function cmp_get_registration_method_label( $method ) {
+	$method = sanitize_key( $method );
+
+	$labels = array(
+		'temporary_link' => __( 'Temporary Link', 'class-manager-pro' ),
+		'permanent_link' => __( 'Permanent Link', 'class-manager-pro' ),
+		'admin_added'    => __( 'Admin Added', 'class-manager-pro' ),
+		'admin_override'  => __( 'Admin Override', 'class-manager-pro' ),
+		'csv_import'     => __( 'CSV Import', 'class-manager-pro' ),
+		'razorpay_import'=> __( 'Razorpay Import', 'class-manager-pro' ),
+		'manual'         => __( 'Manual Entry', 'class-manager-pro' ),
+	);
+
+	return isset( $labels[ $method ] ) ? $labels[ $method ] : ucwords( str_replace( array( '_', '-' ), ' ', $method ) );
+}
+
+/**
+ * Maps a registration source key to a human label.
+ *
+ * @param string $source Registration source.
+ * @return string
+ */
+function cmp_get_registration_source_label( $source ) {
+	$source = sanitize_key( $source );
+
+	$labels = array(
+		'public_form'    => __( 'Public Form', 'class-manager-pro' ),
+		'admin_form'     => __( 'Admin Form', 'class-manager-pro' ),
+		'csv_import'     => __( 'CSV Import', 'class-manager-pro' ),
+		'razorpay_import'=> __( 'Razorpay Import', 'class-manager-pro' ),
+		'bulk_action'    => __( 'Bulk Action', 'class-manager-pro' ),
+		'manual'         => __( 'Manual', 'class-manager-pro' ),
+	);
+
+	return isset( $labels[ $source ] ) ? $labels[ $source ] : ucwords( str_replace( array( '_', '-' ), ' ', $source ) );
+}
+
+/**
+ * Returns whether a registration email is valid.
+ *
+ * @param string $email Email address.
+ * @return bool
+ */
+function cmp_registration_email_is_valid( $email ) {
+	$email = sanitize_email( (string) $email );
+
+	return '' !== $email && is_email( $email );
+}
+
+/**
+ * Returns the canonical lead-source labels.
+ *
+ * @return array
+ */
+function cmp_get_lead_source_labels() {
+	return array(
+		'Facebook' => __( 'Facebook', 'class-manager-pro' ),
+		'Instagram' => __( 'Instagram', 'class-manager-pro' ),
+		'WhatsApp' => __( 'WhatsApp', 'class-manager-pro' ),
+		'Referral' => __( 'Referral', 'class-manager-pro' ),
+		'Google' => __( 'Google', 'class-manager-pro' ),
+		'Offline' => __( 'Offline', 'class-manager-pro' ),
+		'YouTube' => __( 'YouTube', 'class-manager-pro' ),
+		'Direct' => __( 'Direct', 'class-manager-pro' ),
+		'Other' => __( 'Other', 'class-manager-pro' ),
+	);
+}
+
+/**
+ * Converts a lead source alias into a canonical label.
+ *
+ * @param string $source Lead source.
+ * @return string
+ */
+function cmp_normalize_lead_source_name( $source ) {
+	$source = trim( sanitize_text_field( (string) $source ) );
+
+	if ( '' === $source ) {
+		return '';
+	}
+
+	$map = array(
+		'facebook'     => 'Facebook',
+		'fb'           => 'Facebook',
+		'meta'         => 'Facebook',
+		'instagram'    => 'Instagram',
+		'ig'           => 'Instagram',
+		'whatsapp'     => 'WhatsApp',
+		'whats app'    => 'WhatsApp',
+		'wa'           => 'WhatsApp',
+		'referral'     => 'Referral',
+		'refer'        => 'Referral',
+		'google'       => 'Google',
+		'search'       => 'Google',
+		'yt'           => 'YouTube',
+		'youtube'      => 'YouTube',
+		'offline'      => 'Offline',
+		'walk in'      => 'Offline',
+		'walk-in'      => 'Offline',
+		'direct'       => 'Direct',
+		'website'      => 'Direct',
+		'other'        => 'Other',
+	);
+
+	$aliases = array( $source, strtolower( $source ) );
+
+	if ( function_exists( 'remove_accents' ) ) {
+		$aliases[] = remove_accents( $source );
+	}
+
+	if ( function_exists( 'iconv' ) ) {
+		$aliases[] = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $source ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	foreach ( $aliases as $alias ) {
+		$key = strtolower( preg_replace( '/[^a-z0-9]+/', ' ', (string) $alias ) );
+		$key = trim( preg_replace( '/\s+/', ' ', $key ) );
+
+		if ( isset( $map[ $key ] ) ) {
+			return $map[ $key ];
+		}
+	}
+
+	return isset( $map[ strtolower( $source ) ] ) ? $map[ strtolower( $source ) ] : 'Other';
+}
+
+/**
+ * Converts a city alias into a canonical display label without losing the original text.
+ *
+ * @param string $city City name.
+ * @return array
+ */
+function cmp_normalize_city_name( $city ) {
+	$original = trim( sanitize_text_field( (string) $city ) );
+
+	if ( '' === $original ) {
+		return array(
+			'original'   => '',
+			'normalized' => '',
+		);
+	}
+
+	$aliases = array(
+		'pandharpur'  => 'Pandharpur',
+		'pandarpur'   => 'Pandharpur',
+		'pandarapur'  => 'Pandharpur',
+		'pandharpoor' => 'Pandharpur',
+		'pandharpurr' => 'Pandharpur',
+		'pandharpoor' => 'Pandharpur',
+		'pandarpur'   => 'Pandharpur',
+		'पंढरपूर'      => 'Pandharpur',
+		'पंढरपुर'      => 'Pandharpur',
+	);
+
+	$variants = array(
+		$original,
+		strtolower( $original ),
+	);
+
+	if ( function_exists( 'remove_accents' ) ) {
+		$variants[] = remove_accents( $original );
+	}
+
+	if ( function_exists( 'iconv' ) ) {
+		$variants[] = @iconv( 'UTF-8', 'ASCII//TRANSLIT//IGNORE', $original ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged
+	}
+
+	$variants[] = cmp_transliterate_import_name( $original );
+	$variants[] = str_replace( array( '-', '_', ' ' ), '', $original );
+
+	/**
+	 * Allow site owners to inject more city aliases without changing the plugin.
+	 *
+	 * @param array  $aliases   Canonical map of normalized keys to display names.
+	 * @param string $original  Original city text.
+	 */
+	$aliases = apply_filters( 'cmp_city_aliases', $aliases, $original );
+
+	foreach ( $variants as $variant ) {
+		$key = strtolower( preg_replace( '/[^\p{L}\p{N}]+/u', '', (string) $variant ) );
+
+		if ( isset( $aliases[ $key ] ) ) {
+			return array(
+				'original'   => $original,
+				'normalized' => $aliases[ $key ],
+			);
+		}
+	}
+
+	return array(
+		'original'   => $original,
+		'normalized' => ucwords( strtolower( $original ) ),
+	);
+}
+
+/**
+ * Returns the payment collection rate for all current students.
+ *
+ * @return float
+ */
+function cmp_get_payment_collection_rate() {
+	global $wpdb;
+
+	$row = $wpdb->get_row(
+		'SELECT
+			COALESCE(SUM(total_fee), 0) AS total_fee,
+			COALESCE(SUM(paid_fee), 0) AS paid_fee
+		FROM ' . cmp_table( 'students' )
+	);
+
+	if ( ! $row || empty( $row->total_fee ) ) {
+		return 0;
+	}
+
+	return round( ( (float) $row->paid_fee / (float) $row->total_fee ) * 100, 2 );
+}
+
+/**
+ * Returns the overall attendance rate across all marked attendance rows.
+ *
+ * @return float
+ */
+function cmp_get_overall_attendance_rate() {
+	global $wpdb;
+
+	$row = $wpdb->get_row(
+		'SELECT
+			SUM(CASE WHEN status = \'present\' THEN 1 ELSE 0 END) AS present_count,
+			COUNT(*) AS total_marked
+		FROM ' . cmp_table( 'attendance' )
+	);
+
+	if ( ! $row || empty( $row->total_marked ) ) {
+		return 0;
+	}
+
+	return round( ( (float) $row->present_count / (float) $row->total_marked ) * 100, 2 );
+}
+
+/**
+ * Returns the overall completion rate for students.
+ *
+ * @return float
+ */
+function cmp_get_student_completion_rate() {
+	global $wpdb;
+
+	$total = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) );
+
+	if ( $total <= 0 ) {
+		return 0;
+	}
+
+	$completed = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'completed' ) );
+
+	return round( ( $completed / $total ) * 100, 2 );
+}
+
+/**
+ * Returns the average number of students per batch.
+ *
+ * @return float
+ */
+function cmp_get_average_batch_size() {
+	global $wpdb;
+
+	$row = $wpdb->get_row(
+		'SELECT COUNT(*) AS student_count, COUNT(DISTINCT batch_id) AS batch_count FROM ' . cmp_table( 'students' ) . ' WHERE batch_id > 0'
+	);
+
+	if ( ! $row || empty( $row->batch_count ) ) {
+		return 0;
+	}
+
+	return round( (float) $row->student_count / (float) $row->batch_count, 2 );
+}
+
+/**
+ * Returns the average revenue generated per batch.
+ *
+ * @return float
+ */
+function cmp_get_average_revenue_per_batch() {
+	global $wpdb;
+
+	$batch_count = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'batches' ) );
+
+	if ( $batch_count <= 0 ) {
+		return 0;
+	}
+
+	$revenue = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' p WHERE p.is_deleted = 0' );
+	$revenue += (float) $wpdb->get_var( 'SELECT COALESCE(SUM(manual_income), 0) FROM ' . cmp_table( 'batches' ) );
+
+	return round( $revenue / $batch_count, 2 );
+}
+
+/**
+ * Returns month-over-month admissions and revenue comparison.
+ *
+ * @return array
+ */
+function cmp_get_monthly_comparison_summary() {
+	$current_month = current_time( 'Y-m-01 00:00:00' );
+	$previous_month = gmdate( 'Y-m-01 00:00:00', strtotime( '-1 month', current_time( 'timestamp' ) ) );
+	$comparison = array(
+		'current'  => array( 'admissions' => 0, 'revenue' => 0, 'label' => wp_date( 'F Y' ) ),
+		'previous' => array( 'admissions' => 0, 'revenue' => 0, 'label' => wp_date( 'F Y', strtotime( '-1 month', current_time( 'timestamp' ) ) ) ),
+	);
+
+	global $wpdb;
+
+	$comparison['current']['admissions'] = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE created_at >= %s',
+			$current_month
+		)
+	);
+	$comparison['previous']['admissions'] = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE created_at >= %s AND created_at < %s',
+			$previous_month,
+			$current_month
+		)
+	);
+	$comparison['current']['revenue'] = (float) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' p WHERE p.is_deleted = 0 AND p.payment_date >= %s',
+			$current_month
+		)
+	);
+	$comparison['previous']['revenue'] = (float) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' p WHERE p.is_deleted = 0 AND p.payment_date >= %s AND p.payment_date < %s',
+			$previous_month,
+			$current_month
+		)
+	);
+
+	return $comparison;
+}
+
+/**
+ * Returns year-over-year admissions and revenue comparison.
+ *
+ * @return array
+ */
+function cmp_get_yearly_comparison_summary() {
+	$current_year = (int) wp_date( 'Y' );
+	$previous_year = $current_year - 1;
+	global $wpdb;
+
+	$summary = array(
+		'current'  => array( 'admissions' => 0, 'revenue' => 0, 'label' => (string) $current_year ),
+		'previous' => array( 'admissions' => 0, 'revenue' => 0, 'label' => (string) $previous_year ),
+	);
+
+	$summary['current']['admissions'] = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE YEAR(created_at) = %d',
+			$current_year
+		)
+	);
+	$summary['previous']['admissions'] = (int) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE YEAR(created_at) = %d',
+			$previous_year
+		)
+	);
+	$summary['current']['revenue'] = (float) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' p WHERE p.is_deleted = 0 AND YEAR(p.payment_date) = %d',
+			$current_year
+		)
+	);
+	$summary['previous']['revenue'] = (float) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' p WHERE p.is_deleted = 0 AND YEAR(p.payment_date) = %d',
+			$previous_year
+		)
+	);
+
+	return $summary;
+}
+
+/**
+ * Returns top performing courses based on students, revenue, and completion.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_top_course_rows( $limit = 10 ) {
+	global $wpdb;
+
+	$limit = max( 1, absint( $limit ) );
+
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT
+				c.id,
+				c.name AS class_name,
+				COALESCE(st.student_count, 0) AS student_count,
+				COALESCE(st.completed_students, 0) AS completed_students,
+				COALESCE(st.pending_amount, 0) AS pending_amount,
+				COALESCE(bx.batch_count, 0) AS batch_count,
+				COALESCE(pay.revenue, 0) AS revenue,
+				CASE
+					WHEN COALESCE(st.student_count, 0) > 0 THEN ROUND((COALESCE(st.completed_students, 0) / COALESCE(st.student_count, 0)) * 100, 2)
+					ELSE 0
+				END AS completion_rate
+			FROM ' . cmp_table( 'classes' ) . ' c
+			LEFT JOIN (
+				SELECT class_id, COUNT(*) AS student_count, SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) AS completed_students, SUM(GREATEST(total_fee - paid_fee, 0)) AS pending_amount
+				FROM ' . cmp_table( 'students' ) . '
+				GROUP BY class_id
+			) st ON st.class_id = c.id
+			LEFT JOIN (
+				SELECT class_id, COUNT(*) AS batch_count
+				FROM ' . cmp_table( 'batches' ) . '
+				GROUP BY class_id
+			) bx ON bx.class_id = c.id
+			LEFT JOIN (
+				SELECT ' . cmp_payment_class_sql( 'p', 's' ) . ' AS class_id, SUM(' . cmp_payment_reporting_amount_sql( 'p' ) . ') AS revenue
+				FROM ' . cmp_table( 'payments' ) . ' p
+				INNER JOIN ' . cmp_table( 'students' ) . ' s ON s.id = p.student_id
+				WHERE p.is_deleted = 0
+				GROUP BY class_id
+			) pay ON pay.class_id = c.id
+			WHERE COALESCE(st.student_count, 0) > 0 OR COALESCE(bx.batch_count, 0) > 0 OR COALESCE(pay.revenue, 0) > 0
+			ORDER BY revenue DESC, student_count DESC, c.name ASC
+			LIMIT %d',
+			'completed',
+			$limit
+		)
+	);
+}
+
+/**
+ * Returns the most active teachers using batch ownership and student volume.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_most_active_teacher_rows( $limit = 10 ) {
+	$limit = max( 1, absint( $limit ) );
+
+	return cmp_get_teacher_report_rows( $limit );
+}
+
+/**
+ * Returns a repeat-student breakdown by number of joined classes.
+ *
+ * @param array $rows Repeat student report rows.
+ * @return array
+ */
+function cmp_get_repeat_student_level_breakdown( $rows ) {
+	$breakdown = array(
+		'2' => 0,
+		'3' => 0,
+		'4+' => 0,
+	);
+
+	foreach ( (array) $rows as $row ) {
+		$level = isset( $row->enrollment_count ) ? (int) $row->enrollment_count : 0;
+
+		if ( 2 === $level ) {
+			++$breakdown['2'];
+		} elseif ( 3 === $level ) {
+			++$breakdown['3'];
+		} elseif ( $level >= 4 ) {
+			++$breakdown['4+'];
+		}
+	}
+
+	return $breakdown;
+}
+
+/**
+ * Builds a cached analytics payload used by the Reports screen.
+ *
+ * @return array
+ */
+function cmp_get_analytics_report_payload() {
+	return cmp_get_cached_report_payload(
+		'cmp_analytics_report_v33',
+		static function () {
+			$student_overview = cmp_get_student_overview_metrics();
+			$lead_rows         = cmp_get_lead_source_report_rows();
+			$repeat_report     = cmp_get_repeat_student_report( 12 );
+			$repeat_breakdown  = isset( $repeat_report['summary']['repeat_level_breakdown'] ) ? $repeat_report['summary']['repeat_level_breakdown'] : array();
+			$teacher_rows      = cmp_get_teacher_report_rows( 10 );
+			$top_course_rows   = cmp_get_top_course_rows( 10 );
+			$top_city_rows     = cmp_get_top_city_rows( 10 );
+			$batch_occupancy   = cmp_get_batch_occupancy_rows( 10 );
+			$monthly_comp      = cmp_get_monthly_comparison_summary();
+			$yearly_comp       = cmp_get_yearly_comparison_summary();
+			$data_quality      = cmp_get_data_quality_summary();
+
+			return array(
+				'metrics' => array(
+					'total_students'            => (int) $student_overview['total_students'],
+					'active_students'           => (int) $student_overview['active_students'],
+					'completed_students'        => (int) $student_overview['completed_students'],
+					'pending_fee'               => (float) $student_overview['pending_fee'],
+					'payment_collection_rate'   => cmp_get_payment_collection_rate(),
+					'overall_attendance_rate'   => cmp_get_overall_attendance_rate(),
+					'student_completion_rate'   => cmp_get_student_completion_rate(),
+					'average_batch_size'        => cmp_get_average_batch_size(),
+					'average_revenue_per_batch' => cmp_get_average_revenue_per_batch(),
+					'repeat_rate'               => isset( $repeat_report['summary']['repeat_rate'] ) ? (float) $repeat_report['summary']['repeat_rate'] : 0,
+					'monthly_comparison'        => $monthly_comp,
+					'yearly_comparison'         => $yearly_comp,
+				),
+				'charts' => array(
+					'monthlyRevenue'      => cmp_get_monthly_revenue( 12 ),
+					'monthlyAdmissions'   => cmp_get_monthly_admissions( 12 ),
+					'studentGrowth'       => cmp_get_student_growth( 12 ),
+					'registrationTrends'  => cmp_get_registration_trends( 12 ),
+					'paymentTrends'       => cmp_get_monthly_payment_trends( 12 ),
+					'leadSource'          => array(
+						'labels' => array_values( array_map( static function ( $row ) { return $row['lead_source']; }, $lead_rows ) ),
+						'values' => array_values( array_map( static function ( $row ) { return (int) $row['student_count']; }, $lead_rows ) ),
+					),
+					'repeatStudents'      => array(
+						'labels' => array( '2nd Class', '3rd Class', '4th+' ),
+						'values' => array(
+							isset( $repeat_breakdown['2'] ) ? (int) $repeat_breakdown['2'] : 0,
+							isset( $repeat_breakdown['3'] ) ? (int) $repeat_breakdown['3'] : 0,
+							isset( $repeat_breakdown['4+'] ) ? (int) $repeat_breakdown['4+'] : 0,
+						),
+					),
+				),
+				'tables' => array(
+					'batch_occupancy'   => $batch_occupancy,
+					'top_courses'       => $top_course_rows,
+					'top_cities'        => $top_city_rows,
+					'lead_sources'      => $lead_rows,
+					'repeat_students'   => $repeat_report['rows'],
+					'teacher_performance' => $teacher_rows,
+					'data_quality'      => $data_quality,
+				),
+			);
+		},
+		300
+	);
+}
+
+/**
+ * Returns a cached report payload or regenerates it.
+ *
+ * @param string   $cache_key Cache key.
+ * @param callable $generator Generator callback.
+ * @param int      $ttl Cache TTL.
+ * @return mixed
+ */
+function cmp_get_cached_report_payload( $cache_key, $generator, $ttl = 300 ) {
+	$cache_key = sanitize_key( $cache_key );
+	$cached    = wp_cache_get( $cache_key, 'class-manager-pro' );
+
+	if ( false !== $cached ) {
+		return $cached;
+	}
+
+	$transient = get_transient( $cache_key );
+	if ( false !== $transient ) {
+		wp_cache_set( $cache_key, $transient, 'class-manager-pro', max( 30, absint( $ttl ) ) );
+		return $transient;
+	}
+
+	$value = is_callable( $generator ) ? call_user_func( $generator ) : null;
+	wp_cache_set( $cache_key, $value, 'class-manager-pro', max( 30, absint( $ttl ) ) );
+	set_transient( $cache_key, $value, max( 30, absint( $ttl ) ) );
+
+	return $value;
+}
+
+/**
+ * Flushes transient and memory caches for dashboard and reports.
+ */
+function cmp_flush_dashboard_cache() {
+	foreach ( array( 'today', 'week', 'month' ) as $range ) {
+		delete_transient( 'cmp_dash_snapshot_' . $range );
+		wp_cache_delete( 'cmp_dash_snapshot_' . $range, 'class-manager-pro' );
+	}
+	delete_transient( 'cmp_analytics_report_v33' );
+	wp_cache_delete( 'cmp_analytics_report_v33', 'class-manager-pro' );
+}
+
+/**
+ * Returns admissions grouped by month.
+ *
+ * @param int $months Months to include.
+ * @return array
+ */
+function cmp_get_monthly_admissions( $months = 12 ) {
+	global $wpdb;
+
+	$months = max( 1, absint( $months ) );
+	$now    = current_time( 'timestamp' );
+	$start  = gmdate( 'Y-m-01 00:00:00', strtotime( '-' . ( $months - 1 ) . ' months', $now ) );
+	$rows   = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS month_key, COUNT(*) AS total
+			FROM " . cmp_table( 'students' ) . ' WHERE created_at >= %s GROUP BY month_key',
+			$start
+		),
+		OBJECT_K
+	);
+
+	$labels = array();
+	$values = array();
+
+	for ( $i = $months - 1; $i >= 0; --$i ) {
+		$timestamp = strtotime( '-' . $i . ' months', $now );
+		$key       = gmdate( 'Y-m', $timestamp );
+		$labels[]  = gmdate( 'M Y', $timestamp );
+		$values[]  = isset( $rows[ $key ] ) ? (int) $rows[ $key ]->total : 0;
+	}
+
+	return array(
+		'labels' => $labels,
+		'values' => $values,
+	);
+}
+
+/**
+ * Returns payment trend data grouped by month.
+ *
+ * @param int $months Months to include.
+ * @return array
+ */
+function cmp_get_monthly_payment_trends( $months = 12 ) {
+	return cmp_get_monthly_revenue( $months );
+}
+
+/**
+ * Stores a registration event in the activity log.
+ *
+ * @param object|int $student Student row or student ID.
+ * @param object|int $batch Batch row or batch ID.
+ * @param string     $method Registration method.
+ * @param string     $source Registration source.
+ * @param string     $status Registration status.
+ * @param array      $context Additional context.
+ * @return int|WP_Error|null
+ */
+function cmp_record_registration_history( $student, $batch, $method, $source = '', $status = 'successful', $context = array() ) {
+	$student = is_object( $student ) ? $student : cmp_get_student( absint( $student ) );
+	$batch   = is_object( $batch ) ? $batch : cmp_get_batch( absint( $batch ) );
+
+	if ( ! $student || ! $batch ) {
+		return null;
+	}
+
+	$method_label = cmp_get_registration_method_label( $method );
+	$source_label = '' !== trim( (string) $source ) ? cmp_get_registration_source_label( $source ) : '';
+	$message      = sprintf(
+		/* translators: 1: student name 2: method label 3: batch name */
+		__( 'Student "%1$s" registered via %2$s for batch "%3$s".', 'class-manager-pro' ),
+		sanitize_text_field( $student->name ),
+		$method_label,
+		sanitize_text_field( $batch->batch_name )
+	);
+
+	$history_context = array_merge(
+		array(
+			'registration_method' => sanitize_key( $method ),
+			'registration_source' => sanitize_key( $source ),
+			'registration_status' => sanitize_key( $status ),
+			'method_label'        => $method_label,
+			'source_label'        => $source_label,
+			'lead_source'         => isset( $student->lead_source ) ? cmp_normalize_lead_source_name( $student->lead_source ) : '',
+			'city_original'       => isset( $student->city_original ) ? sanitize_text_field( $student->city_original ) : '',
+			'city_normalized'     => isset( $student->city_normalized ) ? sanitize_text_field( $student->city_normalized ) : '',
+		),
+		is_array( $context ) ? $context : array()
+	);
+
+	return cmp_log_activity(
+		array(
+			'student_id' => (int) $student->id,
+			'batch_id'   => (int) $batch->id,
+			'class_id'   => (int) $batch->class_id,
+			'action'     => 'registration_recorded',
+			'message'    => $message,
+			'context'    => $history_context,
+		)
+	);
+}
+
+/**
+ * Builds a registration email body for one student.
+ *
+ * @param object $student Student row.
+ * @param object $batch Batch row.
+ * @param array  $context Extra context.
+ * @return string
+ */
+function cmp_build_registration_student_message( $student, $batch, $context = array() ) {
+	$defaults = cmp_get_default_message_templates();
+	$student  = cmp_get_student( (int) $student->id );
+
+	if ( ! $student ) {
+		return '';
+	}
+
+	$student->class_name = $batch && ! empty( $batch->class_name ) ? $batch->class_name : $student->class_name;
+	$student->batch_name = $batch && ! empty( $batch->batch_name ) ? $batch->batch_name : $student->batch_name;
+	$student->fee_due_date = $batch && ! empty( $batch->fee_due_date ) ? $batch->fee_due_date : $student->fee_due_date;
+	$student->razorpay_link = $batch && ! empty( $batch->razorpay_link ) ? $batch->razorpay_link : $student->razorpay_link;
+
+	$welcome_template = (string) get_option( 'cmp_message_template_welcome', $defaults['welcome_message'] );
+	$course_template  = (string) get_option( 'cmp_message_template_course_info', $defaults['course_info'] );
+	$teacher_label    = $batch && ! empty( $batch->teacher_user_id ) ? cmp_get_teacher_label( (int) $batch->teacher_user_id ) : '';
+	$support_email    = sanitize_email( (string) get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) );
+	$method_label     = cmp_get_registration_method_label( cmp_field( $context, 'registration_method', 'manual' ) );
+
+	$parts = array(
+		cmp_render_student_template( $welcome_template, $student ),
+		cmp_render_student_template( $course_template, $student ),
+		sprintf(
+			/* translators: %s: registration method label */
+			__( 'Registration Method: %s', 'class-manager-pro' ),
+			$method_label
+		),
+		sprintf(
+			/* translators: %s: teacher label */
+			__( 'Teacher: %s', 'class-manager-pro' ),
+			$teacher_label ? $teacher_label : __( 'Not assigned yet', 'class-manager-pro' )
+		),
+		sprintf(
+			/* translators: %s: support email */
+			__( 'Support Contact: %s', 'class-manager-pro' ),
+			$support_email ? $support_email : get_bloginfo( 'name' )
+		),
+		__( 'Next steps: keep this message for your records, and follow the instructions shared by the admin team.', 'class-manager-pro' ),
+	);
+
+	return trim( implode( "\n\n", array_filter( array_map( 'trim', $parts ) ) ) );
+}
+
+/**
+ * Sends registration notifications to student, admin, and teacher.
+ *
+ * @param object $student Student row.
+ * @param object $batch Batch row.
+ * @param array  $context Extra context.
+ * @return array
+ */
+function cmp_send_registration_notifications( $student, $batch, $context = array() ) {
+	$student = is_object( $student ) ? cmp_get_student( (int) $student->id ) : cmp_get_student( absint( $student ) );
+	$batch   = is_object( $batch ) ? cmp_get_batch( (int) $batch->id ) : cmp_get_batch( absint( $batch ) );
+
+	$summary = array(
+		'student' => false,
+		'admin'   => false,
+		'teacher' => false,
+	);
+
+	if ( ! $student || ! $batch || ! cmp_is_whatsapp_delivery_enabled() ) {
+		return $summary;
+	}
+
+	$student_body = cmp_build_registration_student_message( $student, $batch, $context );
+	$student_subject = sprintf(
+		/* translators: 1: batch name 2: class name */
+		__( 'Welcome to %1$s - %2$s', 'class-manager-pro' ),
+		$batch->batch_name,
+		$batch->class_name
+	);
+
+	if ( ! empty( $student->email ) && '' !== trim( $student_body ) ) {
+		$result = cmp_send_generic_notification_message(
+			$student,
+			'email',
+			$student_subject,
+			$student_body,
+			array(
+				'email_format' => 'html',
+				'action'       => 'registration_student_notification',
+			)
+		);
+
+		$summary['student'] = ! empty( $result['success'] );
+	}
+
+	$admin_email = sanitize_email( (string) get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) );
+
+	if ( '' !== $admin_email ) {
+		$admin_recipient = (object) array(
+			'email'      => $admin_email,
+			'name'       => get_bloginfo( 'name' ),
+			'phone'      => '',
+			'class_name' => $batch->class_name,
+			'batch_name' => $batch->batch_name,
+		);
+		$admin_body = sprintf(
+			"%s\n\n%s\n%s\n%s\n%s",
+			sprintf( __( 'New admission received for %1$s.', 'class-manager-pro' ), $batch->batch_name ),
+			sprintf( __( 'Student: %1$s', 'class-manager-pro' ), $student->name ),
+			sprintf( __( 'Contact: %1$s %2$s', 'class-manager-pro' ), $student->phone, $student->email ? '(' . $student->email . ')' : '' ),
+			sprintf( __( 'Method: %1$s', 'class-manager-pro' ), cmp_get_registration_method_label( cmp_field( $context, 'registration_method', 'manual' ) ) ),
+			sprintf( __( 'Teacher: %1$s', 'class-manager-pro' ), cmp_get_teacher_label( (int) $batch->teacher_user_id ) )
+		);
+		$result = cmp_send_generic_notification_message(
+			$admin_recipient,
+			'email',
+			sprintf(
+				/* translators: %s: student name */
+				__( 'New Admission: %s', 'class-manager-pro' ),
+				$student->name
+			),
+			$admin_body,
+			array( 'email_format' => 'html', 'action' => 'registration_admin_notification' )
+		);
+
+		$summary['admin'] = ! empty( $result['success'] );
+	}
+
+	if ( ! empty( $batch->teacher_user_id ) ) {
+		$teacher = get_user_by( 'id', (int) $batch->teacher_user_id );
+
+		if ( $teacher && ! empty( $teacher->user_email ) ) {
+			$teacher_recipient = (object) array(
+				'email'      => $teacher->user_email,
+				'name'       => $teacher->display_name,
+				'phone'      => '',
+				'class_name' => $batch->class_name,
+				'batch_name' => $batch->batch_name,
+			);
+			$teacher_body = sprintf(
+				"%s\n\n%s\n%s\n%s",
+				sprintf( __( 'A new student joined %1$s.', 'class-manager-pro' ), $batch->batch_name ),
+				sprintf( __( 'Student: %1$s', 'class-manager-pro' ), $student->name ),
+				sprintf( __( 'Contact: %1$s %2$s', 'class-manager-pro' ), $student->phone, $student->email ? '(' . $student->email . ')' : '' ),
+				sprintf( __( 'Registration method: %1$s', 'class-manager-pro' ), cmp_get_registration_method_label( cmp_field( $context, 'registration_method', 'manual' ) ) )
+			);
+			$result = cmp_send_generic_notification_message(
+				$teacher_recipient,
+				'email',
+				sprintf(
+					/* translators: %s: batch name */
+					__( 'New Student Joined: %s', 'class-manager-pro' ),
+					$batch->batch_name
+				),
+				$teacher_body,
+				array( 'email_format' => 'html', 'action' => 'registration_teacher_notification' )
+			);
+
+			$summary['teacher'] = ! empty( $result['success'] );
+		}
+	}
+
+	return $summary;
+}
+
+/**
+ * Centralizes student registration into a batch.
+ *
+ * @param object $batch Batch row.
+ * @param array  $data Submission data.
+ * @param array  $options Extra options.
+ * @return int|WP_Error
+ */
+function cmp_process_batch_registration( $batch, $data, $options = array() ) {
+	$batch = $batch ? cmp_get_batch( (int) $batch->id ) : null;
+
+	if ( ! $batch ) {
+		return new WP_Error( 'cmp_invalid_batch', __( 'Batch not found.', 'class-manager-pro' ) );
+	}
+
+	$defaults = array(
+		'registration_method'   => 'manual',
+		'registration_source'   => 'manual',
+		'allow_capacity_override'=> false,
+		'send_notifications'    => true,
+		'status'                => 'active',
+		'total_fee'             => null,
+		'paid_fee'              => 0,
+		'notes_prefix'          => '',
+		'lead_source'           => '',
+	);
+	$options = wp_parse_args( is_array( $options ) ? $options : array(), $defaults );
+
+	$name  = sanitize_text_field( cmp_field( $data, 'name' ) );
+	$phone = sanitize_text_field( cmp_field( $data, 'phone' ) );
+	$email = sanitize_email( cmp_field( $data, 'email' ) );
+	$city_raw = sanitize_text_field( cmp_field( $data, 'city_original', cmp_field( $data, 'city', '' ) ) );
+	$city_data = cmp_normalize_city_name( $city_raw );
+	$notes = sanitize_textarea_field( cmp_field( $data, 'notes' ) );
+	$source_fallbacks = array(
+		'public_form'    => 'Direct',
+		'admin_form'     => 'Offline',
+		'csv_import'     => 'Other',
+		'razorpay_import'=> 'Other',
+		'razorpay_webhook'=> 'Other',
+		'manual'         => 'Offline',
+		'bulk_action'    => 'Offline',
+	);
+	$lead_source = cmp_normalize_lead_source_name(
+		cmp_field( $data, 'lead_source', cmp_field( $options, 'lead_source', cmp_field( $source_fallbacks, cmp_field( $options, 'registration_source', 'manual' ), 'Other' ) ) )
+	);
+	if ( '' === $lead_source ) {
+		$lead_source = cmp_normalize_lead_source_name( cmp_field( $source_fallbacks, cmp_field( $options, 'registration_source', 'manual' ), 'Other' ) );
+	}
+
+	if ( ! cmp_registration_email_is_valid( $email ) ) {
+		return new WP_Error( 'cmp_registration_email_required', __( 'A valid email address is required for registration.', 'class-manager-pro' ) );
+	}
+
+	if ( '' === $name || '' === $phone ) {
+		return new WP_Error( 'cmp_public_student_invalid', __( 'Name and phone are required.', 'class-manager-pro' ) );
+	}
+
+	$existing = cmp_find_mergeable_student_for_batch( $batch, $phone, $email );
+	$existing_id = $existing ? (int) $existing->id : 0;
+	$capacity_exclude_id = $existing && (int) $existing->batch_id === (int) $batch->id ? $existing_id : 0;
+
+	if ( empty( $options['allow_capacity_override'] ) ) {
+		$capacity = cmp_validate_batch_capacity( (int) $batch->id, $capacity_exclude_id );
+
+		if ( is_wp_error( $capacity ) ) {
+			return $capacity;
+		}
+	}
+
+	$notes = cmp_append_note( $notes, sanitize_text_field( cmp_field( $options, 'notes_prefix', '' ) ) );
+
+	if ( $existing ) {
+		$update_result = cmp_update_student(
+			$existing_id,
+			array(
+				'name'      => $name,
+				'phone'     => $phone,
+				'email'     => $email,
+				'class_id'  => (int) $batch->class_id,
+				'batch_id'  => (int) $batch->id,
+				'total_fee' => null !== $options['total_fee'] ? cmp_money_value( $options['total_fee'] ) : ( (float) $existing->total_fee > 0 ? (float) $existing->total_fee : cmp_get_batch_effective_fee( $batch ) ),
+				'paid_fee'  => null !== $options['paid_fee'] ? cmp_money_value( $options['paid_fee'] ) : ( $existing ? (float) $existing->paid_fee : 0 ),
+				'status'    => cmp_clean_enum( cmp_field( $options, 'status', 'active' ), cmp_student_statuses(), 'active' ),
+				'notes'     => cmp_append_note( $existing->notes, $notes ),
+				'capacity_override' => ! empty( $options['allow_capacity_override'] ) ? 1 : 0,
+				'lead_source' => '' !== $lead_source ? $lead_source : ( $existing && isset( $existing->lead_source ) ? $existing->lead_source : '' ),
+				'city_original' => '' !== $city_data['original'] ? $city_data['original'] : ( $existing && isset( $existing->city_original ) ? $existing->city_original : '' ),
+				'city_normalized' => '' !== $city_data['normalized'] ? $city_data['normalized'] : ( $existing && isset( $existing->city_normalized ) ? $existing->city_normalized : '' ),
+			)
+		);
+
+		if ( is_wp_error( $update_result ) ) {
+			return $update_result;
+		}
+
+		$student = cmp_get_student( $existing_id );
+	} else {
+		$student_id = cmp_insert_student(
+			array(
+				'name'      => $name,
+				'phone'     => $phone,
+				'email'     => $email,
+				'class_id'  => (int) $batch->class_id,
+				'batch_id'  => (int) $batch->id,
+				'total_fee' => null !== $options['total_fee'] ? cmp_money_value( $options['total_fee'] ) : cmp_get_batch_effective_fee( $batch ),
+				'paid_fee'  => null !== $options['paid_fee'] ? cmp_money_value( $options['paid_fee'] ) : 0,
+				'status'    => cmp_clean_enum( cmp_field( $options, 'status', 'active' ), cmp_student_statuses(), 'active' ),
+				'notes'     => $notes,
+				'capacity_override' => ! empty( $options['allow_capacity_override'] ) ? 1 : 0,
+				'lead_source' => '' !== $lead_source ? $lead_source : '',
+				'city_original' => $city_data['original'],
+				'city_normalized' => $city_data['normalized'],
+			)
+		);
+
+		if ( is_wp_error( $student_id ) ) {
+			return $student_id;
+		}
+
+		$student = cmp_get_student( (int) $student_id );
+	}
+
+	if ( ! $student ) {
+		return new WP_Error( 'cmp_invalid_student', __( 'The student record could not be loaded.', 'class-manager-pro' ) );
+	}
+
+	cmp_record_registration_history(
+		$student,
+		$batch,
+		cmp_field( $options, 'registration_method', 'manual' ),
+		cmp_field( $options, 'registration_source', 'manual' ),
+		'successful',
+		array(
+			'allow_capacity_override' => ! empty( $options['allow_capacity_override'] ),
+			'existing_student_id'     => $existing_id,
+			'student_email'           => $student->email,
+			'student_phone'           => $student->phone,
+		)
+	);
+
+	if ( ! empty( $options['send_notifications'] ) ) {
+		cmp_send_registration_notifications(
+			$student,
+			$batch,
+			array(
+				'registration_method' => cmp_field( $options, 'registration_method', 'manual' ),
+				'registration_source' => cmp_field( $options, 'registration_source', 'manual' ),
+			)
+		);
+	}
+
+	do_action(
+		'cmp_student_registered',
+		$student,
+		$batch,
+		$options,
+		$data
+	);
+
+	if ( ! empty( $batch->intake_limit ) && cmp_get_batch_student_count( (int) $batch->id ) >= (int) $batch->intake_limit ) {
+		cmp_close_batch_registration_link( (int) $batch->id );
+	}
+
+	return (int) $student->id;
+}
+
+/**
  * Appends a line of note text to existing notes.
  *
  * @param string $existing Existing notes.
@@ -3262,73 +4606,34 @@ function cmp_get_recent_intake_match( $phone, $email ) {
  * @return int|WP_Error
  */
 function cmp_register_public_student_for_batch( $batch, $data ) {
-	$class = cmp_get_class( (int) $batch->class_id );
-	$name  = sanitize_text_field( cmp_field( $data, 'name' ) );
-	$phone = sanitize_text_field( cmp_field( $data, 'phone' ) );
-	$email = sanitize_email( cmp_field( $data, 'email' ) );
-	$notes = sanitize_textarea_field( cmp_field( $data, 'notes' ) );
-	$fee   = cmp_get_batch_effective_fee( $batch );
 	$notice_token = sanitize_text_field( cmp_field( $data, 'notice_token', ! empty( $batch->public_token ) ? $batch->public_token : '' ) );
-	$submission_note = 'temp' === sanitize_key( cmp_field( $data, 'access_type', 'permanent' ) )
-		? __( 'Submitted through a temporary batch registration link.', 'class-manager-pro' )
-		: __( 'Submitted through batch student form.', 'class-manager-pro' );
-
-	if ( '' === $name || '' === $phone || ! $class ) {
-		return new WP_Error( 'cmp_public_student_invalid', __( 'Name and phone are required.', 'class-manager-pro' ) );
-	}
-
-	$notes = cmp_append_note( $notes, $submission_note );
-
-	$existing = cmp_find_student_in_batch_by_contact( (int) $batch->id, $phone, $email );
-
-	if ( $existing ) {
-		$result = cmp_update_student(
-			(int) $existing->id,
-			array(
-				'name'      => $name,
-				'phone'     => $phone,
-				'email'     => $email,
-				'class_id'  => (int) $batch->class_id,
-				'batch_id'  => (int) $batch->id,
-				'total_fee' => (float) $existing->total_fee ? (float) $existing->total_fee : $fee,
-				'paid_fee'  => (float) $existing->paid_fee,
-				'status'    => in_array( $existing->status, cmp_student_statuses(), true ) ? $existing->status : 'active',
-				'notes'     => cmp_append_note( $existing->notes, $notes ),
-			)
-		);
-
-		if ( is_wp_error( $result ) ) {
-			return $result;
-		}
-
-		if ( function_exists( 'cmp_store_public_duplicate_warning' ) && '' !== $notice_token ) {
-			cmp_store_public_duplicate_warning( $notice_token, __( 'Student already exists. Existing record was updated.', 'class-manager-pro' ) );
-		}
-
-		cmp_store_recent_intake_match( $phone, $email, (int) $existing->id, (int) $batch->id );
-
-		return (int) $existing->id;
-	}
-
-	$student_id = cmp_insert_student(
+	$access_type  = sanitize_key( cmp_field( $data, 'access_type', 'permanent' ) );
+	$result       = cmp_process_batch_registration(
+		$batch,
+		$data,
 		array(
-			'name'      => $name,
-			'phone'     => $phone,
-			'email'     => $email,
-			'class_id'  => (int) $batch->class_id,
-			'batch_id'  => (int) $batch->id,
-			'total_fee' => $fee,
-			'paid_fee'  => 0,
-			'status'    => 'active',
-			'notes'     => $notes,
+			'registration_method' => 'temp' === $access_type ? 'temporary_link' : 'permanent_link',
+			'registration_source' => 'public_form',
+			'send_notifications'  => true,
+			'notes_prefix'        => 'temp' === $access_type
+				? __( 'Submitted through a temporary batch registration link.', 'class-manager-pro' )
+				: __( 'Submitted through batch student form.', 'class-manager-pro' ),
 		)
 	);
 
-	if ( ! is_wp_error( $student_id ) ) {
-		cmp_store_recent_intake_match( $phone, $email, (int) $student_id, (int) $batch->id );
+	if ( ! is_wp_error( $result ) ) {
+		$student = cmp_get_student( (int) $result );
+
+		if ( function_exists( 'cmp_store_public_duplicate_warning' ) && '' !== $notice_token && $student ) {
+			cmp_store_public_duplicate_warning( $notice_token, __( 'Student already exists. Existing record was updated.', 'class-manager-pro' ) );
+		}
+
+		if ( $student ) {
+			cmp_store_recent_intake_match( $student->phone, $student->email, (int) $student->id, (int) $batch->id );
+		}
 	}
 
-	return $student_id;
+	return $result;
 }
 
 /**
@@ -3412,6 +4717,7 @@ function cmp_get_student_query_parts( $args = array() ) {
 			'class_id' => 0,
 			'batch_id' => 0,
 			'status'   => '',
+			'fee_status' => '',
 		)
 	);
 
@@ -3442,6 +4748,12 @@ function cmp_get_student_query_parts( $args = array() ) {
 	if ( '' !== $args['status'] ) {
 		$where[]  = 's.status = %s';
 		$params[] = cmp_clean_enum( $args['status'], cmp_student_statuses(), 'active' );
+	}
+
+	if ( 'pending' === $args['fee_status'] ) {
+		$where[] = 'GREATEST(s.total_fee - s.paid_fee, 0) > 0';
+	} elseif ( 'paid' === $args['fee_status'] ) {
+		$where[] = 'GREATEST(s.total_fee - s.paid_fee, 0) <= 0';
 	}
 
 	return array(
@@ -3485,6 +4797,7 @@ function cmp_get_students( $args = array() ) {
 			'class_id' => 0,
 			'batch_id' => 0,
 			'status'   => '',
+			'fee_status' => '',
 			'limit'    => 0,
 			'offset'   => 0,
 		)
@@ -3528,11 +4841,14 @@ function cmp_insert_student( $data ) {
 	$name     = sanitize_text_field( cmp_field( $data, 'name' ) );
 	$phone    = sanitize_text_field( cmp_field( $data, 'phone' ) );
 	$email    = sanitize_email( cmp_field( $data, 'email' ) );
+	$city_raw = sanitize_text_field( cmp_field( $data, 'city_original', cmp_field( $data, 'city', '' ) ) );
+	$city_data = cmp_normalize_city_name( $city_raw );
+	$lead_source = cmp_normalize_lead_source_name( cmp_field( $data, 'lead_source', 'Offline' ) );
 	$class_id = absint( cmp_field( $data, 'class_id', 0 ) );
 	$batch_id = absint( cmp_field( $data, 'batch_id', 0 ) );
 	$batch    = cmp_get_batch( $batch_id );
 
-	if ( '' === $name || '' === $phone || ! cmp_get_class( $class_id ) || ! $batch || (int) $batch->class_id !== $class_id ) {
+	if ( '' === $name || '' === $phone || ! cmp_registration_email_is_valid( $email ) || ! cmp_get_class( $class_id ) || ! $batch || (int) $batch->class_id !== $class_id ) {
 		return new WP_Error( 'cmp_invalid_student', __( 'Valid student, class, and batch details are required.', 'class-manager-pro' ) );
 	}
 
@@ -3542,10 +4858,12 @@ function cmp_insert_student( $data ) {
 		return $duplicate_check;
 	}
 
-	$capacity = cmp_validate_batch_capacity( $batch_id );
+	if ( empty( cmp_field( $data, 'capacity_override', 0 ) ) ) {
+		$capacity = cmp_validate_batch_capacity( $batch_id );
 
-	if ( is_wp_error( $capacity ) ) {
-		return $capacity;
+		if ( is_wp_error( $capacity ) ) {
+			return $capacity;
+		}
 	}
 
 	$total_fee_raw = cmp_field( $data, 'total_fee', '' );
@@ -3560,6 +4878,9 @@ function cmp_insert_student( $data ) {
 			'name'       => $name,
 			'phone'      => $phone,
 			'email'      => $email,
+			'lead_source'=> '' !== $lead_source ? $lead_source : 'Offline',
+			'city_original' => $city_data['original'],
+			'city_normalized' => $city_data['normalized'],
 			'class_id'   => $class_id,
 			'batch_id'   => $batch_id,
 			'total_fee'  => $total_fee,
@@ -3577,6 +4898,7 @@ function cmp_insert_student( $data ) {
 	}
 
 	$student_id = (int) $wpdb->insert_id;
+	$class_row  = cmp_get_class( $class_id );
 
 	cmp_log_activity(
 		array(
@@ -3617,6 +4939,25 @@ function cmp_insert_student( $data ) {
 	);
 	cmp_sync_student_tutor_enrollment( $student_id );
 
+	do_action(
+		'cmp_smartcertify_student_saved',
+		array(
+			'source_plugin' => 'class-manager-pro',
+			'event'         => 'student_saved',
+			'action'        => 'insert',
+			'student_id'    => $student_id,
+			'student_name'  => $name,
+			'email'         => $email,
+			'phone'         => $phone,
+			'class_id'      => $class_id,
+			'batch_id'      => $batch_id,
+			'class_name'    => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+			'batch_name'    => $batch->batch_name,
+			'timestamp'     => cmp_current_datetime(),
+			'plugin_version'=> defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
+
 	if ( $initial_paid > 0 ) {
 		cmp_insert_payment(
 			array(
@@ -3649,12 +4990,16 @@ function cmp_update_student( $id, $data ) {
 	$name     = sanitize_text_field( cmp_field( $data, 'name' ) );
 	$phone    = sanitize_text_field( cmp_field( $data, 'phone' ) );
 	$email    = sanitize_email( cmp_field( $data, 'email' ) );
+	$city_raw = sanitize_text_field( cmp_field( $data, 'city_original', cmp_field( $data, 'city', $student ? $student->city_original : '' ) ) );
+	$city_data = cmp_normalize_city_name( $city_raw );
+	$lead_source = cmp_normalize_lead_source_name( cmp_field( $data, 'lead_source', $student && ! empty( $student->lead_source ) ? $student->lead_source : '' ) );
 	$class_id = absint( cmp_field( $data, 'class_id', 0 ) );
 	$batch_id = absint( cmp_field( $data, 'batch_id', 0 ) );
 	$batch    = cmp_get_batch( $batch_id );
+	$class_row = cmp_get_class( $class_id );
 
-	if ( ! $id || '' === $name || '' === $phone || ! cmp_get_class( $class_id ) || ! $batch || (int) $batch->class_id !== $class_id ) {
-		return new WP_Error( 'cmp_invalid_student', __( 'Valid student details are required.', 'class-manager-pro' ) );
+	if ( ! $id || '' === $name || '' === $phone || ! cmp_registration_email_is_valid( $email ) || ! cmp_get_class( $class_id ) || ! $batch || (int) $batch->class_id !== $class_id ) {
+		return new WP_Error( 'cmp_invalid_student', __( 'A valid email address is required for student registration.', 'class-manager-pro' ) );
 	}
 
 	$duplicate_check = cmp_validate_unique_student_in_batch( $batch_id, $name, $email, $phone, $id );
@@ -3663,10 +5008,12 @@ function cmp_update_student( $id, $data ) {
 		return $duplicate_check;
 	}
 
-	$capacity = cmp_validate_batch_capacity( $batch_id, $id );
+	if ( empty( cmp_field( $data, 'capacity_override', 0 ) ) ) {
+		$capacity = cmp_validate_batch_capacity( $batch_id, $id );
 
-	if ( is_wp_error( $capacity ) ) {
-		return $capacity;
+		if ( is_wp_error( $capacity ) ) {
+			return $capacity;
+		}
 	}
 
 	$result = $wpdb->update(
@@ -3675,6 +5022,9 @@ function cmp_update_student( $id, $data ) {
 			'name'      => $name,
 			'phone'     => $phone,
 			'email'     => $email,
+			'lead_source' => '' !== $lead_source ? $lead_source : ( $student && isset( $student->lead_source ) ? $student->lead_source : '' ),
+			'city_original' => '' !== $city_data['original'] ? $city_data['original'] : ( $student && isset( $student->city_original ) ? $student->city_original : '' ),
+			'city_normalized' => '' !== $city_data['normalized'] ? $city_data['normalized'] : ( $student && isset( $student->city_normalized ) ? $student->city_normalized : '' ),
 			'class_id'  => $class_id,
 			'batch_id'  => $batch_id,
 			'total_fee' => '' !== (string) cmp_field( $data, 'total_fee', '' ) ? cmp_money_value( cmp_field( $data, 'total_fee', 0 ) ) : ( $student ? (float) $student->total_fee : 0 ),
@@ -3742,6 +5092,25 @@ function cmp_update_student( $id, $data ) {
 	}
 
 	cmp_sync_student_tutor_enrollment( $id );
+
+	do_action(
+		'cmp_smartcertify_student_saved',
+		array(
+			'source_plugin' => 'class-manager-pro',
+			'event'         => 'student_saved',
+			'action'        => 'update',
+			'student_id'    => $id,
+			'student_name'  => $name,
+			'email'         => $email,
+			'phone'         => $phone,
+			'class_id'      => $class_id,
+			'batch_id'      => $batch_id,
+			'class_name'    => $class_row ? sanitize_text_field( $class_row->name ?? '' ) : '',
+			'batch_name'    => $batch->batch_name,
+			'timestamp'     => cmp_current_datetime(),
+			'plugin_version'=> defined( 'CMP_VERSION' ) ? CMP_VERSION : '',
+		)
+	);
 
 	return true;
 }
@@ -4593,6 +5962,11 @@ function cmp_insert_payment( $data ) {
 	cmp_recalculate_student_paid_fee( (int) $payload['student_id'] );
 	cmp_remove_interested_students_for_student( $payload['student'], (int) $payload['batch_id'], (int) $payload['class_id'] );
 	cmp_log_payment_audit( $payment_id, (int) $payload['student_id'], 'add', null, $payment );
+	do_action(
+		'cmp_payment_recorded',
+		$payment,
+		$payload
+	);
 
 	cmp_log_activity(
 		array(
@@ -5047,13 +6421,25 @@ function cmp_get_dashboard_metrics( $range = 'month' ) {
 			$bounds['end']
 		)
 	);
-	$total_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) );
-	$total_paid_fee = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(paid_fee), 0) FROM ' . cmp_table( 'students' ) );
-	$total_fee      = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(total_fee), 0) FROM ' . cmp_table( 'students' ) );
-	$pending_fees   = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(GREATEST(total_fee - paid_fee, 0)), 0) FROM ' . cmp_table( 'students' ) );
-	$pending_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE GREATEST(total_fee - paid_fee, 0) > 0' );
-	$completed_students = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'completed' ) );
-	$active_students    = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'active' ) );
+	$student_aggregates = $wpdb->get_row(
+		'SELECT 
+			COUNT(*) AS total_students,
+			COALESCE(SUM(paid_fee), 0) AS total_paid_fee,
+			COALESCE(SUM(total_fee), 0) AS total_fee,
+			COALESCE(SUM(GREATEST(total_fee - paid_fee, 0)), 0) AS pending_fees,
+			COALESCE(SUM(CASE WHEN GREATEST(total_fee - paid_fee, 0) > 0 THEN 1 ELSE 0 END), 0) AS pending_students,
+			COALESCE(SUM(CASE WHEN status = \'completed\' THEN 1 ELSE 0 END), 0) AS completed_students,
+			COALESCE(SUM(CASE WHEN status = \'active\' THEN 1 ELSE 0 END), 0) AS active_students
+		FROM ' . cmp_table( 'students' )
+	);
+
+	$total_students     = $student_aggregates ? (int) $student_aggregates->total_students : 0;
+	$total_paid_fee     = $student_aggregates ? (float) $student_aggregates->total_paid_fee : 0.0;
+	$total_fee          = $student_aggregates ? (float) $student_aggregates->total_fee : 0.0;
+	$pending_fees       = $student_aggregates ? (float) $student_aggregates->pending_fees : 0.0;
+	$pending_students   = $student_aggregates ? (int) $student_aggregates->pending_students : 0;
+	$completed_students = $student_aggregates ? (int) $student_aggregates->completed_students : 0;
+	$active_students    = $student_aggregates ? (int) $student_aggregates->active_students : 0;
 	$total_teachers     = (int) $wpdb->get_var( 'SELECT COUNT(DISTINCT teacher_user_id) FROM ' . cmp_table( 'batches' ) . ' WHERE teacher_user_id > 0' );
 	$collection_rate    = $total_fee > 0 ? round( ( $total_paid_fee / $total_fee ) * 100, 2 ) : 0;
 
@@ -5287,20 +6673,27 @@ function cmp_get_dashboard_teacher_rows( $limit = 6 ) {
  * @return array
  */
 function cmp_get_dashboard_snapshot( $range = 'month' ) {
-	$range = cmp_get_dashboard_range( $range );
+	$range     = cmp_get_dashboard_range( $range );
+	$cache_key = 'cmp_dash_snapshot_' . $range;
 
-	return array(
-		'metrics'                  => cmp_get_dashboard_metrics( $range ),
-		'pending_students'         => cmp_get_dashboard_pending_students( 8 ),
-		'recent_students'          => cmp_get_recent_students( 8 ),
-		'course_completion_rows'   => cmp_get_dashboard_course_completion_rows( 8 ),
-		'batch_performance_rows'   => cmp_get_dashboard_batch_performance_rows( 8 ),
-		'class_revenue_rows'       => cmp_get_dashboard_class_revenue_rows( 6 ),
-		'teacher_rows'             => cmp_get_dashboard_teacher_rows( 6 ),
-		'chart_data'               => array(
-			'dashboardRevenue' => cmp_get_monthly_revenue( 6 ),
-			'studentStatus'    => cmp_get_student_status_counts(),
-		),
+	return cmp_get_cached_report_payload(
+		$cache_key,
+		static function () use ( $range ) {
+			return array(
+				'metrics'                  => cmp_get_dashboard_metrics( $range ),
+				'pending_students'         => cmp_get_dashboard_pending_students( 8 ),
+				'recent_students'          => cmp_get_recent_students( 8 ),
+				'course_completion_rows'   => cmp_get_dashboard_course_completion_rows( 8 ),
+				'batch_performance_rows'   => cmp_get_dashboard_batch_performance_rows( 8 ),
+				'class_revenue_rows'       => cmp_get_dashboard_class_revenue_rows( 6 ),
+				'teacher_rows'             => cmp_get_dashboard_teacher_rows( 6 ),
+				'chart_data'               => array(
+					'dashboardRevenue' => cmp_get_monthly_revenue( 6 ),
+					'studentStatus'    => cmp_get_student_status_counts(),
+				),
+			);
+		},
+		60
 	);
 }
 
@@ -5312,11 +6705,20 @@ function cmp_get_dashboard_snapshot( $range = 'month' ) {
 function cmp_get_student_overview_metrics() {
 	global $wpdb;
 
+	$row = $wpdb->get_row(
+		'SELECT 
+			COUNT(*) AS total_students,
+			COALESCE(SUM(CASE WHEN status = \'active\' THEN 1 ELSE 0 END), 0) AS active_students,
+			COALESCE(SUM(CASE WHEN status = \'completed\' THEN 1 ELSE 0 END), 0) AS completed_students,
+			COALESCE(SUM(GREATEST(total_fee - paid_fee, 0)), 0) AS pending_fee
+		FROM ' . cmp_table( 'students' )
+	);
+
 	return array(
-		'total_students'    => (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) ),
-		'active_students'   => (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'active' ) ),
-		'completed_students'=> (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'completed' ) ),
-		'pending_fee'       => (float) $wpdb->get_var( 'SELECT COALESCE(SUM(GREATEST(total_fee - paid_fee, 0)), 0) FROM ' . cmp_table( 'students' ) ),
+		'total_students'     => $row ? (int) $row->total_students : 0,
+		'active_students'    => $row ? (int) $row->active_students : 0,
+		'completed_students' => $row ? (int) $row->completed_students : 0,
+		'pending_fee'        => $row ? (float) $row->pending_fee : 0.0,
 	);
 }
 
@@ -5371,6 +6773,373 @@ function cmp_get_student_growth( $months = 6 ) {
 	$rows   = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS month_key, COUNT(*) AS total FROM " . cmp_table( 'students' ) . ' WHERE created_at >= %s GROUP BY month_key',
+			$start
+		),
+		OBJECT_K
+	);
+
+	$labels = array();
+	$values = array();
+
+	for ( $i = $months - 1; $i >= 0; --$i ) {
+		$timestamp = strtotime( '-' . $i . ' months', $now );
+		$key       = gmdate( 'Y-m', $timestamp );
+		$labels[]  = gmdate( 'M Y', $timestamp );
+		$values[]  = isset( $rows[ $key ] ) ? (int) $rows[ $key ]->total : 0;
+	}
+
+	return array(
+		'labels' => $labels,
+		'values' => $values,
+	);
+}
+
+/**
+ * Returns batch occupancy insights.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_batch_occupancy_rows( $limit = 10 ) {
+	global $wpdb;
+
+	$limit = max( 1, absint( $limit ) );
+
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT
+				b.id,
+				b.batch_name,
+				b.status,
+				b.intake_limit,
+				c.name AS class_name,
+				COUNT(s.id) AS student_count,
+				SUM(CASE WHEN s.status = %s THEN 1 ELSE 0 END) AS completed_students,
+				SUM(GREATEST(s.total_fee - s.paid_fee, 0)) AS pending_amount,
+				CASE
+					WHEN b.intake_limit > 0 THEN ROUND((COUNT(s.id) / b.intake_limit) * 100, 2)
+					ELSE 0
+				END AS occupancy_rate
+			FROM ' . cmp_table( 'batches' ) . ' b
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+			LEFT JOIN ' . cmp_table( 'students' ) . ' s ON s.batch_id = b.id
+			GROUP BY b.id, b.batch_name, b.status, b.intake_limit, c.name
+			HAVING COUNT(s.id) > 0 OR b.intake_limit > 0
+			ORDER BY occupancy_rate DESC, student_count DESC, b.created_at DESC
+			LIMIT %d',
+			'completed',
+			$limit
+		)
+	);
+}
+
+/**
+ * Returns the top cities using normalized city names.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_top_city_rows( $limit = 10 ) {
+	global $wpdb;
+
+	$limit = max( 1, absint( $limit ) );
+
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT
+				COALESCE(NULLIF(s.city_normalized, \'\'), NULLIF(s.city_original, \'\'), %s) AS city_name,
+				COUNT(*) AS student_count,
+				SUM(CASE WHEN s.status = %s THEN 1 ELSE 0 END) AS completed_students,
+				SUM(GREATEST(s.total_fee - s.paid_fee, 0)) AS pending_amount,
+				SUM(s.paid_fee) AS collected_amount
+			FROM ' . cmp_table( 'students' ) . ' s
+			WHERE COALESCE(NULLIF(s.city_normalized, \'\'), NULLIF(s.city_original, \'\')) IS NOT NULL
+			GROUP BY city_name
+			ORDER BY student_count DESC, collected_amount DESC, city_name ASC
+			LIMIT %d',
+			__( 'Unknown', 'class-manager-pro' ),
+			'completed',
+			$limit
+		)
+	);
+}
+
+/**
+ * Returns a lead-source performance report.
+ *
+ * @return array
+ */
+function cmp_get_lead_source_report_rows() {
+	global $wpdb;
+
+	$student_rows = $wpdb->get_results(
+		'SELECT
+			COALESCE(NULLIF(lead_source, \'\'), \'Other\') AS lead_source,
+			COUNT(*) AS student_count,
+			SUM(CASE WHEN status = \'completed\' THEN 1 ELSE 0 END) AS converted_students,
+			SUM(paid_fee) AS collected_amount,
+			SUM(total_fee) AS total_fee
+		FROM ' . cmp_table( 'students' ) . '
+		GROUP BY lead_source'
+	);
+	$lead_rows = $wpdb->get_results(
+		'SELECT
+			COALESCE(NULLIF(lead_source, \'\'), \'Other\') AS lead_source,
+			COUNT(*) AS lead_count,
+			SUM(CASE WHEN follow_up_status = \'not_interested\' THEN 1 ELSE 0 END) AS not_interested_count,
+			SUM(CASE WHEN follow_up_status IN (\'interested\', \'ready_to_take_admission\') THEN 1 ELSE 0 END) AS contacted_count
+		FROM ' . cmp_table( 'interested_students' ) . '
+		GROUP BY lead_source'
+	);
+
+	$map = array();
+
+	foreach ( array_merge( is_array( $lead_rows ) ? $lead_rows : array(), is_array( $student_rows ) ? $student_rows : array() ) as $row ) {
+		$key = cmp_normalize_lead_source_name( $row->lead_source );
+
+		if ( ! isset( $map[ $key ] ) ) {
+			$map[ $key ] = array(
+				'lead_source'          => $key,
+				'lead_count'           => 0,
+				'student_count'        => 0,
+				'converted_students'    => 0,
+				'not_interested_count'  => 0,
+				'contacted_count'      => 0,
+				'collected_amount'     => 0,
+				'total_fee'            => 0,
+			);
+		}
+
+		if ( isset( $row->lead_count ) ) {
+			$map[ $key ]['lead_count'] += (int) $row->lead_count;
+			$map[ $key ]['not_interested_count'] += (int) $row->not_interested_count;
+			$map[ $key ]['contacted_count'] += (int) $row->contacted_count;
+		}
+
+		if ( isset( $row->student_count ) ) {
+			$map[ $key ]['student_count'] += (int) $row->student_count;
+			$map[ $key ]['converted_students'] += (int) $row->converted_students;
+			$map[ $key ]['collected_amount'] += (float) $row->collected_amount;
+			$map[ $key ]['total_fee'] += (float) $row->total_fee;
+		}
+	}
+
+	$rows = array_values( $map );
+
+	usort(
+		$rows,
+		static function ( $left, $right ) {
+			if ( (int) $left['student_count'] !== (int) $right['student_count'] ) {
+				return (int) $right['student_count'] <=> (int) $left['student_count'];
+			}
+
+			return strcmp( strtolower( (string) $left['lead_source'] ), strtolower( (string) $right['lead_source'] ) );
+		}
+	);
+
+	foreach ( $rows as &$row ) {
+		$row['conversion_rate'] = (int) $row['lead_count'] > 0 ? round( ( (int) $row['student_count'] / (int) $row['lead_count'] ) * 100, 2 ) : 0;
+		$row['revenue']         = (float) $row['collected_amount'];
+	}
+	unset( $row );
+
+	return $rows;
+}
+
+/**
+ * Returns repeat student analytics.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_repeat_student_report( $limit = 10 ) {
+	global $wpdb;
+
+	$limit = max( 1, absint( $limit ) );
+	$rows  = $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT
+				COALESCE(NULLIF(s.email, \'\'), s.phone) AS contact_key,
+				MAX(s.name) AS student_name,
+				MAX(s.phone) AS phone,
+				MAX(s.email) AS email,
+				COUNT(*) AS enrollment_count,
+				SUM(s.paid_fee) AS total_revenue,
+				SUM(GREATEST(s.total_fee - s.paid_fee, 0)) AS total_pending,
+				MIN(s.created_at) AS first_joined_at,
+				MAX(s.created_at) AS last_joined_at,
+				GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR \', \') AS class_names,
+				GROUP_CONCAT(DISTINCT b.batch_name ORDER BY b.created_at DESC SEPARATOR \' | \') AS batch_names
+			FROM ' . cmp_table( 'students' ) . ' s
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id
+			LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id
+			WHERE COALESCE(NULLIF(s.email, \'\'), s.phone) <> \'\'
+			GROUP BY contact_key
+			HAVING COUNT(*) > 1
+			ORDER BY enrollment_count DESC, total_revenue DESC, last_joined_at DESC
+			LIMIT %d',
+			$limit
+		)
+	);
+
+	$total_enrollments = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) );
+	$returning_enrollments = 0;
+	$returning_revenue     = 0;
+
+	foreach ( $rows as $row ) {
+		$returning_enrollments += max( 0, (int) $row->enrollment_count - 1 );
+		$returning_revenue     += (float) $row->total_revenue;
+		$row->repeat_level      = max( 1, (int) $row->enrollment_count - 1 );
+		$row->repeat_label      = sprintf(
+			/* translators: %d: repeat level */
+			__( '%d+ classes', 'class-manager-pro' ),
+			$row->enrollment_count
+		);
+	}
+
+	return array(
+		'summary' => array(
+			'total_enrollments'       => $total_enrollments,
+			'repeat_contacts'         => count( $rows ),
+			'returning_enrollments'   => $returning_enrollments,
+			'repeat_rate'             => $total_enrollments > 0 ? round( ( $returning_enrollments / $total_enrollments ) * 100, 2 ) : 0,
+			'revenue_from_returning_students' => $returning_revenue,
+			'repeat_level_breakdown'   => cmp_get_repeat_student_level_breakdown( $rows ),
+		),
+		'rows'    => $rows,
+	);
+}
+
+/**
+ * Returns a data-quality summary.
+ *
+ * @return array
+ */
+function cmp_get_data_quality_summary() {
+	global $wpdb;
+
+	$missing_email_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . " WHERE email IS NULL OR email = ''" );
+	$missing_email_leads    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'interested_students' ) . " WHERE email IS NULL OR email = ''" );
+	$invalid_mobile_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . " WHERE phone IS NULL OR phone = '' OR phone NOT REGEXP '^[0-9+()\\-\\s]{10,}$'" );
+	$invalid_mobile_leads    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'interested_students' ) . " WHERE phone IS NULL OR phone = '' OR phone NOT REGEXP '^[0-9+()\\-\\s]{10,}$'" );
+	$duplicate_email_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM (SELECT email FROM ' . cmp_table( 'students' ) . " WHERE email IS NOT NULL AND email <> '' GROUP BY email HAVING COUNT(*) > 1) dup" );
+	$duplicate_phone_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM (SELECT phone FROM ' . cmp_table( 'students' ) . " WHERE phone IS NOT NULL AND phone <> '' GROUP BY phone HAVING COUNT(*) > 1) dup" );
+	$duplicate_email_leads    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM (SELECT email FROM ' . cmp_table( 'interested_students' ) . " WHERE email IS NOT NULL AND email <> '' GROUP BY email HAVING COUNT(*) > 1) dup" );
+	$duplicate_phone_leads    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM (SELECT phone FROM ' . cmp_table( 'interested_students' ) . " WHERE phone IS NOT NULL AND phone <> '' GROUP BY phone HAVING COUNT(*) > 1) dup" );
+	$invalid_city_students    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . " WHERE city_original IS NOT NULL AND city_original <> '' AND (city_normalized IS NULL OR city_normalized = '')" );
+	$invalid_city_leads       = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'interested_students' ) . " WHERE city_original IS NOT NULL AND city_original <> '' AND (city_normalized IS NULL OR city_normalized = '')" );
+	$missing_payment_students = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE total_fee > 0 AND paid_fee <= 0' );
+	$missing_payment_leads    = (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'interested_students' ) . " WHERE (payment_status = '' OR payment_status IS NULL) AND (attempt_amount <= 0 OR attempt_amount IS NULL)" );
+
+	return array(
+		'missing_email_students'  => $missing_email_students,
+		'missing_email_leads'     => $missing_email_leads,
+		'invalid_mobile_students' => $invalid_mobile_students,
+		'invalid_mobile_leads'    => $invalid_mobile_leads,
+		'duplicate_email_students'=> $duplicate_email_students,
+		'duplicate_phone_students'=> $duplicate_phone_students,
+		'duplicate_email_leads'   => $duplicate_email_leads,
+		'duplicate_phone_leads'   => $duplicate_phone_leads,
+		'invalid_city_students'   => $invalid_city_students,
+		'invalid_city_leads'      => $invalid_city_leads,
+		'missing_payment_students'=> $missing_payment_students,
+		'missing_payment_leads'   => $missing_payment_leads,
+		'total_warnings'          => $missing_email_students + $missing_email_leads + $invalid_mobile_students + $invalid_mobile_leads + $duplicate_email_students + $duplicate_phone_students + $duplicate_email_leads + $duplicate_phone_leads + $invalid_city_students + $invalid_city_leads + $missing_payment_students + $missing_payment_leads,
+	);
+}
+
+/**
+ * Returns a teacher-focused report payload.
+ *
+ * @param int $limit Maximum rows.
+ * @return array
+ */
+function cmp_get_teacher_report_rows( $limit = 10 ) {
+	global $wpdb;
+
+	$limit = max( 1, absint( $limit ) );
+	$rows  = cmp_get_teacher_overview_rows( array(), $limit, true );
+
+	foreach ( $rows as &$row ) {
+		$teacher_id = (int) $row->ID;
+		$batch_rows  = cmp_get_teacher_batch_performance( $teacher_id );
+		$completed   = 0;
+		$batch_total = count( $batch_rows );
+		$students    = 0;
+
+		foreach ( $batch_rows as $batch_row ) {
+			$students += (int) $batch_row->student_count;
+
+			if ( 'completed' === (string) $batch_row->status ) {
+				++$completed;
+			}
+		}
+
+		$row->completed_batches    = $completed;
+		$row->average_batch_size   = $batch_total > 0 ? round( $students / $batch_total, 2 ) : 0;
+		$row->student_completion   = $batch_total > 0 ? round( ( $completed / $batch_total ) * 100, 2 ) : 0;
+		$row->attendance_rate      = cmp_get_teacher_attendance_rate( $teacher_id );
+		$row->teacher_payment_total = isset( $row->teacher_payment_total ) ? (float) $row->teacher_payment_total : 0;
+		$row->average_revenue_per_batch = $batch_total > 0 ? round( (float) $row->total_revenue / $batch_total, 2 ) : 0;
+		$row->student_satisfaction = 0;
+	}
+	unset( $row );
+
+	return $rows;
+}
+
+/**
+ * Returns a teacher attendance rate.
+ *
+ * @param int $teacher_user_id Teacher user ID.
+ * @return float
+ */
+function cmp_get_teacher_attendance_rate( $teacher_user_id ) {
+	global $wpdb;
+
+	$teacher_user_id = absint( $teacher_user_id );
+
+	if ( ! $teacher_user_id ) {
+		return 0;
+	}
+
+	$row = $wpdb->get_row(
+		$wpdb->prepare(
+			'SELECT
+				SUM(CASE WHEN a.status = \'present\' THEN 1 ELSE 0 END) AS present_count,
+				COUNT(a.id) AS total_marked
+			FROM ' . cmp_table( 'batches' ) . ' b
+			LEFT JOIN ' . cmp_table( 'students' ) . ' s ON s.batch_id = b.id
+			LEFT JOIN ' . cmp_table( 'attendance' ) . ' a ON a.batch_id = b.id AND a.student_id = s.id
+			WHERE b.teacher_user_id = %d',
+			$teacher_user_id
+		)
+	);
+
+	if ( ! $row || empty( $row->total_marked ) ) {
+		return 0;
+	}
+
+	return round( ( (float) $row->present_count / (float) $row->total_marked ) * 100, 2 );
+}
+
+/**
+ * Returns registration trend data.
+ *
+ * @param int $months Number of months.
+ * @return array
+ */
+function cmp_get_registration_trends( $months = 12 ) {
+	global $wpdb;
+
+	$months = max( 1, absint( $months ) );
+	$now    = current_time( 'timestamp' );
+	$start  = gmdate( 'Y-m-01 00:00:00', strtotime( '-' . ( $months - 1 ) . ' months', $now ) );
+	$rows   = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS month_key, COUNT(*) AS total
+			FROM " . cmp_table( 'activity_logs' ) . " WHERE action = %s AND created_at >= %s GROUP BY month_key",
+			'registration_recorded',
 			$start
 		),
 		OBJECT_K
@@ -5461,6 +7230,7 @@ function cmp_read_student_filters( $source = null ) {
 		'class_id' => absint( cmp_field( $source, 'class_id', 0 ) ),
 		'batch_id' => absint( cmp_field( $source, 'batch_id', 0 ) ),
 		'status'   => sanitize_key( cmp_field( $source, 'status' ) ),
+		'fee_status' => sanitize_key( cmp_field( $source, 'fee_status' ) ),
 	);
 }
 
@@ -5774,8 +7544,12 @@ function cmp_render_all_data_rows( $filters = array() ) {
  * @param array $filters Filters.
  * @return string
  */
-function cmp_render_student_rows( $filters = array() ) {
-	$students = cmp_get_students( $filters );
+function cmp_render_student_rows( $students_or_filters = array() ) {
+	if ( is_array( $students_or_filters ) && ! empty( $students_or_filters ) && is_object( reset( $students_or_filters ) ) ) {
+		$students = $students_or_filters;
+	} else {
+		$students = cmp_get_students( (array) $students_or_filters );
+	}
 
 	ob_start();
 
@@ -5840,6 +7614,155 @@ function cmp_render_student_rows( $filters = array() ) {
 }
 
 /**
+ * Renders class table rows.
+ *
+ * @param array $classes Class rows.
+ * @return string
+ */
+function cmp_render_class_rows( $classes = array() ) {
+	ob_start();
+
+	if ( empty( $classes ) ) {
+		echo '<tr><td colspan="7">' . esc_html__( 'No classes found.', 'class-manager-pro' ) . '</td></tr>';
+		return ob_get_clean();
+	}
+
+	foreach ( $classes as $row ) {
+		$edit_url   = cmp_admin_url( 'cmp-classes', array( 'action' => 'edit', 'id' => (int) $row->id ) );
+		$delete_url = wp_nonce_url( admin_url( 'admin-post.php?action=cmp_delete_class&id=' . (int) $row->id ), 'cmp_delete_class_' . (int) $row->id );
+
+		echo '<tr data-cmp-row-id="class-' . esc_attr( (int) $row->id ) . '">';
+		echo '<td><input type="checkbox" class="cmp-class-select" value="' . esc_attr( (int) $row->id ) . '"></td>';
+		echo '<td>' . esc_html( $row->name ) . '</td>';
+		echo '<td>' . esc_html( wp_trim_words( $row->description, 16 ) ) . '</td>';
+		echo '<td>' . esc_html( cmp_format_money( $row->total_fee ) ) . '</td>';
+		echo '<td>' . esc_html( ! empty( $row->next_course_id ) ? cmp_get_tutor_course_title( (int) $row->next_course_id ) : __( 'Not configured', 'class-manager-pro' ) ) . '</td>';
+		echo '<td>' . esc_html( $row->created_at ) . '</td>';
+		echo '<td class="cmp-actions">';
+		echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'class-manager-pro' ) . '</a> ';
+		echo '<a class="cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $row->id ) . '" data-type="class" data-cmp-ajax-delete="1" data-cmp-entity-type="class" data-cmp-entity-id="' . esc_attr( (int) $row->id ) . '" data-cmp-confirm="' . esc_attr__( 'Delete this class?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-class-bulk-feedback">' . esc_html__( 'Delete', 'class-manager-pro' ) . '</a>';
+		echo '</td>';
+		echo '</tr>';
+	}
+
+	return ob_get_clean();
+}
+
+/**
+ * Renders batch table rows.
+ *
+ * @param array $batches Batch rows.
+ * @return string
+ */
+function cmp_render_batch_rows( $batches = array() ) {
+	ob_start();
+
+	if ( empty( $batches ) ) {
+		echo '<tr><td colspan="10">' . esc_html__( 'No batches found.', 'class-manager-pro' ) . '</td></tr>';
+		return ob_get_clean();
+	}
+
+	foreach ( $batches as $row ) {
+		$view_url       = cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $row->id ) );
+		$edit_url       = cmp_admin_url( 'cmp-batches', array( 'action' => 'edit', 'id' => (int) $row->id ) );
+		$import_row_url = cmp_admin_url( 'cmp-razorpay-import', array( 'class_id' => (int) $row->class_id, 'batch_id' => (int) $row->id, 'razorpay_page_id' => $row->razorpay_page_id ) );
+		$delete_url     = wp_nonce_url( admin_url( 'admin-post.php?action=cmp_delete_batch&id=' . (int) $row->id ), 'cmp_delete_batch_' . (int) $row->id );
+		$course_title   = ! empty( $row->course_id ) ? cmp_get_tutor_course_title( (int) $row->course_id ) : __( 'Not linked', 'class-manager-pro' );
+
+		echo '<tr data-cmp-row-id="batch-' . esc_attr( (int) $row->id ) . '">';
+		echo '<td><input type="checkbox" class="cmp-batch-select" value="' . esc_attr( (int) $row->id ) . '"></td>';
+		echo '<td>' . esc_html( $row->batch_name ) . '</td>';
+		echo '<td>' . esc_html( $row->class_name ) . '</td>';
+		echo '<td>' . esc_html( cmp_get_teacher_label( (int) $row->teacher_user_id ) ) . '</td>';
+		echo '<td>' . esc_html( $course_title ) . '</td>';
+		echo '<td>' . esc_html( $row->razorpay_page_id ? $row->razorpay_page_id : __( 'Not set', 'class-manager-pro' ) ) . '</td>';
+		echo '<td>' . esc_html( number_format_i18n( $row->student_count ) ) . '</td>';
+		echo '<td>' . esc_html( $row->start_date ? $row->start_date : __( 'Not set', 'class-manager-pro' ) ) . '</td>';
+		echo '<td><span class="cmp-status cmp-status-' . esc_attr( $row->status ) . '" data-cmp-status-badge="batch-' . esc_attr( (int) $row->id ) . '">' . esc_html( ucfirst( $row->status ) ) . '</span></td>';
+		echo '<td class="cmp-actions">';
+		echo '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View Batch', 'class-manager-pro' ) . '</a> ';
+		echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'class-manager-pro' ) . '</a> ';
+		echo '<a href="' . esc_url( $import_row_url ) . '">' . esc_html__( 'Import', 'class-manager-pro' ) . '</a> ';
+		echo '<a class="cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $row->id ) . '" data-type="batch" data-cmp-ajax-delete="1" data-cmp-entity-type="batch" data-cmp-entity-id="' . esc_attr( (int) $row->id ) . '" data-cmp-confirm="' . esc_attr__( 'Delete this batch?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-batch-bulk-feedback">' . esc_html__( 'Delete', 'class-manager-pro' ) . '</a>';
+		echo '</td>';
+		echo '</tr>';
+	}
+
+	return ob_get_clean();
+}
+
+/**
+ * Renders payment table rows.
+ *
+ * @param array  $payments Payment rows.
+ * @param string $page_slug Page slug.
+ * @return string
+ */
+function cmp_render_payment_rows( $payments = array(), $page_slug = 'cmp-payments' ) {
+	$is_trash      = 'cmp-payments-trash' === $page_slug;
+	$empty_message = $is_trash ? __( 'Trash is empty.', 'class-manager-pro' ) : __( 'No payments found.', 'class-manager-pro' );
+
+	ob_start();
+
+	if ( empty( $payments ) ) {
+		echo '<tr><td colspan="' . esc_attr( $is_trash ? 8 : 9 ) . '">' . esc_html( $empty_message ) . '</td></tr>';
+		return ob_get_clean();
+	}
+
+	foreach ( $payments as $payment ) {
+		$view_url         = cmp_get_payment_view_url( (int) $payment->id, $page_slug );
+		$edit_url         = cmp_get_payment_edit_url( (int) $payment->id, 'cmp-payments' );
+		$delete_url       = cmp_get_payment_delete_url( (int) $payment->id, 'cmp-payments' );
+		$restore_url      = cmp_get_payment_restore_url( (int) $payment->id, 'cmp-payments' );
+		$force_delete_url = cmp_get_payment_force_delete_url( (int) $payment->id, 'cmp-payments-trash' );
+
+		echo '<tr data-cmp-row-id="payment-' . esc_attr( (int) $payment->id ) . '">';
+
+		if ( ! $is_trash ) {
+			echo '<td><input type="checkbox" class="cmp-payment-select" value="' . esc_attr( (int) $payment->id ) . '"></td>';
+		}
+
+		echo '<td>#' . esc_html( (int) $payment->id ) . '</td>';
+		echo '<td>' . esc_html( $payment->student_name ? $payment->student_name : __( 'Unknown student', 'class-manager-pro' ) ) . '<br><span class="cmp-muted">' . esc_html( $payment->student_unique_id ) . '</span></td>';
+		echo '<td>' . esc_html( $payment->class_name ? $payment->class_name : __( 'Unassigned', 'class-manager-pro' ) ) . '<br><span class="cmp-muted">' . esc_html( $payment->batch_name ? $payment->batch_name : __( 'Not assigned', 'class-manager-pro' ) ) . '</span></td>';
+		echo '<td>' . esc_html( cmp_format_money( $payment->amount ) );
+
+		if ( cmp_payment_has_gateway_charge( $payment ) ) {
+			echo '<br><span class="cmp-muted">' . esc_html( sprintf( __( 'Net %s', 'class-manager-pro' ), cmp_format_money( cmp_get_payment_display_total( $payment ) ) ) ) . '</span>';
+		}
+
+		echo '</td>';
+		echo '<td>' . esc_html( ucfirst( $payment->payment_mode ) ) . '</td>';
+		echo '<td>' . esc_html( $payment->transaction_id ? $payment->transaction_id : __( 'Not set', 'class-manager-pro' ) ) . '</td>';
+		echo '<td>' . esc_html( $payment->payment_date ) . '</td>';
+		echo '<td class="cmp-actions">';
+		echo '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View', 'class-manager-pro' ) . '</a> ';
+
+		if ( ! $is_trash ) {
+			echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'class-manager-pro' ) . '</a> ';
+			echo '<a class="cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $payment->id ) . '" data-type="payment" data-cmp-ajax-delete="1" data-cmp-entity-type="payment" data-cmp-entity-id="' . esc_attr( (int) $payment->id ) . '" data-cmp-confirm="' . esc_attr__( 'Move this payment to Trash?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-payment-bulk-feedback">' . esc_html__( 'Move to Trash', 'class-manager-pro' ) . '</a>';
+		} else {
+			echo '<form method="post" action="' . esc_url( $restore_url ) . '" class="cmp-inline-form" data-cmp-confirm="' . esc_attr__( 'Restore this payment?', 'class-manager-pro' ) . '"><button type="submit" class="button button-primary">' . esc_html__( 'Restore', 'class-manager-pro' ) . '</button></form> ';
+			echo '<form method="post" action="' . esc_url( $force_delete_url ) . '" class="cmp-inline-form" data-cmp-confirm="' . esc_attr__( 'Permanently delete this payment? This cannot be undone.', 'class-manager-pro' ) . '"><button type="submit" class="button">' . esc_html__( 'Delete Permanently', 'class-manager-pro' ) . '</button></form>';
+		}
+
+		echo '</td>';
+		echo '</tr>';
+	}
+
+	return ob_get_clean();
+}
+
+/**
+ * Indicates whether the current request is an AJAX request.
+ *
+ * @return bool
+ */
+function cmp_is_ajax_request() {
+	return wp_doing_ajax() || ( ! empty( $_REQUEST['cmp_ajax'] ) && '1' === (string) $_REQUEST['cmp_ajax'] );
+}
+
+/**
  * AJAX handler for All Data filtering.
  */
 function cmp_ajax_filter_all_data() {
@@ -5860,9 +7783,190 @@ function cmp_ajax_filter_students() {
 	cmp_require_manage_options_ajax();
 	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
 
+	$filters  = cmp_read_student_filters( $_POST );
+	$paged    = max( 1, absint( cmp_field( $_POST, 'paged', 1 ) ) );
+	$per_page = cmp_get_default_per_page();
+	$total    = cmp_get_students_count( $filters );
+	$pagination = cmp_get_pagination_data( $total, $paged, $per_page );
+	$rows     = cmp_get_students(
+		array_merge(
+			$filters,
+			array(
+				'limit'  => $pagination['per_page'],
+				'offset' => $pagination['offset'],
+			)
+		)
+	);
+	$page_slug = cmp_clean_return_page( cmp_field( $_POST, 'page', 'cmp-students' ), 'cmp-students' );
+	$pagination_args = $filters;
+
+	if ( ! empty( $_POST['tab'] ) ) {
+		$pagination_args['tab'] = sanitize_key( cmp_field( $_POST, 'tab' ) );
+	}
+
+	$previous_page = isset( $_GET['page'] ) ? $_GET['page'] : null;
+	$_GET['page']   = $page_slug;
+	ob_start();
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-table-scroll">
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th><input type="checkbox" id="cmp-student-select-all" data-cmp-select-all=".cmp-student-select"></th>
+						<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Payment Status', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+					</tr>
+				</thead>
+				<tbody class="cmp-student-results">
+					<?php echo cmp_render_student_rows( $rows ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+				</tbody>
+			</table>
+		</div>
+		<?php cmp_render_pagination( $pagination, $pagination_args ); ?>
+	</section>
+	<?php
+	$html = ob_get_clean();
+	if ( null === $previous_page ) {
+		unset( $_GET['page'] );
+	} else {
+		$_GET['page'] = $previous_page;
+	}
+
 	wp_send_json_success(
 		array(
-			'html' => cmp_render_student_rows( cmp_read_student_filters() ),
+			'html' => $html,
+		)
+	);
+}
+
+/**
+ * AJAX handler for Classes filtering / refresh.
+ */
+function cmp_ajax_filter_classes() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
+
+	wp_send_json_success(
+		array(
+			'html' => cmp_render_class_rows( cmp_get_classes() ),
+		)
+	);
+}
+
+/**
+ * AJAX handler for Batches filtering / refresh.
+ */
+function cmp_ajax_filter_batches() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
+
+	wp_send_json_success(
+		array(
+			'html' => cmp_render_batch_rows( cmp_get_batches_with_metrics() ),
+		)
+	);
+}
+
+/**
+ * AJAX handler for Payments filtering / refresh.
+ */
+function cmp_ajax_filter_payments() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
+
+	$page_slug = sanitize_key( cmp_field( $_POST, 'page_slug', 'cmp-payments' ) );
+	$filters   = array(
+		'search'            => sanitize_text_field( cmp_field( $_POST, 'search' ) ),
+		'payment_mode'      => sanitize_key( cmp_field( $_POST, 'payment_mode' ) ),
+		'balance_status'    => sanitize_key( cmp_field( $_POST, 'balance_status' ) ),
+		'assignment_status' => sanitize_key( cmp_field( $_POST, 'assignment_status' ) ),
+		'deleted_status'    => 'cmp-payments-trash' === $page_slug ? 'trash' : 'active',
+	);
+	$paged    = max( 1, absint( cmp_field( $_POST, 'paged', 1 ) ) );
+	$per_page = cmp_get_default_per_page();
+	$pagination = cmp_get_pagination_data( cmp_get_payments_count( $filters ), $paged, $per_page );
+	$payments = cmp_get_payments(
+		array_merge(
+			$filters,
+			array(
+				'limit'  => $pagination['per_page'],
+				'offset' => $pagination['offset'],
+			)
+		)
+	);
+	ob_start();
+	cmp_render_payment_list_section( $payments, $pagination, $filters, $page_slug );
+	$html = ob_get_clean();
+
+	wp_send_json_success(
+		array(
+			'html' => $html,
+		)
+	);
+}
+
+/**
+ * AJAX handler for interested student table refreshes.
+ */
+function cmp_ajax_filter_interested_students() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
+
+	$filters = array(
+		'search'           => sanitize_text_field( cmp_field( $_POST, 'search' ) ),
+		'class_id'         => absint( cmp_field( $_POST, 'class_id', 0 ) ),
+		'batch_id'         => absint( cmp_field( $_POST, 'batch_id', 0 ) ),
+		'follow_up_status' => sanitize_key( cmp_field( $_POST, 'follow_up_status', '' ) ),
+		'email_status'     => sanitize_key( cmp_field( $_POST, 'email_status', '' ) ),
+		'whatsapp_status'  => sanitize_key( cmp_field( $_POST, 'whatsapp_status', '' ) ),
+	);
+	$paged    = max( 1, absint( cmp_field( $_POST, 'paged', 1 ) ) );
+	$per_page = cmp_get_default_per_page();
+	$total    = cmp_get_interested_students_count( $filters );
+	$pagination = cmp_get_pagination_data( $total, $paged, $per_page );
+	$rows     = cmp_get_interested_students(
+		array_merge(
+			$filters,
+			array(
+				'limit'  => $pagination['per_page'],
+				'offset' => $pagination['offset'],
+			)
+		)
+	);
+	$page_slug = cmp_clean_return_page( cmp_field( $_POST, 'page', 'cmp-interested-students' ), 'cmp-interested-students' );
+	$pagination_args = $filters;
+
+	if ( 'interested' === sanitize_key( cmp_field( $_POST, 'tab', '' ) ) ) {
+		$pagination_args['tab'] = 'interested';
+	}
+
+	$previous_page = isset( $_GET['page'] ) ? $_GET['page'] : null;
+	$_GET['page']   = $page_slug;
+	ob_start();
+	?>
+	<?php echo cmp_render_interested_students_table( $rows, __( 'No interested students match the current filters.', 'class-manager-pro' ), array( 'return_page' => 'cmp-interested-students', 'return_args' => array() ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+	<?php cmp_render_pagination( $pagination, $pagination_args ); ?>
+	<?php
+	$html = ob_get_clean();
+	if ( null === $previous_page ) {
+		unset( $_GET['page'] );
+	} else {
+		$_GET['page'] = $previous_page;
+	}
+
+	wp_send_json_success(
+		array(
+			'html' => $html,
 		)
 	);
 }
@@ -5945,6 +8049,8 @@ function cmp_get_admin_entity_delete_message( $entity_type, $deleted_count ) {
  * @return true|WP_Error
  */
 function cmp_delete_admin_entity( $entity_type, $entity_id ) {
+	cmp_flush_dashboard_cache();
+
 	switch ( sanitize_key( $entity_type ) ) {
 		case 'class':
 			return cmp_delete_class( $entity_id );
@@ -6526,7 +8632,7 @@ function cmp_handle_csv_export() {
 			);
 		}
 	} elseif ( 'payments' === $type ) {
-		fputcsv( $output, array( 'Payment ID', 'Student Name', 'Student ID', 'Phone', 'Email', 'Class', 'Batch', 'Amount', 'Original Amount', 'Charge Amount', 'Final Amount', 'Payment Mode', 'Transaction ID', 'Date' ) );
+		fputcsv( $output, array( 'Payment ID', 'Student Name', 'Student ID', 'Phone', 'Email', 'Class', 'Batch', 'Student Fee', 'Student Fee (Stored)', 'Razorpay Commission', 'Net Amount Received', 'Payment Mode', 'Transaction ID', 'Date' ) );
 		$payments = cmp_get_payments(
 			array(
 				'search'           => sanitize_text_field( cmp_field( $_GET, 'search' ) ),
@@ -6585,21 +8691,168 @@ function cmp_handle_csv_export() {
 }
 
 /**
+ * Saves a class record and returns a structured result.
+ *
+ * @param array $data Form data.
+ * @return array|WP_Error
+ */
+function cmp_save_class_record( $data ) {
+	$id     = absint( cmp_field( $data, 'id', 0 ) );
+	$result = $id ? cmp_update_class( $id, $data ) : cmp_insert_class( $data );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	return array(
+		'id'      => $id ? $id : (int) $result,
+		'message' => __( 'Class saved successfully.', 'class-manager-pro' ),
+		'is_new'  => ! $id,
+	);
+}
+
+/**
+ * Saves a batch record and returns a structured result.
+ *
+ * @param array $data Form data.
+ * @return array|WP_Error
+ */
+function cmp_save_batch_record( $data ) {
+	$id     = absint( cmp_field( $data, 'id', 0 ) );
+	$result = $id ? cmp_update_batch( $id, $data ) : cmp_insert_batch( $data );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	$batch_id = $id ? $id : (int) $result;
+
+	cmp_sync_batch_students_tutor_enrollment( $batch_id );
+
+	if ( function_exists( 'cmp_sync_operations_batch_event' ) ) {
+		cmp_sync_operations_batch_event( $batch_id, 'save' );
+	}
+
+	return array(
+		'id'      => $batch_id,
+		'message' => __( 'Batch saved successfully.', 'class-manager-pro' ),
+		'is_new'  => ! $id,
+	);
+}
+
+/**
+ * Saves a student record and returns a structured result.
+ *
+ * @param array $data Form data.
+ * @return array|WP_Error
+ */
+function cmp_save_student_record( $data ) {
+	$id    = absint( cmp_field( $data, 'id', 0 ) );
+	$batch = absint( cmp_field( $data, 'batch_id', 0 ) ) ? cmp_get_batch( absint( cmp_field( $data, 'batch_id', 0 ) ) ) : null;
+
+	if ( $id ) {
+		$result = cmp_update_student( $id, $data );
+	} else {
+		$result = cmp_process_batch_registration(
+			$batch,
+			$data,
+			array(
+				'registration_method'    => ! empty( $data['capacity_override'] ) ? 'admin_override' : 'admin_added',
+				'registration_source'    => 'admin_form',
+				'allow_capacity_override' => ! empty( $data['capacity_override'] ),
+				'send_notifications'     => true,
+				'notes_prefix'           => ! empty( $data['capacity_override'] )
+					? __( 'Added by admin with capacity override.', 'class-manager-pro' )
+					: __( 'Added by admin.', 'class-manager-pro' ),
+			)
+		);
+	}
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	return array(
+		'id'      => $id ? $id : ( is_array( $result ) && ! empty( $result['student_id'] ) ? (int) $result['student_id'] : absint( $result ) ),
+		'message' => __( 'Student saved successfully.', 'class-manager-pro' ),
+		'is_new'  => ! $id,
+		'duplicate_notice' => cmp_pop_duplicate_lead_notice(),
+	);
+}
+
+/**
+ * Saves a payment record and returns a structured result.
+ *
+ * @param array $data Form data.
+ * @return array|WP_Error
+ */
+function cmp_save_payment_record( $data ) {
+	$id     = absint( cmp_field( $data, 'id', 0 ) );
+	$result = $id ? cmp_update_payment( $id, $data ) : cmp_insert_payment( $data );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	$payment_id = $id ? $id : (int) $result;
+	$notice     = cmp_pop_payment_operation_notice();
+
+	return array(
+		'id'      => $payment_id,
+		'message' => $notice && ! empty( $notice['message'] )
+			? trim( $notice['message'] . ' ' . ( $id ? __( 'Payment updated successfully.', 'class-manager-pro' ) : __( 'Payment saved successfully.', 'class-manager-pro' ) ) )
+			: ( $id ? __( 'Payment updated successfully.', 'class-manager-pro' ) : __( 'Payment saved successfully.', 'class-manager-pro' ) ),
+		'is_new'  => ! $id,
+		'notice_type' => ! empty( $notice['type'] ) ? $notice['type'] : 'success',
+	);
+}
+
+/**
  * Handles class form submission.
  */
 function cmp_handle_save_class() {
 	cmp_require_manage_options();
 	check_admin_referer( 'cmp_save_class' );
 
-	$id     = absint( cmp_field( $_POST, 'id', 0 ) );
-	$result = $id ? cmp_update_class( $id, $_POST ) : cmp_insert_class( $_POST );
 	$page   = cmp_clean_return_page( cmp_field( $_POST, 'return_page', 'cmp-classes' ), 'cmp-classes' );
+	$result = cmp_save_class_record( wp_unslash( $_POST ) );
 
 	if ( is_wp_error( $result ) ) {
+		$id = absint( cmp_field( $_POST, 'id', 0 ) );
 		cmp_redirect( $page, $result->get_error_message(), 'error', $id && 'cmp-classes' === $page ? array( 'action' => 'edit', 'id' => $id ) : array() );
 	}
 
-	cmp_redirect( $page, __( 'Class saved successfully.', 'class-manager-pro' ) );
+	cmp_redirect( $page, $result['message'] );
+}
+
+/**
+ * AJAX saves a class record.
+ */
+function cmp_ajax_save_class() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_save_class', 'nonce' );
+
+	$result = cmp_save_class_record( wp_unslash( $_POST ) );
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success(
+		array(
+			'message' => $result['message'],
+			'id'      => $result['id'],
+			'refresh'  => array(
+				'action' => 'cmp_filter_classes',
+				'target' => '#cmp-class-table-body',
+			),
+		)
+	);
 }
 
 /**
@@ -6627,20 +8880,66 @@ function cmp_handle_save_batch() {
 	cmp_require_manage_options();
 	check_admin_referer( 'cmp_save_batch' );
 
-	$id     = absint( cmp_field( $_POST, 'id', 0 ) );
-	$result = $id ? cmp_update_batch( $id, $_POST ) : cmp_insert_batch( $_POST );
 	$page   = cmp_clean_return_page( cmp_field( $_POST, 'return_page', 'cmp-batches' ), 'cmp-batches' );
+	$result = cmp_save_batch_record( wp_unslash( $_POST ) );
 
 	if ( is_wp_error( $result ) ) {
+		$id = absint( cmp_field( $_POST, 'id', 0 ) );
 		cmp_redirect( $page, $result->get_error_message(), 'error', $id && 'cmp-batches' === $page ? array( 'action' => 'edit', 'id' => $id ) : array() );
 	}
 
-	$batch_id = $id ? $id : (int) $result;
+	$batch_id = (int) $result['id'];
 	$args     = 'cmp-batches' === $page ? array( 'action' => 'view', 'id' => $batch_id ) : array();
 
-	cmp_sync_batch_students_tutor_enrollment( $batch_id );
+	cmp_redirect( $page, $result['message'], 'success', $args );
+}
 
-	cmp_redirect( $page, __( 'Batch saved successfully.', 'class-manager-pro' ), 'success', $args );
+/**
+ * AJAX saves a batch record.
+ */
+function cmp_ajax_save_batch() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_save_batch', 'nonce' );
+
+	$result = cmp_save_batch_record( wp_unslash( $_POST ) );
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success(
+		array(
+			'message' => $result['message'],
+			'id'      => $result['id'],
+			'refresh'  => array(
+				'action' => 'cmp_filter_batches',
+				'target' => '#cmp-batch-table-body',
+			),
+		)
+	);
+}
+
+/**
+ * Requests SmartCertify to generate certificates again for a completed batch.
+ */
+function cmp_handle_generate_batch_certificates_again() {
+	cmp_require_manage_options();
+
+	$batch_id = absint( cmp_field( $_POST, 'batch_id', 0 ) );
+	check_admin_referer( 'cmp_generate_batch_certificates_again_' . $batch_id );
+
+	$result = cmp_smartcertify_request_generate_again( $batch_id );
+
+	if ( is_wp_error( $result ) ) {
+		cmp_redirect( 'cmp-batches', $result->get_error_message(), 'error', array( 'action' => 'view', 'id' => $batch_id ) );
+	}
+
+	cmp_redirect( 'cmp-batches', __( 'Certificate generation has been queued again for this batch.', 'class-manager-pro' ), 'success', array( 'action' => 'view', 'id' => $batch_id ) );
 }
 
 /**
@@ -6721,22 +9020,52 @@ function cmp_handle_save_student() {
 	cmp_require_manage_options();
 	check_admin_referer( 'cmp_save_student' );
 
-	$id     = absint( cmp_field( $_POST, 'id', 0 ) );
-	$result = $id ? cmp_update_student( $id, $_POST ) : cmp_insert_student( $_POST );
+	$result = cmp_save_student_record( wp_unslash( $_POST ) );
 
 	if ( is_wp_error( $result ) ) {
 		$page = cmp_clean_return_page( cmp_field( $_POST, 'return_page', 'cmp-students' ), 'cmp-students' );
-		cmp_redirect( $page, $result->get_error_message(), 'error', $id ? array( 'action' => 'edit', 'id' => $id ) : array() );
+		$error_message = 'cmp_batch_full' === $result->get_error_code() ? __( 'Batch Full', 'class-manager-pro' ) : $result->get_error_message();
+		$id = absint( cmp_field( $_POST, 'id', 0 ) );
+		cmp_redirect( $page, $error_message, 'error', $id ? array( 'action' => 'edit', 'id' => $id ) : array() );
 	}
 
 	$page = cmp_clean_return_page( cmp_field( $_POST, 'return_page', 'cmp-students' ), 'cmp-students' );
-	$duplicate_notice = cmp_pop_duplicate_lead_notice();
 
-	if ( '' !== $duplicate_notice ) {
-		cmp_redirect( $page, $duplicate_notice, 'warning' );
+	if ( ! empty( $result['duplicate_notice'] ) ) {
+		cmp_redirect( $page, $result['duplicate_notice'], 'warning' );
 	}
 
-	cmp_redirect( $page, __( 'Student saved successfully.', 'class-manager-pro' ) );
+	cmp_redirect( $page, $result['message'] );
+}
+
+/**
+ * AJAX saves a student record.
+ */
+function cmp_ajax_save_student() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_save_student', 'nonce' );
+
+	$result = cmp_save_student_record( wp_unslash( $_POST ) );
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success(
+		array(
+			'message' => ! empty( $result['duplicate_notice'] ) ? $result['duplicate_notice'] : $result['message'],
+			'id'      => $result['id'],
+			'refresh'  => array(
+				'action' => 'cmp_filter_students',
+				'target' => '.cmp-student-results',
+			),
+		)
+	);
 }
 
 /**
@@ -6795,12 +9124,12 @@ function cmp_handle_save_payment() {
 	cmp_require_manage_options();
 	check_admin_referer( 'cmp_save_payment' );
 
-	$id          = absint( cmp_field( $_POST, 'id', 0 ) );
 	$return_page = cmp_clean_return_page( cmp_field( $_POST, 'return_page', 'cmp-payments' ), 'cmp-payments' );
 	$return_args = array();
-	$result      = $id ? cmp_update_payment( $id, $_POST ) : cmp_insert_payment( $_POST );
+	$result      = cmp_save_payment_record( wp_unslash( $_POST ) );
 
 	if ( is_wp_error( $result ) ) {
+		$id = absint( cmp_field( $_POST, 'id', 0 ) );
 		if ( $id ) {
 			$return_args = array(
 				'action' => 'edit',
@@ -6811,9 +9140,8 @@ function cmp_handle_save_payment() {
 		cmp_redirect( $return_page, $result->get_error_message(), 'error', $return_args );
 	}
 
-	$payment_id      = $id ? $id : (int) $result;
-	$success_message = $id ? __( 'Payment updated successfully.', 'class-manager-pro' ) : __( 'Payment saved successfully.', 'class-manager-pro' );
-	$notice          = cmp_pop_payment_operation_notice();
+	$payment_id      = (int) $result['id'];
+	$success_message = $result['message'];
 
 	if ( $payment_id ) {
 		$return_args = array(
@@ -6822,11 +9150,37 @@ function cmp_handle_save_payment() {
 		);
 	}
 
-	if ( ! empty( $notice['message'] ) ) {
-		cmp_redirect( $return_page, trim( $notice['message'] . ' ' . $success_message ), ! empty( $notice['type'] ) ? $notice['type'] : 'warning', $return_args );
+	cmp_redirect( $return_page, $success_message, ! empty( $result['notice_type'] ) ? $result['notice_type'] : 'success', $return_args );
+}
+
+/**
+ * AJAX saves a payment record.
+ */
+function cmp_ajax_save_payment() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_save_payment', 'nonce' );
+
+	$result = cmp_save_payment_record( wp_unslash( $_POST ) );
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
 	}
 
-	cmp_redirect( $return_page, $success_message, 'success', $return_args );
+	wp_send_json_success(
+		array(
+			'message' => $result['message'],
+			'id'      => $result['id'],
+			'refresh'  => array(
+				'action' => 'cmp_filter_payments',
+				'target' => '#cmp-payment-list-section',
+			),
+		)
+	);
 }
 
 /**
@@ -6977,6 +9331,22 @@ function cmp_handle_save_settings() {
 }
 
 /**
+ * Handles SmartCertify integration settings.
+ */
+function cmp_handle_save_smartcertify_settings() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_save_smartcertify_settings' );
+
+	update_option( 'cmp_smartcertify_integration_enabled', ! empty( $_POST['smartcertify_integration_enabled'] ) ? '1' : '0' );
+
+	if ( '' === (string) get_option( 'cmp_smartcertify_last_sync_status', '' ) ) {
+		update_option( 'cmp_smartcertify_last_sync_status', 'Not started' );
+	}
+
+	cmp_redirect( 'cmp-settings', __( 'SmartCertify integration settings saved successfully.', 'class-manager-pro' ) );
+}
+
+/**
  * Returns allowed Razorpay automation schedules.
  *
  * @return array
@@ -7008,6 +9378,10 @@ function cmp_clear_scheduled_hook( $hook ) {
  * Schedules the daily reminder job.
  */
 function cmp_schedule_daily_fee_reminders() {
+	if ( ! is_admin() && ! wp_doing_cron() ) {
+		return;
+	}
+
 	if ( ! wp_next_scheduled( 'cmp_daily_fee_reminders' ) ) {
 		wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', 'cmp_daily_fee_reminders' );
 	}
@@ -7030,6 +9404,12 @@ function cmp_disable_razorpay_payment_sync_automation() {
 	static $disabled = false;
 
 	if ( $disabled ) {
+		return;
+	}
+
+	// Exit early if already disabled and no scheduled hook remains
+	if ( '0' === get_option( 'cmp_automation_sync_enabled' ) && ! wp_next_scheduled( 'cmp_razorpay_payment_sync' ) ) {
+		$disabled = true;
 		return;
 	}
 
@@ -7371,13 +9751,65 @@ function cmp_razorpay_minor_to_major( $amount ) {
 }
 
 /**
+ * Maps a Razorpay API error response to a friendly message.
+ *
+ * @param int        $code HTTP status code.
+ * @param array|null  $body Decoded response body.
+ * @param string      $path API path.
+ * @param string|null $error_message Error message from a WP_Error response.
+ * @return string
+ */
+function cmp_razorpay_api_error_message( $code, $body = null, $path = '', $error_message = null ) {
+	$code = absint( $code );
+
+	if ( is_string( $error_message ) && '' !== trim( $error_message ) ) {
+		$message = sanitize_text_field( $error_message );
+	} else {
+		$message = __( 'Could not fetch data from Razorpay.', 'class-manager-pro' );
+	}
+
+	if ( 401 === $code || 403 === $code ) {
+		$message = __( 'Razorpay authentication failed. Please verify the API key and secret.', 'class-manager-pro' );
+	} elseif ( 404 === $code ) {
+		$message = __( 'Razorpay could not find the requested payment page or payment ID.', 'class-manager-pro' );
+	} elseif ( 408 === $code ) {
+		$message = __( 'Razorpay request timed out. Please try again.', 'class-manager-pro' );
+	} elseif ( 429 === $code ) {
+		$message = __( 'Razorpay rate limit reached. Please wait a moment and try again.', 'class-manager-pro' );
+	} elseif ( $code >= 500 && $code <= 599 ) {
+		$message = __( 'Razorpay is temporarily unavailable. Please retry shortly.', 'class-manager-pro' );
+	}
+
+	if ( is_array( $body ) && ! empty( $body['error'] ) && is_array( $body['error'] ) ) {
+		if ( ! empty( $body['error']['description'] ) ) {
+			$message = sanitize_text_field( $body['error']['description'] );
+		} elseif ( ! empty( $body['error']['reason'] ) ) {
+			$message = sanitize_text_field( $body['error']['reason'] );
+		} elseif ( ! empty( $body['error']['code'] ) ) {
+			$message = sanitize_text_field( $body['error']['code'] );
+		}
+	}
+
+	if ( '' !== $path && 0 === strpos( $message, 'Could not fetch data from Razorpay.' ) ) {
+		$message = sprintf(
+			/* translators: 1: path */
+			__( 'Could not fetch %1$s from Razorpay.', 'class-manager-pro' ),
+			sanitize_text_field( $path )
+		);
+	}
+
+	return $message;
+}
+
+/**
  * Makes a GET request to Razorpay.
  *
  * @param string $path API path.
  * @param array  $query Query args.
+ * @param array  $args HTTP args.
  * @return array|WP_Error
  */
-function cmp_razorpay_api_get( $path, $query = array() ) {
+function cmp_razorpay_api_get( $path, $query = array(), $args = array() ) {
 	$credentials = cmp_get_razorpay_credentials();
 
 	if ( empty( $credentials['key_id'] ) || empty( $credentials['secret'] ) ) {
@@ -7390,14 +9822,29 @@ function cmp_razorpay_api_get( $path, $query = array() ) {
 		$url = add_query_arg( $query, $url );
 	}
 
+	$args = wp_parse_args(
+		$args,
+		array(
+			'timeout'     => 25,
+			'redirection' => 5,
+			'headers'     => array(),
+		)
+	);
+
+	$headers = array_merge(
+		array(
+			'Authorization' => 'Basic ' . base64_encode( $credentials['key_id'] . ':' . $credentials['secret'] ),
+			'Accept'        => 'application/json',
+		),
+		is_array( $args['headers'] ) ? $args['headers'] : array()
+	);
+
 	$response = wp_remote_get(
 		$url,
 		array(
-			'timeout' => 25,
-			'headers' => array(
-				'Authorization' => 'Basic ' . base64_encode( $credentials['key_id'] . ':' . $credentials['secret'] ),
-				'Accept'        => 'application/json',
-			),
+			'timeout'     => absint( $args['timeout'] ) > 0 ? absint( $args['timeout'] ) : 25,
+			'redirection' => absint( $args['redirection'] ),
+			'headers'     => $headers,
 		)
 	);
 
@@ -7410,10 +9857,17 @@ function cmp_razorpay_api_get( $path, $query = array() ) {
 	$body = json_decode( wp_remote_retrieve_body( $response ), true );
 
 	if ( $code < 200 || $code >= 300 || ! is_array( $body ) ) {
-		cmp_log_event( 'error', 'Razorpay API returned an error response.', array( 'path' => $path, 'status' => $code ) );
+		cmp_log_event( 'error', 'Razorpay API returned an error response.', array( 'path' => $path, 'status' => $code, 'body' => $body ) );
+		$error_message = cmp_razorpay_api_error_message(
+			$code,
+			is_array( $body ) ? $body : null,
+			$path,
+			is_wp_error( $response ) ? $response->get_error_message() : ''
+		);
+
 		return new WP_Error(
 			'cmp_razorpay_api_error',
-			isset( $body['error']['description'] ) ? sanitize_text_field( $body['error']['description'] ) : __( 'Could not fetch data from Razorpay.', 'class-manager-pro' )
+			$error_message
 		);
 	}
 
@@ -7858,6 +10312,9 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 	$phone     = cmp_clean_import_phone_number( cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) ) );
 	$total_fee = cmp_money_value( isset( $notes['total_fee'] ) ? $notes['total_fee'] : 0 );
 	$amount    = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
+	$city_raw  = sanitize_text_field( cmp_first_scalar_value( array( $notes['city'] ?? '', $notes['city_original'] ?? '', $payment['notes']['city'] ?? '' ) ) );
+	$city_data = cmp_normalize_city_name( $city_raw );
+	$lead_source = cmp_normalize_lead_source_name( cmp_first_scalar_value( array( $notes['lead_source'] ?? '', $notes['source'] ?? '', $payment['notes']['lead_source'] ?? '' ) ) );
 
 	if ( '' === $name ) {
 		if ( '' !== $email ) {
@@ -7880,6 +10337,10 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 		return new WP_Error( 'cmp_import_batch_missing', __( 'A batch could not be created for the imported payment.', 'class-manager-pro' ) );
 	}
 
+	if ( ! cmp_registration_email_is_valid( $email ) ) {
+		return new WP_Error( 'cmp_import_student_email_required', __( 'A valid email address is required for imported payments.', 'class-manager-pro' ) );
+	}
+
 	if ( $total_fee <= 0 ) {
 		$total_fee = $amount > 0 ? $amount : cmp_get_batch_effective_fee( $batch );
 	}
@@ -7888,43 +10349,24 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 		$total_fee = max( $amount, $total_fee );
 	}
 
-	$student = cmp_find_reusable_import_student( $batch, $name, $email, $phone, (int) $batch->class_id );
-
-	if ( $student ) {
-		$notes_text = cmp_append_note( $student->notes, __( 'Matched during Razorpay import.', 'class-manager-pro' ) );
-		$update_result = cmp_update_student(
-			(int) $student->id,
-			array(
-				'name'      => $name,
-				'phone'     => $phone,
-				'email'     => $email,
-				'class_id'  => (int) $batch->class_id,
-				'batch_id'  => (int) $batch->id,
-				'total_fee' => (float) $student->paid_fee > 0 && (float) $student->total_fee > 0 ? (float) $student->total_fee : $total_fee,
-				'paid_fee'  => (float) $student->paid_fee,
-				'status'    => $student->status,
-				'notes'     => $notes_text,
-			)
-		);
-
-		if ( is_wp_error( $update_result ) ) {
-			return $update_result;
-		}
-
-		return (int) $student->id;
-	}
-
-	return cmp_insert_student(
+	return cmp_process_batch_registration(
+		$batch,
 		array(
-			'name'      => $name,
-			'phone'     => $phone,
-			'email'     => $email,
-			'class_id'  => (int) $batch->class_id,
-			'batch_id'  => (int) $batch->id,
-			'total_fee' => $total_fee,
-			'paid_fee'  => 0,
-			'status'    => 'active',
-			'notes'     => __( 'Created during Razorpay import.', 'class-manager-pro' ),
+			'name'  => $name,
+			'phone' => $phone,
+			'email' => $email,
+			'city_original' => $city_data['original'],
+			'city'          => $city_data['normalized'],
+			'lead_source'   => $lead_source,
+		),
+		array(
+			'registration_method' => 'razorpay_import',
+			'registration_source' => 'razorpay_import',
+			'send_notifications'  => true,
+			'total_fee'           => $total_fee,
+			'paid_fee'            => null,
+			'status'              => 'active',
+			'notes_prefix'        => __( 'Created during Razorpay import.', 'class-manager-pro' ),
 		)
 	);
 }
@@ -8777,6 +11219,574 @@ function cmp_get_successful_razorpay_payments_for_link( $page_id, $page_name = '
 }
 
 /**
+ * Returns compact Razorpay page metadata and captured payment IDs.
+ *
+ * This keeps page loading light while still exposing the data needed for
+ * previews, import progress, and connection tests.
+ *
+ * @param string $page_id Payment page reference.
+ * @param string $page_name Optional page name.
+ * @return array|WP_Error
+ */
+function cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name = '' ) {
+	static $cache = array();
+
+	$page_id   = sanitize_text_field( $page_id );
+	$page_name = cmp_clean_title_text( $page_name );
+	$cache_key = md5( wp_json_encode( array( $page_id, $page_name ) ) );
+
+	if ( isset( $cache[ $cache_key ] ) ) {
+		return $cache[ $cache_key ];
+	}
+
+	$page_link = cmp_get_razorpay_payment_link( $page_id );
+
+	if ( is_wp_error( $page_link ) ) {
+		return $page_link;
+	}
+
+	$page_meta = cmp_razorpay_entity_meta( $page_link );
+	$page_name  = '' !== $page_name ? $page_name : cmp_clean_title_text( cmp_first_scalar_value( array( $page_meta['form_name'] ?? '', $page_meta['payment_page_title'] ?? '', $page_meta['page_title'] ?? '', isset( $page_link['description'] ) ? $page_link['description'] : '', $page_id ) ) );
+	$page_status = sanitize_key( cmp_first_scalar_value( array( $page_link['status'] ?? '', $page_meta['status'] ?? '' ) ) );
+	$payment_ids = array();
+	$linked_payments = isset( $page_link['payments'] ) && is_array( $page_link['payments'] ) ? $page_link['payments'] : array();
+	$source = 'payment_link';
+
+	foreach ( $linked_payments as $linked_payment ) {
+		if ( ! is_array( $linked_payment ) ) {
+			continue;
+		}
+
+		$payment_id = cmp_first_scalar_value(
+			array(
+				$linked_payment['payment_id'] ?? '',
+				$linked_payment['id'] ?? '',
+			)
+		);
+
+		if ( '' !== $payment_id ) {
+			$payment_ids[] = sanitize_text_field( $payment_id );
+		}
+	}
+
+	$payment_ids = array_values( array_unique( array_filter( $payment_ids ) ) );
+
+	if ( empty( $payment_ids ) ) {
+		$source = 'payments_api';
+		$fallback_payments = cmp_get_razorpay_payments_for_sync(
+			array(
+				'search' => '',
+			)
+		);
+
+		if ( is_wp_error( $fallback_payments ) ) {
+			return $fallback_payments;
+		}
+
+		foreach ( $fallback_payments as $payment ) {
+			if ( ! cmp_razorpay_payment_matches_page( $payment, $page_id, $page_name ) ) {
+				continue;
+			}
+
+			$payment_id = isset( $payment['id'] ) && is_scalar( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+			if ( '' !== $payment_id ) {
+				$payment_ids[] = $payment_id;
+			}
+		}
+
+		$payment_ids = array_values( array_unique( array_filter( $payment_ids ) ) );
+	}
+
+	$result = array(
+		'page_link'    => $page_link,
+		'page_id'      => $page_id,
+		'page_name'    => $page_name,
+		'page_status'  => $page_status,
+		'source'       => $source,
+		'payment_ids'  => $payment_ids,
+		'total_payments' => count( $payment_ids ),
+		'page_meta'    => $page_meta,
+	);
+
+	$cache[ $cache_key ] = $result;
+
+	return $result;
+}
+
+/**
+ * Returns a limited preview of captured Razorpay page payments.
+ *
+ * @param string $page_id Payment page reference.
+ * @param string $page_name Optional page name.
+ * @param int    $limit Preview limit.
+ * @return array|WP_Error
+ */
+function cmp_get_razorpay_page_payment_preview( $page_id, $page_name = '', $limit = 25 ) {
+	$metadata = cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name );
+
+	if ( is_wp_error( $metadata ) ) {
+		return $metadata;
+	}
+
+	$limit    = absint( $limit );
+	$payments = array();
+	$seen     = array();
+	$ids      = $metadata['payment_ids'];
+	$ids      = 0 === $limit ? $ids : array_slice( $ids, 0, $limit );
+
+	foreach ( $ids as $payment_id ) {
+		$payment = cmp_razorpay_api_get(
+			'payments/' . rawurlencode( $payment_id ),
+			array(),
+			array(
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $payment ) || ! is_array( $payment ) ) {
+			continue;
+		}
+
+		if ( ! cmp_is_successful_razorpay_payment( $payment ) ) {
+			continue;
+		}
+
+		if ( ! cmp_razorpay_payment_matches_page( $payment, $metadata['page_id'], $metadata['page_name'] ) ) {
+			continue;
+		}
+
+		$preview_id = isset( $payment['id'] ) && is_scalar( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+		if ( '' !== $preview_id ) {
+			if ( isset( $seen[ $preview_id ] ) ) {
+				continue;
+			}
+
+			$seen[ $preview_id ] = true;
+		}
+
+		$payments[] = $payment;
+	}
+
+	$metadata['preview_payments'] = $payments;
+	$metadata['preview_count']    = count( $payments );
+	$metadata['has_more']         = count( $metadata['payment_ids'] ) > count( $payments );
+
+	return $metadata;
+}
+
+/**
+ * Returns the storage key for a Razorpay page import session.
+ *
+ * @param string $session_id Session ID.
+ * @return string
+ */
+function cmp_get_razorpay_page_import_session_key( $session_id ) {
+	return 'cmp_razorpay_page_import_' . sanitize_key( $session_id );
+}
+
+/**
+ * Computes import progress for a Razorpay session.
+ *
+ * @param array $session Session payload.
+ * @return array
+ */
+function cmp_get_razorpay_page_import_progress( $session ) {
+	$total     = isset( $session['total'] ) ? max( 0, absint( $session['total'] ) ) : 0;
+	$processed = isset( $session['offset'] ) ? max( 0, absint( $session['offset'] ) ) : 0;
+	$processed = $total > 0 ? min( $processed, $total ) : $processed;
+	$percentage = $total > 0 ? min( 100, (int) round( ( $processed / $total ) * 100 ) ) : 0;
+
+	return array(
+		'processed'  => $processed,
+		'total'      => $total,
+		'percentage' => $percentage,
+	);
+}
+
+/**
+ * Builds a readable summary message for Razorpay page imports.
+ *
+ * @param array $summary Import summary.
+ * @return string
+ */
+function cmp_get_razorpay_page_import_message( $summary ) {
+	return sprintf(
+		/* translators: 1: imported 2: skipped 3: duplicate 4: failed */
+		__( 'Razorpay page import completed. Imported %1$d, skipped %2$d, duplicates %3$d, failed %4$d.', 'class-manager-pro' ),
+		isset( $summary['imported'] ) ? (int) $summary['imported'] : 0,
+		isset( $summary['skipped'] ) ? (int) $summary['skipped'] : 0,
+		isset( $summary['duplicate'] ) ? (int) $summary['duplicate'] : 0,
+		isset( $summary['failed'] ) ? (int) $summary['failed'] : 0
+	);
+}
+
+/**
+ * Stores a Razorpay import log in the admin audit trail and log file.
+ *
+ * @param array $payload Import payload.
+ * @return void
+ */
+function cmp_log_razorpay_import( $payload ) {
+	$payload = is_array( $payload ) ? $payload : array();
+	$batch_id = absint( cmp_field( $payload, 'batch_id', 0 ) );
+	$page_id  = sanitize_text_field( cmp_field( $payload, 'page_id' ) );
+	$summary  = isset( $payload['summary'] ) && is_array( $payload['summary'] ) ? $payload['summary'] : array();
+
+	$message = sprintf(
+		/* translators: 1: page id 2: imported 3: duplicate 4: skipped 5: failed */
+		__( 'Razorpay import for %1$s completed. Imported %2$d, duplicates %3$d, skipped %4$d, failed %5$d.', 'class-manager-pro' ),
+		'' !== $page_id ? $page_id : __( 'unknown page', 'class-manager-pro' ),
+		isset( $summary['imported'] ) ? (int) $summary['imported'] : 0,
+		isset( $summary['duplicate'] ) ? (int) $summary['duplicate'] : 0,
+		isset( $summary['skipped'] ) ? (int) $summary['skipped'] : 0,
+		isset( $summary['failed'] ) ? (int) $summary['failed'] : 0
+	);
+
+	cmp_log_event(
+		'info',
+		'Razorpay import completed.',
+		array_merge(
+			array(
+				'admin_user_id' => get_current_user_id(),
+				'batch_id'      => $batch_id,
+				'page_id'       => $page_id,
+			),
+			$payload
+		)
+	);
+
+	cmp_log_admin_action( 'razorpay_import', 'batch', $batch_id, $message );
+}
+
+/**
+ * Creates an import session for a Razorpay page.
+ *
+ * @param string $page_id Payment page reference.
+ * @param int    $batch_id Batch ID.
+ * @param string $page_name Optional page name.
+ * @return array|WP_Error
+ */
+function cmp_prepare_razorpay_page_import_session( $page_id, $batch_id, $page_name = '' ) {
+	$page_id = sanitize_text_field( $page_id );
+	$batch   = cmp_get_batch( absint( $batch_id ) );
+
+	if ( '' === $page_id || ! $batch ) {
+		return new WP_Error( 'cmp_import_page_invalid', __( 'Please choose a valid Razorpay page and batch.', 'class-manager-pro' ) );
+	}
+
+	$metadata = cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name );
+
+	if ( is_wp_error( $metadata ) ) {
+		return $metadata;
+	}
+
+	if ( empty( $metadata['payment_ids'] ) ) {
+		return new WP_Error( 'cmp_import_page_empty', __( 'No captured payments were found for this Razorpay Payment Page.', 'class-manager-pro' ) );
+	}
+
+	$session_id = wp_generate_uuid4();
+	$session    = array(
+		'session_id'      => $session_id,
+		'page_id'         => $page_id,
+		'page_name'       => $metadata['page_name'],
+		'page_status'     => $metadata['page_status'],
+		'batch_id'        => (int) $batch->id,
+		'class_id'        => (int) $batch->class_id,
+		'payment_ids'     => array_values( $metadata['payment_ids'] ),
+		'total'           => count( $metadata['payment_ids'] ),
+		'offset'          => 0,
+		'summary'         => array(
+			'imported'  => 0,
+			'duplicate' => 0,
+			'skipped'   => 0,
+			'failed'    => 0,
+		),
+		'started_at'      => cmp_current_datetime(),
+		'admin_user_id'   => get_current_user_id(),
+		'source'          => $metadata['source'],
+		'api_summary'     => array(
+			'payment_page_status' => $metadata['page_status'],
+			'payment_source'      => $metadata['source'],
+			'captured_total'      => count( $metadata['payment_ids'] ),
+		),
+		'last_error'      => '',
+	);
+
+	set_transient( cmp_get_razorpay_page_import_session_key( $session_id ), $session, HOUR_IN_SECONDS * 4 );
+
+	cmp_log_event(
+		'info',
+		'Razorpay import session created.',
+		array(
+			'admin_user_id' => get_current_user_id(),
+			'batch_id'      => (int) $batch->id,
+			'page_id'       => $page_id,
+			'total'         => count( $metadata['payment_ids'] ),
+			'source'        => $metadata['source'],
+		)
+	);
+
+	return array(
+		'session_id' => $session_id,
+		'stage'      => 'processing',
+		'message'    => sprintf(
+			/* translators: 1: captured total 2: page status */
+			__( 'Connecting to Razorpay... Authentication successful. Reading payment page. %1$d captured payments ready for import. Page status: %2$s.', 'class-manager-pro' ),
+			count( $metadata['payment_ids'] ),
+			'' !== $metadata['page_status'] ? strtoupper( $metadata['page_status'] ) : __( 'unknown', 'class-manager-pro' )
+		),
+		'progress'   => array(
+			'processed'  => 0,
+			'total'      => count( $metadata['payment_ids'] ),
+			'percentage' => 0,
+		),
+		'summary'    => $session['summary'],
+		'page_id'    => $page_id,
+		'page_name'  => $metadata['page_name'],
+		'batch_id'   => (int) $batch->id,
+		'api_summary' => $session['api_summary'],
+	);
+}
+
+/**
+ * Processes one chunk from a Razorpay page import session.
+ *
+ * @param string $session_id Session ID.
+ * @param int    $chunk_size Number of payments to process.
+ * @return array|WP_Error
+ */
+function cmp_process_razorpay_page_import_session_chunk( $session_id, $chunk_size = 25 ) {
+	$session_id = sanitize_key( $session_id );
+	$session    = get_transient( cmp_get_razorpay_page_import_session_key( $session_id ) );
+	$chunk_size = max( 1, absint( $chunk_size ) );
+
+	if ( empty( $session ) || ! is_array( $session ) ) {
+		return new WP_Error( 'cmp_import_session_missing', __( 'The Razorpay import session expired. Please start again.', 'class-manager-pro' ) );
+	}
+
+	cmp_apply_student_import_execution_limits();
+
+	$batch = cmp_get_batch( absint( cmp_field( $session, 'batch_id', 0 ) ) );
+
+	if ( ! $batch ) {
+		return new WP_Error( 'cmp_import_batch_invalid', __( 'The selected batch is no longer available for import.', 'class-manager-pro' ) );
+	}
+
+	$payment_ids = isset( $session['payment_ids'] ) && is_array( $session['payment_ids'] ) ? array_values( array_filter( array_map( 'sanitize_text_field', $session['payment_ids'] ) ) ) : array();
+	$total       = count( $payment_ids );
+	$offset      = isset( $session['offset'] ) ? max( 0, absint( $session['offset'] ) ) : 0;
+	$summary     = isset( $session['summary'] ) && is_array( $session['summary'] ) ? $session['summary'] : array(
+		'imported'  => 0,
+		'duplicate' => 0,
+		'skipped'   => 0,
+		'failed'    => 0,
+	);
+	$page_id     = cmp_field( $session, 'page_id' );
+	$page_name   = cmp_field( $session, 'page_name' );
+
+	if ( $total <= 0 ) {
+		return new WP_Error( 'cmp_import_rows_missing', __( 'No captured payments were found for this Razorpay Payment Page.', 'class-manager-pro' ) );
+	}
+
+	for ( $processed = 0; $processed < $chunk_size && $offset < $total; ++$processed, ++$offset ) {
+		$payment_id = isset( $payment_ids[ $offset ] ) ? sanitize_text_field( $payment_ids[ $offset ] ) : '';
+
+		if ( '' === $payment_id ) {
+			++$summary['skipped'];
+			continue;
+		}
+
+		$payment = cmp_razorpay_api_get( 'payments/' . rawurlencode( $payment_id ), array(), array( 'timeout' => 30 ) );
+
+		if ( is_wp_error( $payment ) ) {
+			cmp_log_event(
+				'error',
+				'Razorpay import chunk payment fetch failed.',
+				array(
+					'payment_id' => $payment_id,
+					'page_id'    => $page_id,
+					'message'    => $payment->get_error_message(),
+				)
+			);
+
+			delete_transient( cmp_get_razorpay_page_import_session_key( $session_id ) );
+
+			return new WP_Error(
+				'cmp_razorpay_payment_fetch_failed',
+				$payment->get_error_message()
+			);
+		}
+
+		if ( ! cmp_is_successful_razorpay_payment( $payment ) ) {
+			++$summary['skipped'];
+			continue;
+		}
+
+		if ( ! cmp_razorpay_payment_matches_page( $payment, $page_id, $page_name ) ) {
+			++$summary['skipped'];
+			continue;
+		}
+
+		$result = cmp_import_razorpay_payment_into_batch( $payment, $batch );
+		$status = isset( $result['status'] ) ? $result['status'] : 'failed';
+
+		if ( isset( $summary[ $status ] ) ) {
+			++$summary[ $status ];
+		} else {
+			++$summary['failed'];
+		}
+
+		if ( 'error' === $status && ! empty( $result['message'] ) ) {
+			$session['last_error'] = sanitize_text_field( $result['message'] );
+		}
+	}
+
+	$session['offset']  = $offset;
+	$session['summary'] = $summary;
+	$progress           = cmp_get_razorpay_page_import_progress( $session );
+
+	if ( $offset >= $total ) {
+		delete_transient( cmp_get_razorpay_page_import_session_key( $session_id ) );
+
+		$message = cmp_get_razorpay_page_import_message( $summary );
+
+		cmp_log_razorpay_import(
+			array(
+				'batch_id'     => (int) $batch->id,
+				'page_id'      => $page_id,
+				'page_name'    => $page_name,
+				'started_at'   => cmp_field( $session, 'started_at', cmp_current_datetime() ),
+				'admin_user_id'=> absint( cmp_field( $session, 'admin_user_id', get_current_user_id() ) ),
+				'summary'      => $summary,
+				'api_summary'  => isset( $session['api_summary'] ) && is_array( $session['api_summary'] ) ? $session['api_summary'] : array(),
+				'total_time'   => human_time_diff( strtotime( cmp_field( $session, 'started_at', cmp_current_datetime() ) ), current_time( 'timestamp' ) ),
+			)
+		);
+
+		return array(
+			'stage'       => 'completed',
+			'message'     => $message,
+			'summary'     => $summary,
+			'progress'    => $progress,
+			'batch_id'    => (int) $batch->id,
+			'page_id'     => $page_id,
+			'page_name'   => $page_name,
+			'api_summary' => isset( $session['api_summary'] ) && is_array( $session['api_summary'] ) ? $session['api_summary'] : array(),
+		);
+	}
+
+	set_transient( cmp_get_razorpay_page_import_session_key( $session_id ), $session, HOUR_IN_SECONDS * 4 );
+
+	return array(
+		'stage'       => 'processing',
+		'message'     => sprintf(
+			/* translators: 1: processed 2: total */
+			__( 'Importing Razorpay payments: %1$d of %2$d processed.', 'class-manager-pro' ),
+			$progress['processed'],
+			$progress['total']
+		),
+		'summary'     => $summary,
+		'progress'    => $progress,
+		'batch_id'    => (int) $batch->id,
+		'page_id'     => $page_id,
+		'page_name'   => $page_name,
+		'api_summary' => isset( $session['api_summary'] ) && is_array( $session['api_summary'] ) ? $session['api_summary'] : array(),
+		'session_id'  => $session_id,
+	);
+}
+
+/**
+ * Runs a Razorpay page import session to completion.
+ *
+ * @param string $session_id Session ID.
+ * @param int    $chunk_size Chunk size.
+ * @return array|WP_Error
+ */
+function cmp_run_razorpay_page_import_session( $session_id, $chunk_size = 25 ) {
+	$result = null;
+
+	do {
+		$result = cmp_process_razorpay_page_import_session_chunk( $session_id, $chunk_size );
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+	} while ( isset( $result['stage'] ) && 'completed' !== $result['stage'] );
+
+	return $result;
+}
+
+/**
+ * Builds a Razorpay connection test result.
+ *
+ * @param string $page_id Optional page id.
+ * @return array|WP_Error
+ */
+function cmp_get_razorpay_connection_test_result( $page_id = '' ) {
+	$credentials = cmp_get_razorpay_credentials();
+	$page_id     = sanitize_text_field( $page_id );
+
+	if ( '' === $credentials['key_id'] || '' === $credentials['secret'] ) {
+		return new WP_Error( 'cmp_razorpay_credentials_missing', __( 'Razorpay API keys are not configured.', 'class-manager-pro' ) );
+	}
+
+	$start = microtime( true );
+	$probe = cmp_razorpay_api_get(
+		'payments',
+		array(
+			'count' => 1,
+			'skip'  => 0,
+		),
+		array(
+			'timeout' => 15,
+		)
+	);
+
+	if ( is_wp_error( $probe ) ) {
+		return $probe;
+	}
+
+	$result = array(
+		'message' => sprintf(
+			/* translators: 1: source 2: duration */
+			__( 'Razorpay credentials are valid and the API responded in %1$d ms.', 'class-manager-pro' ),
+			(int) round( ( microtime( true ) - $start ) * 1000 )
+		),
+		'api_status' => 'ok',
+		'page_id'    => '',
+		'page_name'  => '',
+		'payment_count' => isset( $probe['items'] ) && is_array( $probe['items'] ) ? count( $probe['items'] ) : 0,
+		'duration_ms'   => (int) round( ( microtime( true ) - $start ) * 1000 ),
+		'credentials_source' => $credentials['source'],
+	);
+
+	if ( '' !== $page_id ) {
+		$metadata = cmp_get_razorpay_page_payment_import_metadata( $page_id );
+
+		if ( is_wp_error( $metadata ) ) {
+			return $metadata;
+		}
+
+		$result['page_id']      = $metadata['page_id'];
+		$result['page_name']    = $metadata['page_name'];
+		$result['page_status']  = $metadata['page_status'];
+		$result['payment_count'] = (int) $metadata['total_payments'];
+		$result['message'] = sprintf(
+			/* translators: 1: duration 2: page id 3: count 4: page status */
+			__( 'Razorpay credentials are valid. Page %2$s is reachable and exposes %3$d captured payments in %1$d ms. Page status: %4$s.', 'class-manager-pro' ),
+			$result['duration_ms'],
+			$page_id,
+			$result['payment_count'],
+			'' !== $metadata['page_status'] ? strtoupper( $metadata['page_status'] ) : __( 'unknown', 'class-manager-pro' )
+		);
+	}
+
+	return $result;
+}
+
+/**
  * Parses a sync date field into a Unix timestamp.
  *
  * @param string $value Date value.
@@ -9078,6 +12088,11 @@ function cmp_import_razorpay_page_to_batch( $page_id, $batch_id ) {
 	}
 
 	$page_name = cmp_clean_title_text( $batch->batch_name );
+	$metadata  = cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name );
+
+	if ( is_wp_error( $metadata ) ) {
+		return $metadata;
+	}
 
 	$batch_update = cmp_update_batch(
 		(int) $batch->id,
@@ -9103,52 +12118,37 @@ function cmp_import_razorpay_page_to_batch( $page_id, $batch_id ) {
 		return $batch_update;
 	}
 
-	$batch    = cmp_get_batch( (int) $batch->id );
-	$payments = cmp_get_successful_razorpay_payments_for_link( $page_id, $page_name );
+	$batch = cmp_get_batch( (int) $batch->id );
 
-	if ( is_wp_error( $payments ) ) {
-		return $payments;
-	}
-
-	if ( empty( $payments ) ) {
+	if ( empty( $metadata['payment_ids'] ) ) {
 		return new WP_Error( 'cmp_import_page_empty', __( 'No captured payments were found for this Razorpay Payment Link/Page.', 'class-manager-pro' ) );
 	}
 
-	$summary = array(
-		'imported'  => 0,
-		'duplicate' => 0,
-		'skipped'   => 0,
-		'failed'    => 0,
-	);
+	$session = cmp_prepare_razorpay_page_import_session( $page_id, (int) $batch->id, $page_name );
 
-	foreach ( $payments as $payment ) {
-		$result = cmp_import_razorpay_payment_into_batch( $payment, $batch );
-		$status = isset( $result['status'] ) ? $result['status'] : 'failed';
-
-		if ( isset( $summary[ $status ] ) ) {
-			++$summary[ $status ];
-		} else {
-			++$summary['failed'];
-		}
+	if ( is_wp_error( $session ) ) {
+		return $session;
 	}
 
-	return $summary;
-}
+	if ( count( $metadata['payment_ids'] ) > 100 ) {
+		return $session;
+	}
 
-/**
- * Builds the success message for a Razorpay page import.
- *
- * @param array $summary Import summary.
- * @return string
- */
-function cmp_get_razorpay_page_import_message( $summary ) {
-	return sprintf(
-		/* translators: 1: imported 2: duplicate 3: skipped 4: failed */
-		__( 'Razorpay page import completed. %1$d payments imported, %2$d duplicates skipped, %3$d non-success payments skipped, %4$d failed.', 'class-manager-pro' ),
-		isset( $summary['imported'] ) ? (int) $summary['imported'] : 0,
-		isset( $summary['duplicate'] ) ? (int) $summary['duplicate'] : 0,
-		isset( $summary['skipped'] ) ? (int) $summary['skipped'] : 0,
-		isset( $summary['failed'] ) ? (int) $summary['failed'] : 0
+	$result = cmp_run_razorpay_page_import_session( $session['session_id'] );
+
+	if ( is_wp_error( $result ) ) {
+		return $result;
+	}
+
+	return array(
+		'summary'     => $result['summary'],
+		'message'     => $result['message'],
+		'stage'       => $result['stage'],
+		'progress'    => $result['progress'],
+		'page_id'     => $page_id,
+		'page_name'   => $page_name,
+		'batch_id'    => (int) $batch->id,
+		'api_summary' => isset( $result['api_summary'] ) ? $result['api_summary'] : array(),
 	);
 }
 
@@ -9166,9 +12166,29 @@ function cmp_process_razorpay_page_import_request( $page_id, $batch_id ) {
 		return $result;
 	}
 
+	if ( ! empty( $result['session_id'] ) ) {
+		return array(
+			'session_id'  => $result['session_id'],
+			'stage'       => $result['stage'],
+			'message'     => $result['message'],
+			'progress'    => $result['progress'],
+			'summary'     => $result['summary'],
+			'page_id'     => $result['page_id'],
+			'page_name'   => $result['page_name'],
+			'batch_id'    => $result['batch_id'],
+			'api_summary' => isset( $result['api_summary'] ) ? $result['api_summary'] : array(),
+		);
+	}
+
 	return array(
-		'summary' => $result,
-		'message' => cmp_get_razorpay_page_import_message( $result ),
+		'summary'     => $result['summary'],
+		'message'     => $result['message'],
+		'stage'       => $result['stage'],
+		'progress'    => $result['progress'],
+		'page_id'     => $result['page_id'],
+		'page_name'   => $result['page_name'],
+		'batch_id'    => $result['batch_id'],
+		'api_summary' => isset( $result['api_summary'] ) ? $result['api_summary'] : array(),
 	);
 }
 
@@ -9817,6 +12837,8 @@ function cmp_map_student_import_row( $row ) {
 		$payment_id,
 		$amount
 	);
+	$city       = sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'city', 'student_city', 'address_city' ), array( 9 ) ) );
+	$lead_source = sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'lead_source', 'source', 'referral_source', 'lead' ), array( 10 ) ) );
 
 	if ( '' === $name ) {
 		if ( '' !== $email ) {
@@ -9837,6 +12859,9 @@ function cmp_map_student_import_row( $row ) {
 		'payment_timestamp'  => cmp_parse_import_payment_timestamp( cmp_get_student_import_row_value( $row, array( 'payment_date', 'date', 'created_at' ), array( 6 ) ) ),
 		'payment_page_id'    => sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'payment_page_id', 'page_id' ), array( 7 ) ) ),
 		'payment_page_title' => sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'payment_page_title', 'page_title' ), array( 8 ) ) ),
+		'city'               => $city,
+		'city_original'      => $city,
+		'lead_source'        => $lead_source,
 	);
 }
 
@@ -9910,13 +12935,16 @@ function cmp_upsert_import_student_to_batch( $student_data, $batch ) {
 	$email = sanitize_email( cmp_field( $student_data, 'email' ) );
 	$phone = cmp_clean_import_phone_number( cmp_field( $student_data, 'phone' ) );
 	$notes = sanitize_textarea_field( cmp_field( $student_data, 'notes' ) );
+	$city_raw = sanitize_text_field( cmp_field( $student_data, 'city_original', cmp_field( $student_data, 'city', '' ) ) );
+	$city_data = cmp_normalize_city_name( $city_raw );
+	$lead_source = cmp_normalize_lead_source_name( cmp_field( $student_data, 'lead_source', 'Other' ) );
 
 	if ( ! $batch || ! $class ) {
 		return new WP_Error( 'cmp_import_batch_invalid', __( 'A valid batch is required for student import.', 'class-manager-pro' ) );
 	}
 
-	if ( '' === $email && '' === $phone ) {
-		return new WP_Error( 'cmp_import_student_contact_missing', __( 'Each imported student needs at least an email or phone number.', 'class-manager-pro' ) );
+	if ( ! cmp_registration_email_is_valid( $email ) ) {
+		return new WP_Error( 'cmp_import_student_email_required', __( 'A valid email address is required for each imported registration.', 'class-manager-pro' ) );
 	}
 
 	if ( '' === $name ) {
@@ -9934,45 +12962,23 @@ function cmp_upsert_import_student_to_batch( $student_data, $batch ) {
 		$default_fee = $class ? (float) $class->total_fee : 0;
 	}
 
-	$notes    = cmp_append_note( $notes, __( 'Imported from student file.', 'class-manager-pro' ) );
-	$existing = cmp_find_reusable_import_student( $batch, $name, $email, $phone, (int) $class->id );
-
-	if ( $existing ) {
-		$update_result = cmp_update_student(
-			(int) $existing->id,
-			array(
-				'name'      => $name,
-				'phone'     => $phone,
-				'email'     => $email,
-				'class_id'  => (int) $batch->class_id,
-				'batch_id'  => (int) $batch->id,
-				'total_fee' => (float) $existing->paid_fee > 0 && (float) $existing->total_fee > 0 ? (float) $existing->total_fee : $default_fee,
-				'paid_fee'  => (float) $existing->paid_fee,
-				'status'    => $existing->status ? $existing->status : 'active',
-				'notes'     => cmp_append_note( $existing->notes, $notes ),
-			)
-		);
-
-		if ( is_wp_error( $update_result ) ) {
-			return $update_result;
-		}
-
-		cmp_store_recent_intake_match( $phone, $email, (int) $existing->id, (int) $batch->id );
-
-		return (int) $existing->id;
-	}
-
-	$student_id = cmp_insert_student(
+	$student_id = cmp_process_batch_registration(
+		$batch,
 		array(
-			'name'      => $name,
-			'phone'     => $phone,
-			'email'     => $email,
-			'class_id'  => (int) $batch->class_id,
-			'batch_id'  => (int) $batch->id,
-			'total_fee' => $default_fee,
-			'paid_fee'  => 0,
-			'status'    => 'active',
-			'notes'     => $notes,
+			'name'  => $name,
+			'phone' => $phone,
+			'email' => $email,
+			'city_original' => $city_data['original'],
+			'city'          => $city_data['normalized'],
+			'lead_source'   => $lead_source,
+			'notes' => cmp_append_note( $notes, __( 'Imported from student file.', 'class-manager-pro' ) ),
+		),
+		array(
+			'registration_method' => 'csv_import',
+			'registration_source' => 'csv_import',
+			'total_fee'           => $default_fee,
+			'send_notifications'  => true,
+			'notes_prefix'        => __( 'Imported from student file.', 'class-manager-pro' ),
 		)
 	);
 
@@ -10123,10 +13129,10 @@ function cmp_import_student_file_row( $row, $class_id, $batch_id, $batch ) {
 		return array( 'status' => 'skipped' );
 	}
 
-	if ( 'captured' !== $mapped_row['status'] && '' === $mapped_row['email'] && '' === $mapped_row['phone'] ) {
+	if ( 'captured' !== $mapped_row['status'] && ! cmp_registration_email_is_valid( $mapped_row['email'] ) ) {
 		return array(
 			'status'  => 'skipped',
-			'message' => __( 'Row skipped because both email and phone are missing.', 'class-manager-pro' ),
+			'message' => __( 'Row skipped because a valid email address is missing.', 'class-manager-pro' ),
 		);
 	}
 
@@ -10156,6 +13162,9 @@ function cmp_import_student_file_row( $row, $class_id, $batch_id, $batch ) {
 				'name'           => $mapped_row['name'],
 				'phone'          => $mapped_row['phone'],
 				'email'          => $mapped_row['email'],
+				'city_original'  => $mapped_row['city_original'],
+				'city'           => $mapped_row['city'],
+				'lead_source'    => cmp_normalize_lead_source_name( $mapped_row['lead_source'] ),
 				'class_id'       => $class_id,
 				'batch_id'       => $batch_id,
 				'payment_status' => 'failed',
@@ -10191,6 +13200,9 @@ function cmp_import_student_file_row( $row, $class_id, $batch_id, $batch ) {
 			'name'      => $mapped_row['name'],
 			'phone'     => $mapped_row['phone'],
 			'email'     => $mapped_row['email'],
+			'city_original' => $mapped_row['city_original'],
+			'city'      => $mapped_row['city'],
+			'lead_source' => $mapped_row['lead_source'],
 			'class_id'  => $class_id,
 			'batch_id'  => $batch_id,
 			'total_fee' => $mapped_row['amount'] > 0 ? $mapped_row['amount'] : cmp_get_batch_effective_fee( $batch ),
@@ -11119,6 +14131,10 @@ function cmp_handle_manual_import_razorpay() {
 		cmp_redirect( 'cmp-settings', $result->get_error_message(), 'error' );
 	}
 
+	if ( 'payment_link' === $import_type || 'payment_page' === $import_type ) {
+		cmp_redirect( 'cmp-settings', cmp_get_razorpay_page_import_message( $result ), 'success' );
+	}
+
 	cmp_redirect( 'cmp-settings', __( 'Razorpay item imported successfully.', 'class-manager-pro' ) );
 }
 
@@ -11156,6 +14172,16 @@ function cmp_handle_import_razorpay_page_to_batch() {
 		cmp_redirect( $page, $result->get_error_message(), 'error', $args );
 	}
 
+	if ( ! empty( $result['session_id'] ) ) {
+		$session_result = cmp_run_razorpay_page_import_session( $result['session_id'] );
+
+		if ( is_wp_error( $session_result ) ) {
+			cmp_redirect( $page, $session_result->get_error_message(), 'error', $args );
+		}
+
+		$result = $session_result;
+	}
+
 	cmp_redirect( $page, $result['message'], 'success', $args );
 }
 
@@ -11170,6 +14196,67 @@ function cmp_ajax_import_razorpay_page_to_batch() {
 		sanitize_text_field( cmp_field( $_POST, 'razorpay_page_id' ) ),
 		absint( cmp_field( $_POST, 'batch_id', 0 ) )
 	);
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success( $result );
+}
+
+/**
+ * Processes the next chunk of a Razorpay page import session.
+ */
+function cmp_ajax_process_razorpay_page_import_chunk() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_import_razorpay_page_to_batch' );
+
+	$result = cmp_process_razorpay_page_import_session_chunk(
+		sanitize_key( cmp_field( $_POST, 'session_id' ) ),
+		absint( cmp_field( $_POST, 'chunk_size', 0 ) )
+	);
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success( $result );
+}
+
+/**
+ * Tests Razorpay credentials and optional payment page access.
+ */
+function cmp_handle_test_razorpay_connection() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_test_razorpay_connection' );
+
+	$result = cmp_get_razorpay_connection_test_result( sanitize_text_field( cmp_field( $_POST, 'razorpay_page_id' ) ) );
+
+	if ( is_wp_error( $result ) ) {
+		cmp_redirect( 'cmp-settings', $result->get_error_message(), 'error' );
+	}
+
+	cmp_redirect( 'cmp-settings', $result['message'], 'success' );
+}
+
+/**
+ * Tests Razorpay credentials and optional payment page access via AJAX.
+ */
+function cmp_ajax_test_razorpay_connection() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_test_razorpay_connection' );
+
+	$result = cmp_get_razorpay_connection_test_result( sanitize_text_field( cmp_field( $_POST, 'razorpay_page_id' ) ) );
 
 	if ( is_wp_error( $result ) ) {
 		wp_send_json_error(
@@ -11897,10 +14984,17 @@ function cmp_handle_send_student_follow_up_email() {
  * Sends a single follow-up email via AJAX.
  */
 function cmp_ajax_send_student_follow_up_email() {
-	cmp_require_manage_options_ajax();
-	check_ajax_referer( 'cmp_admin_nonce', 'nonce' );
+	if ( ! current_user_can( 'manage_options' ) ) {
+		$student_id = absint( cmp_field( $_POST, 'student_id', 0 ) );
 
-	$result = cmp_send_student_follow_up_email_by_id( absint( cmp_field( $_POST, 'student_id', 0 ) ) );
+		if ( ! cmp_current_user_can_manage_student_follow_up( $student_id ) ) {
+			cmp_require_manage_options_ajax();
+		}
+	}
+
+	$student_id = absint( cmp_field( $_POST, 'student_id', 0 ) );
+	check_ajax_referer( 'cmp_send_student_follow_up_email_' . $student_id, 'nonce' );
+	$result = cmp_send_student_follow_up_email_by_id( $student_id );
 
 	if ( ! empty( $result['success'] ) ) {
 		wp_send_json_success( $result );
@@ -11958,6 +15052,14 @@ function cmp_log_reminder( $student, $channel, $status, $response_message = '' )
 			'created_at'        => cmp_current_datetime(),
 		),
 		array( '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s' )
+	);
+
+	do_action(
+		'cmp_fee_reminder_logged',
+		$student,
+		$channel,
+		$status,
+		$response_message
 	);
 }
 

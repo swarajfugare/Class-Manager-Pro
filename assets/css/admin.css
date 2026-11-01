@@ -26,7 +26,7 @@
 .cmp-panel {
 	background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 	border: 1px solid #d7e3ee;
-	border-radius: 16px;
+	border-radius: 8px;
 	box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
 }
 
@@ -37,7 +37,7 @@
 }
 
 .cmp-card::before {
-	background: linear-gradient(90deg, #2271b1 0%, #4f46e5 100%);
+	background: linear-gradient(90deg, #2271b1 0%, #0a7f5a 100%);
 	content: "";
 	height: 4px;
 	left: 0;
@@ -252,6 +252,105 @@
 	min-width: 190px;
 }
 
+.cmp-global-nav {
+	margin: 18px 0 6px;
+	overflow-x: auto;
+	padding-bottom: 4px;
+}
+
+.cmp-workflow-tabs {
+	align-items: center;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 6px;
+	min-width: max-content;
+}
+
+.cmp-workflow-tabs.nav-tab-wrapper {
+	border-bottom: 1px solid #dcdcde;
+}
+
+.cmp-workflow-tabs .nav-tab {
+	background: transparent;
+	border: 0;
+	border-radius: 6px;
+	color: #2c3338;
+	margin: 0;
+	padding: 8px 12px;
+	white-space: nowrap;
+}
+
+.cmp-workflow-tabs .nav-tab:hover {
+	background: #fff;
+	color: #135e96;
+}
+
+.cmp-workflow-tabs .nav-tab-active,
+.cmp-workflow-tabs .nav-tab-active:focus,
+.cmp-workflow-tabs .nav-tab-active:focus:active,
+.cmp-workflow-tabs .nav-tab-active:hover {
+	background: #1d2327;
+	color: #fff;
+}
+
+.cmp-action-board {
+	background: #fff;
+	border: 1px solid #d7e3ee;
+	border-radius: 8px;
+	box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+	margin: 18px 0;
+	padding: 18px;
+}
+
+.cmp-action-grid {
+	display: grid;
+	gap: 12px;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.cmp-action-card {
+	background: #f8fafc;
+	border: 1px solid #d7e3ee;
+	border-left: 4px solid #2271b1;
+	border-radius: 8px;
+	color: #1d2327;
+	display: grid;
+	gap: 6px;
+	min-height: 128px;
+	padding: 16px;
+	text-decoration: none;
+}
+
+.cmp-action-card:hover {
+	background: #fff;
+	border-color: #9bb8d3;
+	color: #1d2327;
+}
+
+.cmp-action-card-urgent {
+	border-left-color: #b32d2e;
+}
+
+.cmp-action-card span {
+	color: #646970;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.cmp-action-card strong {
+	font-size: 24px;
+	line-height: 1.15;
+}
+
+.cmp-action-card small {
+	color: #50575e;
+}
+
 .cmp-enhanced-select {
 	flex: 1 1 220px;
 	min-width: 190px;
@@ -273,7 +372,7 @@
 	align-items: center;
 	background: #fff;
 	border: 1px solid #c7d7e5;
-	border-radius: 12px;
+	border-radius: 8px;
 	box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 	color: #1d2327;
 	cursor: pointer;
@@ -330,7 +429,7 @@
 .cmp-enhanced-select-dropdown {
 	background: #fff;
 	border: 1px solid #c7d7e5;
-	border-radius: 14px;
+	border-radius: 8px;
 	box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
 	left: 0;
 	margin-top: 6px;
@@ -343,7 +442,7 @@
 
 .cmp-enhanced-select-search {
 	border: 1px solid #d0dde9;
-	border-radius: 10px;
+	border-radius: 8px;
 	box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
 	margin: 0 0 8px;
 	min-height: 36px;
@@ -370,7 +469,7 @@
 	appearance: none;
 	background: transparent;
 	border: 0;
-	border-radius: 10px;
+	border-radius: 8px;
 	color: #1d2327;
 	cursor: pointer;
 	display: flex;
@@ -927,14 +1026,106 @@ form.cmp-loading::after {
 	overflow: auto;
 }
 
+.cmp-registration-qr {
+	align-items: center;
+	background: #f6f8fb;
+	border: 1px solid #d7e3ee;
+	border-radius: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 14px;
+	padding: 14px;
+	text-align: center;
+}
+
+.cmp-registration-qr img {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-radius: 8px;
+	max-width: 220px;
+	padding: 8px;
+	width: 100%;
+}
+
+.cmp-registration-countdown {
+	font-variant-numeric: tabular-nums;
+}
+
+.cmp-inline-badge-active,
+.cmp-inline-badge-open {
+	background: #d7f7e3;
+	color: #0a6b3f;
+}
+
+.cmp-inline-badge-full,
+.cmp-inline-badge-expired,
+.cmp-inline-badge-closed_by_admin {
+	background: #fdebec;
+	color: #8a2424;
+}
+
+.cmp-inline-badge-used_successfully {
+	background: #e7f1fb;
+	color: #1f4e79;
+}
+
+.cmp-inline-badge-disabled,
+.cmp-inline-badge-paid_only,
+.cmp-inline-badge-inactive {
+	background: #eef1f5;
+	color: #50575e;
+}
+
+.cmp-inline-badge {
+	text-transform: none;
+}
+
+.cmp-callout + .cmp-callout {
+	margin-top: 12px;
+}
+
+.cmp-table-scroll {
+	overflow-x: auto;
+}
+
 .cmp-ajax-notice {
 	margin-top: 16px;
+}
+
+.cmp-payment-list-section .cmp-table-scroll {
+	margin-top: 0;
+}
+
+.cmp-payment-list-section .cmp-toolbar {
+	margin-top: 0;
+}
+
+.cmp-dashboard-shell .cmp-page-intro {
+	max-width: 920px;
+}
+
+.cmp-dashboard-shell .cmp-action-board {
+	background: linear-gradient(180deg, #ffffff 0%, #f5f9fd 100%);
+}
+
+.cmp-dashboard-shell .cmp-action-card strong {
+	font-size: 26px;
+}
+
+.cmp-dashboard-shell .cmp-action-card small {
+	line-height: 1.45;
+}
+
+.cmp-ajax-notice.notice {
+	border-left-width: 4px;
 }
 
 @media (max-width: 1100px) {
 	.cmp-cards,
 	.cmp-cards-4,
 	.cmp-cards-3,
+	.cmp-action-grid,
 	.cmp-grid-3,
 	.cmp-attendance-grid {
 		grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -945,6 +1136,7 @@ form.cmp-loading::after {
 	.cmp-cards,
 	.cmp-cards-4,
 	.cmp-cards-3,
+	.cmp-action-grid,
 	.cmp-grid-2,
 	.cmp-grid-3,
 	.cmp-detail-grid,
@@ -1026,5 +1218,397 @@ form.cmp-loading::after {
 	.cmp-chart,
 	.cmp-chart-large {
 		height: 280px;
+	}
+}
+
+/* Responsive UI overrides for v3.6 */
+.cmp-wrap {
+	margin-left: auto;
+	margin-right: auto;
+	max-width: 1480px;
+	padding-bottom: 24px;
+	width: calc(100% - 24px);
+	overflow-x: clip;
+}
+
+.cmp-operations-shell,
+.cmp-communication-shell {
+	overflow-x: clip;
+}
+
+.cmp-panel,
+.cmp-card,
+.cmp-action-board,
+.cmp-attendance-student-card,
+.cmp-callout,
+.cmp-link-block,
+.cmp-registration-qr,
+.cmp-template-preview,
+.cmp-detail-grid p,
+.cmp-notes,
+.cmp-global-nav,
+.cmp-workflow-tabs {
+	border-radius: 12px;
+}
+
+.cmp-panel,
+.cmp-card,
+.cmp-action-board {
+	box-shadow: 0 14px 34px rgba(15, 23, 42, 0.05);
+}
+
+.cmp-cards {
+	gap: 14px;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+	margin: 16px 0;
+}
+
+.cmp-card,
+.cmp-panel {
+	border-color: #d7e3ee;
+}
+
+.cmp-card {
+	padding: 16px 18px;
+}
+
+.cmp-card span,
+.cmp-action-card span,
+.cmp-muted,
+.cmp-page-intro,
+.cmp-activity-timeline span,
+.cmp-activity-timeline em {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.cmp-card strong {
+	font-size: clamp(22px, 2vw, 30px);
+	line-height: 1.15;
+}
+
+.cmp-card small {
+	line-height: 1.45;
+}
+
+.cmp-panel {
+	margin: 16px 0;
+	padding: 16px;
+}
+
+.cmp-panel-header {
+	align-items: flex-start;
+	flex-wrap: wrap;
+}
+
+.cmp-panel-header > div {
+	min-width: 0;
+}
+
+.cmp-grid {
+	gap: 16px;
+}
+
+.cmp-toolbar {
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+	max-width: 100%;
+}
+
+.cmp-toolbar input[type="search"],
+.cmp-toolbar select,
+.cmp-toolbar .cmp-enhanced-select {
+	flex: 1 1 190px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.cmp-toolbar .button,
+.cmp-toolbar .button-primary,
+.cmp-toolbar .button-secondary {
+	flex: 0 1 auto;
+	max-width: 100%;
+}
+
+.cmp-inline-tools {
+	max-width: 100%;
+}
+
+.cmp-inline-tools .code,
+.cmp-inline-tools .large-text {
+	min-width: 0;
+}
+
+.cmp-workflow-tabs,
+.cmp-global-nav {
+	max-width: 100%;
+	min-width: 0;
+	overflow-x: hidden;
+	padding-bottom: 0;
+}
+
+.cmp-workflow-tabs .nav-tab {
+	white-space: normal;
+}
+
+.cmp-action-board {
+	padding: 16px;
+}
+
+.cmp-action-grid {
+	gap: 12px;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.cmp-action-card {
+	border-radius: 12px;
+	min-height: 110px;
+	padding: 14px 16px;
+}
+
+.cmp-action-card strong {
+	font-size: clamp(20px, 1.8vw, 26px);
+}
+
+.cmp-form .form-table th {
+	min-width: 140px;
+	width: 30%;
+}
+
+.cmp-form input[type="text"],
+.cmp-form input[type="email"],
+.cmp-form input[type="url"],
+.cmp-form input[type="number"],
+.cmp-form input[type="date"],
+.cmp-form input[type="datetime-local"],
+.cmp-form input[type="password"],
+.cmp-form textarea,
+.cmp-form select,
+.cmp-form .regular-text,
+.cmp-form .large-text {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+.cmp-panel .widefat {
+	table-layout: auto;
+	width: 100%;
+}
+
+.cmp-table-scroll {
+	-webkit-overflow-scrolling: touch;
+	max-width: 100%;
+}
+
+.cmp-table-scroll .widefat td,
+.cmp-table-scroll .widefat th {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+.cmp-page-intro {
+	font-size: 14px;
+	line-height: 1.6;
+	max-width: 920px;
+}
+
+.cmp-filter-form {
+	max-width: 100%;
+}
+
+.cmp-chart {
+	width: 100%;
+}
+
+.cmp-operations-calendar {
+	max-width: 100%;
+	overflow: hidden;
+}
+
+.cmp-operations-hero {
+	background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+	border: 1px solid #d2e2f1;
+	margin-top: 16px;
+	padding: 18px;
+}
+
+.cmp-operations-hero .cmp-inline-tools {
+	margin-top: 10px;
+}
+
+.cmp-operations-hero .cmp-inline-badge {
+	background: rgba(255, 255, 255, 0.8);
+	border: 1px solid rgba(34, 113, 177, 0.15);
+}
+
+.cmp-operations-search-hero {
+	margin-bottom: 0;
+}
+
+.cmp-operations-calendar .fc {
+	font-size: 13px;
+}
+
+.cmp-operations-calendar .fc .fc-toolbar {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: space-between;
+}
+
+.cmp-operations-calendar .fc .fc-toolbar-title {
+	font-size: clamp(18px, 2vw, 26px);
+	line-height: 1.25;
+}
+
+.cmp-operations-calendar .fc .fc-button-group {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.cmp-operations-calendar .fc .fc-button {
+	height: auto;
+	padding: 0.4rem 0.7rem;
+}
+
+@media (max-width: 1100px) {
+	.cmp-cards,
+	.cmp-action-grid,
+	.cmp-grid-3,
+	.cmp-attendance-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 782px) {
+	.cmp-wrap {
+		width: calc(100% - 16px);
+	}
+
+	.cmp-panel,
+	.cmp-card,
+	.cmp-action-board {
+		padding: 14px 12px;
+	}
+
+	.cmp-cards,
+	.cmp-cards-4,
+	.cmp-cards-3,
+	.cmp-action-grid,
+	.cmp-grid-2,
+	.cmp-grid-3,
+	.cmp-detail-grid,
+	.cmp-attendance-grid {
+		grid-template-columns: 1fr;
+	}
+
+	.cmp-toolbar {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.cmp-toolbar > *,
+	.cmp-toolbar .button,
+	.cmp-toolbar .button-primary,
+	.cmp-toolbar .button-secondary,
+	.cmp-toolbar input[type="search"],
+	.cmp-toolbar select,
+	.cmp-toolbar .cmp-enhanced-select {
+		flex: 1 1 auto;
+		width: 100%;
+	}
+
+	.cmp-inline-form {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.cmp-panel-header {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.cmp-form .form-table th,
+	.cmp-form .form-table td {
+		display: block;
+		padding-left: 0;
+		width: 100%;
+	}
+
+	.cmp-table-scroll {
+		overflow: visible;
+	}
+
+	.cmp-wrap table.widefat,
+	.cmp-wrap table.widefat tbody,
+	.cmp-wrap table.widefat tr,
+	.cmp-wrap table.widefat th,
+	.cmp-wrap table.widefat td {
+		display: block;
+		width: 100%;
+	}
+
+	.cmp-wrap table.widefat thead {
+		display: none;
+	}
+
+	.cmp-wrap table.widefat tr {
+		background: #fff;
+		border: 1px solid #d7e3ee;
+		border-radius: 14px;
+		box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+		margin-bottom: 12px;
+		padding: 10px 12px;
+	}
+
+	.cmp-wrap table.widefat td,
+	.cmp-wrap table.widefat th {
+		border: 0;
+		padding: 8px 0;
+	}
+
+	.cmp-wrap table.widefat td::before {
+		content: attr(data-cmp-label);
+		display: block;
+		color: #646970;
+		font-size: 11px;
+		font-weight: 700;
+		letter-spacing: 0.04em;
+		line-height: 1.2;
+		margin-bottom: 4px;
+		text-transform: uppercase;
+	}
+
+	.cmp-wrap table.widefat td:empty::before,
+	.cmp-wrap table.widefat td[data-cmp-label=""]::before {
+		content: none;
+	}
+
+	.cmp-operations-calendar .fc .fc-toolbar {
+		align-items: stretch;
+		flex-direction: column;
+	}
+
+	.cmp-operations-calendar .fc .fc-toolbar-chunk {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		justify-content: flex-start;
+	}
+
+	.cmp-operations-calendar .fc .fc-button-group {
+		width: 100%;
+	}
+
+	.cmp-operations-calendar .fc .fc-button {
+		flex: 1 1 auto;
+	}
+
+	.cmp-page-intro {
+		max-width: 100%;
 	}
 }

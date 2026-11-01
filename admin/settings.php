@@ -57,11 +57,23 @@ function cmp_render_settings_page() {
 	$classes_export_url        = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-classes', 'cmp_export' => 'classes' ), admin_url( 'admin.php' ) ), 'cmp_export_classes' );
 	$admin_logs_export_url     = wp_nonce_url( add_query_arg( array( 'page' => 'cmp-settings', 'cmp_export' => 'admin-logs' ), admin_url( 'admin.php' ) ), 'cmp_export_admin-logs' );
 	$teacher_logs_export_url   = $selected_teacher_log_id ? wp_nonce_url( add_query_arg( array( 'page' => 'cmp-settings', 'cmp_export' => 'teacher-logs', 'teacher_user_id' => $selected_teacher_log_id ), admin_url( 'admin.php' ) ), 'cmp_export_teacher-logs' ) : '';
+	$smartcertify_status       = cmp_smartcertify_get_status_summary();
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Settings', 'class-manager-pro' ); ?></h1>
 		<p class="cmp-page-intro"><?php esc_html_e( 'Use this page to connect Razorpay Payment Pages, manage multi-line reminder templates, and review plugin activity.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-settings' ); ?>
+		<?php
+		cmp_render_workflow_tabs(
+			array(
+				array( 'key' => 'settings', 'label' => __( 'Settings', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-settings' ) ),
+				array( 'key' => 'all-data', 'label' => __( 'All Data', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-all-data' ) ),
+			),
+			'settings',
+			__( 'Settings sections', 'class-manager-pro' )
+		);
+		?>
 
 		<section class="cmp-panel">
 			<div class="cmp-panel-header">
@@ -120,6 +132,62 @@ function cmp_render_settings_page() {
 				</table>
 
 				<?php submit_button( __( 'Save Razorpay Settings', 'class-manager-pro' ) ); ?>
+			</form>
+
+			<div class="cmp-callout cmp-space-top">
+				<h3><?php esc_html_e( 'Connection Test', 'class-manager-pro' ); ?></h3>
+				<p><?php esc_html_e( 'Run a lightweight test to confirm the stored credentials can reach Razorpay. If you also want to validate a specific payment page, use the import workspace and test it there.', 'class-manager-pro' ); ?></p>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-inline-form-stack" data-cmp-ajax-import="razorpay-connection" data-cmp-feedback="#cmp-razorpay-connection-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Testing connection...', 'class-manager-pro' ); ?>">
+					<input type="hidden" name="action" value="cmp_test_razorpay_connection">
+					<?php wp_nonce_field( 'cmp_test_razorpay_connection' ); ?>
+					<?php submit_button( __( 'Test Razorpay Connection', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+				</form>
+				<p class="cmp-muted" id="cmp-razorpay-connection-feedback"><?php esc_html_e( 'The result will appear here without leaving the page.', 'class-manager-pro' ); ?></p>
+			</div>
+		</section>
+
+		<section class="cmp-panel">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Certificate Integration', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Connect Class Manager Pro to SmartCertify so classes can be prepared for template mapping in Phase 1.', 'class-manager-pro' ); ?></p>
+				</div>
+				<?php if ( $smartcertify_status['enabled'] ) : ?>
+					<span class="cmp-inline-badge cmp-inline-badge-success"><?php esc_html_e( 'Enabled', 'class-manager-pro' ); ?></span>
+				<?php else : ?>
+					<span class="cmp-inline-badge cmp-inline-badge-warning"><?php esc_html_e( 'Disabled', 'class-manager-pro' ); ?></span>
+				<?php endif; ?>
+			</div>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+				<input type="hidden" name="action" value="cmp_save_smartcertify_settings">
+				<?php wp_nonce_field( 'cmp_save_smartcertify_settings' ); ?>
+
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="cmp-smartcertify-enabled"><?php esc_html_e( 'Enable SmartCertify Integration', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<label>
+								<input type="checkbox" id="cmp-smartcertify-enabled" name="smartcertify_integration_enabled" value="1" <?php checked( $smartcertify_status['enabled'], true ); ?>>
+								<?php esc_html_e( 'Allow SmartCertify to receive class mapping foundations from Class Manager Pro', 'class-manager-pro' ); ?>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Connection Status', 'class-manager-pro' ); ?></th>
+						<td><strong><?php echo esc_html( $smartcertify_status['connection_label'] ); ?></strong></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Plugin Version', 'class-manager-pro' ); ?></th>
+						<td><?php echo esc_html( $smartcertify_status['plugin_version'] ); ?></td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Last Sync Status', 'class-manager-pro' ); ?></th>
+						<td><?php echo esc_html( $smartcertify_status['last_sync_status'] ); ?></td>
+					</tr>
+				</table>
+
+				<?php submit_button( __( 'Save Integration Settings', 'class-manager-pro' ) ); ?>
 			</form>
 		</section>
 

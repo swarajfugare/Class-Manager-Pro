@@ -24,6 +24,27 @@ function cmp_render_dashboard_page() {
 	$batch_performance_rows = $dashboard['batch_performance_rows'];
 	$class_revenue_rows     = $dashboard['class_revenue_rows'];
 	$teacher_rows           = $dashboard['teacher_rows'];
+	$interested_count       = function_exists( 'cmp_get_interested_students_count' ) ? cmp_get_interested_students_count() : 0;
+	$batch_alert_rows       = array_slice(
+		array_filter(
+			$batch_performance_rows,
+			static function ( $row ) {
+				return (int) $row->pending_students > 0 || (float) $row->payment_completion < 70;
+			}
+		),
+		0,
+		4
+	);
+	$teacher_alert_rows     = array_slice(
+		array_filter(
+			$teacher_rows,
+			static function ( $row ) {
+				return (int) $row->pending_students > 0 || (int) $row->interested_students > 0;
+			}
+		),
+		0,
+		4
+	);
 
 	wp_add_inline_script(
 		'cmp-admin',
@@ -33,8 +54,9 @@ function cmp_render_dashboard_page() {
 	?>
 	<div class="wrap cmp-wrap cmp-dashboard-shell">
 		<h1><?php esc_html_e( 'Class Manager Pro', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Track collections, pending fees, recent admissions, course completion, teacher workload, and batch performance from one overview workspace.', 'class-manager-pro' ); ?></p>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Start with the work that needs attention now, then drill into students, payments, teachers, and reports when needed.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-dashboard' ); ?>
 
 		<form method="get" class="cmp-toolbar">
 			<input type="hidden" name="page" value="cmp-dashboard">
@@ -45,6 +67,46 @@ function cmp_render_dashboard_page() {
 			</select>
 			<button type="submit" class="button button-primary"><?php esc_html_e( 'Apply Filter', 'class-manager-pro' ); ?></button>
 		</form>
+
+		<section class="cmp-action-board">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'Action Queue', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'The fastest path to today\'s admin work: collect pending fees, follow up leads, check teachers, and review batches.', 'class-manager-pro' ); ?></p>
+				</div>
+				<div class="cmp-toolbar">
+					<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ); ?>"><?php esc_html_e( 'Collect Pending Fees', 'class-manager-pro' ); ?></a>
+					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments' ) . '#cmp-add-payment' ); ?>"><?php esc_html_e( 'Add Payment', 'class-manager-pro' ); ?></a>
+				</div>
+			</div>
+			<div class="cmp-action-grid">
+				<a class="cmp-action-card cmp-action-card-urgent" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ); ?>">
+					<span><?php esc_html_e( 'Pending fees', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( cmp_format_money( $metrics['pending_fees'] ) ); ?></strong>
+					<small><?php echo esc_html( sprintf( __( '%d students need collection', 'class-manager-pro' ), (int) $metrics['pending_students'] ) ); ?></small>
+				</a>
+				<a class="cmp-action-card" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'interested' ) ) ); ?>">
+					<span><?php esc_html_e( 'Follow-ups needed', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( number_format_i18n( $interested_count ) ); ?></strong>
+					<small><?php esc_html_e( 'Interested students and failed payment attempts', 'class-manager-pro' ); ?></small>
+				</a>
+				<a class="cmp-action-card" href="<?php echo esc_url( cmp_admin_url( 'cmp-teacher-console' ) ); ?>">
+					<span><?php esc_html_e( 'Teacher alerts', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( number_format_i18n( count( $teacher_alert_rows ) ) ); ?></strong>
+					<small><?php esc_html_e( 'Teachers with pending collections or leads', 'class-manager-pro' ); ?></small>
+				</a>
+				<a class="cmp-action-card" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>">
+					<span><?php esc_html_e( 'Batch alerts', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( number_format_i18n( count( $batch_alert_rows ) ) ); ?></strong>
+					<small><?php esc_html_e( 'Batches with collection risk', 'class-manager-pro' ); ?></small>
+				</a>
+				<a class="cmp-action-card" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>">
+					<span><?php esc_html_e( 'Recent admissions', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( number_format_i18n( count( $recent_students ) ) ); ?></strong>
+					<small><?php esc_html_e( 'Newest students ready for review', 'class-manager-pro' ); ?></small>
+				</a>
+			</div>
+		</section>
 
 		<div class="cmp-cards cmp-dashboard-metrics">
 			<div class="cmp-card">
@@ -70,15 +132,15 @@ function cmp_render_dashboard_page() {
 				<strong><?php echo esc_html( number_format_i18n( $metrics['total_teachers'] ) ); ?></strong>
 				<small class="cmp-muted"><?php esc_html_e( 'Assigned across active and completed batches', 'class-manager-pro' ); ?></small>
 			</div>
-			<div class="cmp-card">
-				<span><?php echo esc_html( sprintf( __( 'Revenue (%s)', 'class-manager-pro' ), $metrics['range_label'] ) ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['filtered_revenue'] ) ); ?></strong>
-				<small class="cmp-muted"><?php echo esc_html( sprintf( __( '%d payments recorded', 'class-manager-pro' ), (int) $metrics['filtered_payments'] ) ); ?></small>
-			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Total Revenue', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['total_revenue'] ) ); ?></strong>
-			</div>
+				<div class="cmp-card">
+					<span><?php echo esc_html( sprintf( __( 'Net Revenue (%s)', 'class-manager-pro' ), $metrics['range_label'] ) ); ?></span>
+					<strong><?php echo esc_html( cmp_format_money( $metrics['filtered_revenue'] ) ); ?></strong>
+					<small class="cmp-muted"><?php echo esc_html( sprintf( __( '%d payments recorded', 'class-manager-pro' ), (int) $metrics['filtered_payments'] ) ); ?></small>
+				</div>
+				<div class="cmp-card">
+					<span><?php esc_html_e( 'Total Net Revenue', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( cmp_format_money( $metrics['total_revenue'] ) ); ?></strong>
+				</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Pending Students', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( number_format_i18n( $metrics['pending_students'] ) ); ?></strong>
@@ -106,7 +168,7 @@ function cmp_render_dashboard_page() {
 			<section class="cmp-panel">
 				<div class="cmp-panel-header">
 					<div>
-						<h2><?php esc_html_e( 'Revenue Trend', 'class-manager-pro' ); ?></h2>
+						<h2><?php esc_html_e( 'Net Revenue Trend', 'class-manager-pro' ); ?></h2>
 						<p class="cmp-muted"><?php esc_html_e( 'Recent monthly collections help spot momentum and slow periods quickly.', 'class-manager-pro' ); ?></p>
 					</div>
 				</div>
@@ -299,7 +361,7 @@ function cmp_render_dashboard_page() {
 			<div class="cmp-panel-header">
 				<div>
 					<h2><?php esc_html_e( 'Batch-wise Performance', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'Compare batches by revenue, payment completion, and pending fee pressure.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Compare batches by net revenue, payment completion, and pending fee pressure.', 'class-manager-pro' ); ?></p>
 				</div>
 				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Manage Batches', 'class-manager-pro' ); ?></a>
 			</div>
@@ -309,7 +371,7 @@ function cmp_render_dashboard_page() {
 						<tr>
 							<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Revenue', 'class-manager-pro' ); ?></th>
+							<th><?php esc_html_e( 'Net Revenue', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Pending', 'class-manager-pro' ); ?></th>
 							<th><?php esc_html_e( 'Payment Completion', 'class-manager-pro' ); ?></th>
 						</tr>
@@ -343,7 +405,7 @@ function cmp_render_dashboard_page() {
 			<section class="cmp-panel">
 				<div class="cmp-panel-header">
 					<div>
-						<h2><?php esc_html_e( 'Revenue Overview', 'class-manager-pro' ); ?></h2>
+						<h2><?php esc_html_e( 'Net Revenue Overview', 'class-manager-pro' ); ?></h2>
 						<p class="cmp-muted"><?php esc_html_e( 'Keep the strongest classes and the classes with the most pending balance in one view.', 'class-manager-pro' ); ?></p>
 					</div>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-analytics' ) ); ?>"><?php esc_html_e( 'Open Analytics', 'class-manager-pro' ); ?></a>
@@ -354,13 +416,13 @@ function cmp_render_dashboard_page() {
 							<tr>
 								<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Revenue', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Net Revenue', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Pending', 'class-manager-pro' ); ?></th>
 							</tr>
 						</thead>
 						<tbody>
 							<?php if ( empty( $class_revenue_rows ) ) : ?>
-								<tr><td colspan="4"><?php esc_html_e( 'No revenue data yet.', 'class-manager-pro' ); ?></td></tr>
+								<tr><td colspan="4"><?php esc_html_e( 'No net revenue data yet.', 'class-manager-pro' ); ?></td></tr>
 							<?php else : ?>
 								<?php foreach ( $class_revenue_rows as $row ) : ?>
 									<tr>
@@ -384,8 +446,7 @@ function cmp_render_dashboard_page() {
 					</div>
 				</div>
 				<div class="cmp-toolbar">
-					<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-classes' ) ); ?>"><?php esc_html_e( 'Manage Classes', 'class-manager-pro' ); ?></a>
-					<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Manage Batches', 'class-manager-pro' ); ?></a>
+					<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Classes & Batches', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>"><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments' ) ); ?>"><?php esc_html_e( 'Payments', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-teacher-console' ) ); ?>"><?php esc_html_e( 'Teacher Console', 'class-manager-pro' ); ?></a>

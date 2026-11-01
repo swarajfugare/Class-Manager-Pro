@@ -3,6 +3,7 @@
 
 	const palette = ['#2271b1', '#00a32a', '#dba617', '#d63638', '#8c5fbf', '#008a8a', '#c94f7c'];
 	const ajaxEndpoint = window.ajaxurl || CMPAdmin.ajaxUrl;
+	var cmpOperationsCalendarInstance = null;
 
 	function updateBatchOptions($classSelect) {
 		const selectedClass = String($classSelect.val() || '0');
@@ -86,6 +87,26 @@
 		$link.attr('href', url.toString());
 	}
 
+	function syncInterestedExportForm() {
+		const $exportForm = $('.cmp-interested-export-form').first();
+		const $filterForm = $('.cmp-filter-form').filter(function () {
+			return String($(this).data('cmp-action') || '') === 'cmp_filter_interested_students';
+		}).first();
+
+		if (!$exportForm.length || !$filterForm.length) {
+			return;
+		}
+
+		['search', 'class_id', 'batch_id', 'follow_up_status', 'email_status', 'whatsapp_status'].forEach(function (name) {
+			const $field = $exportForm.find('[name="' + name + '"]').first();
+			const $source = $filterForm.find('[name="' + name + '"]').first();
+
+			if ($field.length && $source.length) {
+				$field.val($source.val());
+			}
+		});
+	}
+
 	function runAjaxFilter($form) {
 		const action = $form.data('cmp-action');
 		const target = $form.data('cmp-target');
@@ -94,7 +115,13 @@
 			return;
 		}
 
+		const previousXhr = $form.data('cmp-active-xhr');
+		if (previousXhr && typeof previousXhr.abort === 'function') {
+			previousXhr.abort();
+		}
+
 		updateExportLink($form);
+		syncInterestedExportForm();
 
 		const data = $form.serializeArray();
 		data.push({ name: 'action', value: action });
@@ -102,15 +129,18 @@
 
 		$form.addClass('cmp-loading');
 
-		$.post(ajaxEndpoint, data)
+		const xhr = $.post(ajaxEndpoint, data)
 			.done(function (response) {
 				if (response && response.success && response.data && response.data.html) {
-					$(target).html(response.data.html);
+					injectAjaxHtml(target, response.data.html);
 				}
 			})
 			.always(function () {
 				$form.removeClass('cmp-loading');
+				$form.removeData('cmp-active-xhr');
 			});
+
+		$form.data('cmp-active-xhr', xhr);
 	}
 
 	function debounce(fn, wait) {
@@ -287,6 +317,95 @@
 			});
 		}
 
+		if (charts.monthlyAdmissions) {
+			renderChart('cmp-analytics-monthly-admissions', {
+				type: 'bar',
+				data: {
+					labels: charts.monthlyAdmissions.labels,
+					datasets: [{
+						label: 'Admissions',
+						data: charts.monthlyAdmissions.values,
+						backgroundColor: palette[2]
+					}]
+				},
+				options: {
+					maintainAspectRatio: false,
+					scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+				}
+			});
+		}
+
+		if (charts.paymentTrends) {
+			renderChart('cmp-analytics-payment-trends', {
+				type: 'line',
+				data: {
+					labels: charts.paymentTrends.labels,
+					datasets: [{
+						label: 'Payments',
+						data: charts.paymentTrends.values,
+						borderColor: palette[4],
+						backgroundColor: 'rgba(140, 95, 191, 0.15)',
+						fill: true,
+						tension: 0.25
+					}]
+				},
+				options: {
+					maintainAspectRatio: false,
+					scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+				}
+			});
+		}
+
+		if (charts.registrationTrends) {
+			renderChart('cmp-analytics-registration-trends', {
+				type: 'bar',
+				data: {
+					labels: charts.registrationTrends.labels,
+					datasets: [{
+						label: 'Registrations',
+						data: charts.registrationTrends.values,
+						backgroundColor: palette[5]
+					}]
+				},
+				options: {
+					maintainAspectRatio: false,
+					scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+				}
+			});
+		}
+
+		if (charts.leadSource) {
+			renderChart('cmp-analytics-lead-source', {
+				type: 'doughnut',
+				data: {
+					labels: charts.leadSource.labels,
+					datasets: [{
+						data: charts.leadSource.values,
+						backgroundColor: palette
+					}]
+				},
+				options: { maintainAspectRatio: false }
+			});
+		}
+
+		if (charts.repeatStudents) {
+			renderChart('cmp-analytics-repeat-students', {
+				type: 'bar',
+				data: {
+					labels: charts.repeatStudents.labels,
+					datasets: [{
+						label: 'Repeat Students',
+						data: charts.repeatStudents.values,
+						backgroundColor: palette[6]
+					}]
+				},
+				options: {
+					maintainAspectRatio: false,
+					scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+				}
+			});
+		}
+
 		if (charts.courseDemandHeatmap) {
 			renderChart('cmp-analytics-course-demand', {
 				type: 'bar',
@@ -395,6 +514,49 @@
 		return prefix + '(' + processed + '/' + total + ' - ' + percentage + '%)';
 	}
 
+	function formatCountdown(expiryText) {
+		if (!expiryText) {
+			return '';
+		}
+
+		const expiry = new Date(String(expiryText).replace(' ', 'T'));
+
+		if (Number.isNaN(expiry.getTime())) {
+			return String(expiryText);
+		}
+
+		const diff = expiry.getTime() - Date.now();
+
+		if (diff <= 0) {
+			return 'Expired';
+		}
+
+		const totalSeconds = Math.floor(diff / 1000);
+		const days = Math.floor(totalSeconds / 86400);
+		const hours = Math.floor((totalSeconds % 86400) / 3600);
+		const minutes = Math.floor((totalSeconds % 3600) / 60);
+		const seconds = totalSeconds % 60;
+
+		if (days > 0) {
+			return days + 'd ' + hours + 'h ' + minutes + 'm';
+		}
+
+		if (hours > 0) {
+			return hours + 'h ' + minutes + 'm ' + seconds + 's';
+		}
+
+		return minutes + 'm ' + seconds + 's';
+	}
+
+	function updateRegistrationCountdowns() {
+		$('[data-cmp-expiry-at]').each(function () {
+			const $node = $(this);
+			const expiryText = String($node.data('cmp-expiry-at') || '');
+
+			$node.text(formatCountdown(expiryText));
+		});
+	}
+
 	function requestStudentImportChunk(sessionId, nonce) {
 		return $.post(ajaxEndpoint, {
 			action: 'cmp_process_student_import_chunk',
@@ -435,6 +597,55 @@
 				updateFeedback($feedback, 'Import connection dropped. Retrying...', false);
 				window.setTimeout(function () {
 					runStudentImportSession(sessionId, nonce, $feedback, onComplete, attempts + 1);
+				}, (attempts + 1) * 700);
+				return;
+			}
+
+			onComplete(xhr || new Error('Import failed.'));
+		});
+	}
+
+	function requestRazorpayImportChunk(sessionId, nonce, chunkSize) {
+		return $.post(ajaxEndpoint, {
+			action: 'cmp_process_razorpay_page_import_chunk',
+			_ajax_nonce: nonce,
+			session_id: sessionId,
+			chunk_size: chunkSize || 25
+		});
+	}
+
+	function runRazorpayImportSession(sessionId, nonce, $feedback, onComplete, retryCount) {
+		const attempts = Number(retryCount || 0);
+
+		requestRazorpayImportChunk(sessionId, nonce, 25).done(function (response) {
+			if (!response || !response.success || !response.data) {
+				if (attempts < 3) {
+					updateFeedback($feedback, 'Import connection dropped. Retrying...', false);
+					window.setTimeout(function () {
+						runRazorpayImportSession(sessionId, nonce, $feedback, onComplete, attempts + 1);
+					}, (attempts + 1) * 700);
+					return;
+				}
+
+				onComplete(new Error('Import failed.'));
+				return;
+			}
+
+			updateFeedback($feedback, formatProgressMessage(response.data.message || 'Importing...', response.data.progress), false);
+
+			if (response.data.stage === 'completed') {
+				onComplete(null, response.data);
+				return;
+			}
+
+			window.setTimeout(function () {
+				runRazorpayImportSession(sessionId, nonce, $feedback, onComplete, 0);
+			}, 150);
+		}).fail(function (xhr) {
+			if (attempts < 3) {
+				updateFeedback($feedback, 'Import connection dropped. Retrying...', false);
+				window.setTimeout(function () {
+					runRazorpayImportSession(sessionId, nonce, $feedback, onComplete, attempts + 1);
 				}, (attempts + 1) * 700);
 				return;
 			}
@@ -697,11 +908,19 @@
 		}, payload));
 	}
 
-	function requestStudentEmail(studentId) {
+	function requestStudentEmail(studentId, nonce) {
 		return $.post(ajaxEndpoint, {
 			action: 'cmp_send_student_follow_up_email',
-			nonce: getAjaxNonce(),
+			nonce: nonce || getAjaxNonce(),
 			student_id: studentId
+		});
+	}
+
+	function requestInterestedStudentEmail(leadId, nonce) {
+		return $.post(ajaxEndpoint, {
+			action: 'cmp_send_interested_student_email_ajax',
+			nonce: nonce || getAjaxNonce(),
+			lead_id: leadId
 		});
 	}
 
@@ -723,11 +942,11 @@
 	}
 
 	function refreshStudentResults() {
-		const $tbody = $('.cmp-student-results');
+		const $wrap = $('#cmp-student-results-wrap');
 		const $form = $('.cmp-filter-form').first();
 		const data = $form.length ? $form.serializeArray() : [];
 
-		if (!$tbody.length) {
+		if (!$wrap.length) {
 			return $.Deferred().resolve().promise();
 		}
 
@@ -736,9 +955,174 @@
 
 		return $.post(ajaxEndpoint, data).done(function (response) {
 			if (response && response.success && response.data && response.data.html) {
+				$wrap.html(response.data.html);
+			}
+		});
+	}
+
+	function refreshClassResults() {
+		const $tbody = $('#cmp-class-table-body');
+
+		if (!$tbody.length) {
+			return $.Deferred().resolve().promise();
+		}
+
+		return $.post(ajaxEndpoint, {
+			action: 'cmp_filter_classes',
+			nonce: getAjaxNonce()
+		}).done(function (response) {
+			if (response && response.success && response.data && response.data.html) {
 				$tbody.html(response.data.html);
 			}
 		});
+	}
+
+	function refreshBatchResults() {
+		const $tbody = $('#cmp-batch-table-body');
+
+		if (!$tbody.length) {
+			return $.Deferred().resolve().promise();
+		}
+
+		return $.post(ajaxEndpoint, {
+			action: 'cmp_filter_batches',
+			nonce: getAjaxNonce()
+		}).done(function (response) {
+			if (response && response.success && response.data && response.data.html) {
+				$tbody.html(response.data.html);
+			}
+		});
+	}
+
+	function refreshPaymentResults() {
+		const $section = $('#cmp-payment-list-section');
+		const $form = $section.find('.cmp-filter-form').first();
+		const data = $form.length ? $form.serializeArray() : [];
+
+		if (!$section.length) {
+			return $.Deferred().resolve().promise();
+		}
+
+		data.push({ name: 'action', value: 'cmp_filter_payments' });
+		data.push({ name: 'nonce', value: getAjaxNonce() });
+
+		return $.post(ajaxEndpoint, data).done(function (response) {
+			if (response && response.success && response.data && response.data.html) {
+				$section.replaceWith(response.data.html);
+			}
+		});
+	}
+
+	function refreshInterestedStudentsResults() {
+		const $wrap = $('#cmp-interested-table-wrap');
+		const $form = $('.cmp-filter-form').filter(function () {
+			return String($(this).data('cmp-action') || '') === 'cmp_filter_interested_students';
+		}).first();
+		const data = $form.length ? $form.serializeArray() : [];
+
+		if (!$wrap.length) {
+			return $.Deferred().resolve().promise();
+		}
+
+		data.push({ name: 'action', value: 'cmp_filter_interested_students' });
+		data.push({ name: 'nonce', value: getAjaxNonce() });
+
+		return $.post(ajaxEndpoint, data).done(function (response) {
+			if (response && response.success && response.data && response.data.html) {
+				$wrap.html(response.data.html);
+			}
+		});
+	}
+
+	function handleSectionRefresh(refresh) {
+		const action = refresh && refresh.action ? String(refresh.action) : '';
+		const target = refresh && refresh.target ? String(refresh.target) : '';
+
+		if (action === 'cmp_filter_students') {
+			return refreshStudentResults();
+		}
+
+		if (action === 'cmp_filter_classes') {
+			return refreshClassResults();
+		}
+
+		if (action === 'cmp_filter_batches') {
+			return refreshBatchResults();
+		}
+
+		if (action === 'cmp_filter_payments') {
+			return refreshPaymentResults();
+		}
+
+		if (action === 'cmp_filter_interested_students') {
+			return refreshInterestedStudentsResults();
+		}
+
+		if (action === 'cmp_filter_operations_section') {
+			return refreshOperationsSection(refresh.section || 'dashboard', target || '.cmp-operations-shell');
+		}
+
+		if (refresh && refresh.html && target) {
+			injectAjaxHtml(target, refresh.html);
+		}
+
+		return $.Deferred().resolve().promise();
+	}
+
+	function submitAjaxForm($form) {
+		const action = String($form.data('cmp-ajax-form') || '');
+		const $button = $form.find('input[type="submit"], button[type="submit"]').first();
+		const originalText = getElementText($button);
+		const formData = new window.FormData($form[0]);
+		const formNonce = String(formData.get('_wpnonce') || $form.find('input[name="_wpnonce"]').val() || '');
+		const $feedback = $form.find('[data-cmp-feedback]').first();
+
+		if (!action) {
+			return false;
+		}
+
+		if (formNonce && !formData.get('nonce')) {
+			formData.append('nonce', formNonce);
+		}
+
+		formData.append('action', action);
+
+		$button.prop('disabled', true).addClass('is-busy');
+		setElementText($button, 'Saving...');
+		updateFeedback($feedback, 'Saving...', false);
+
+		$.ajax({
+			url: ajaxEndpoint,
+			type: 'POST',
+			data: formData,
+			processData: false,
+			contentType: false
+		}).done(function (response) {
+			if (!response || !response.success || !response.data) {
+				updateFeedback($feedback, 'Save failed.', true);
+				showAdminNotice('Save failed.', 'error');
+				return;
+			}
+
+			updateFeedback($feedback, response.data.message || 'Saved successfully.', false);
+			showAdminNotice(response.data.message || 'Saved successfully.', 'success');
+			handleSectionRefresh(response.data.refresh);
+
+			const shouldReset = !$form.find('[name="id"]').length || !String($form.find('[name="id"]').val() || '').trim();
+
+			if ((shouldReset || $form.is('[data-cmp-reset-on-success="1"]')) && $form[0].reset) {
+				$form[0].reset();
+			}
+
+			refreshSearchableSelects($form.closest('.cmp-wrap'));
+		}).fail(function (xhr) {
+			handleEntityActionFailure(xhr, $feedback);
+		}).always(function () {
+			$button.prop('disabled', false).removeClass('is-busy');
+			setElementText($button, originalText);
+		});
+
+		return false;
 	}
 
 	function updateStatusBadges(rowIds, statusKey, statusLabel) {
@@ -769,12 +1153,434 @@
 		});
 	}
 
+	function enhanceResponsiveTables($scope) {
+		const $root = $scope && $scope.length ? $scope : $(document);
+
+		$root.find('.cmp-table-scroll table.widefat, .cmp-panel table.widefat, .cmp-wrap table.widefat').each(function () {
+			const $table = $(this);
+
+			if ($table.data('cmp-responsive-ready')) {
+				return;
+			}
+
+			const headers = [];
+
+			$table.find('thead th').each(function () {
+				headers.push($.trim(String($(this).text() || '')));
+			});
+
+			$table.find('tbody tr').each(function () {
+				const $row = $(this);
+				const bodyLabels = [];
+
+				$row.children('th').each(function () {
+					bodyLabels.push($.trim(String($(this).text() || '')));
+				});
+
+				$row.children('td, th').each(function (index) {
+					const $cell = $(this);
+					const label = $.trim(String($cell.attr('data-cmp-label') || headers[index] || ''));
+
+					if (label) {
+						$cell.attr('data-cmp-label', label);
+					}
+
+					if (index === 0) {
+						$cell.addClass('cmp-table-primary');
+					}
+				});
+
+				if (!headers.length && bodyLabels.length) {
+					$row.children('td').each(function (index) {
+						const $cell = $(this);
+						const label = $.trim(String($cell.attr('data-cmp-label') || bodyLabels[index] || ''));
+
+						if (label) {
+							$cell.attr('data-cmp-label', label);
+						}
+					});
+				}
+			});
+
+			$table.attr('data-cmp-responsive-table', '1');
+			$table.data('cmp-responsive-ready', true);
+		});
+	}
+
+	function isOperationsShellHtml(html) {
+		return /^\s*<div\b[^>]*class=(['"])[^'"]*\bcmp-operations-shell\b/i.test(String(html || ''));
+	}
+
+	function injectAjaxHtml(target, html) {
+		const content = String(html || '');
+		const $target = $(target);
+
+		if (!$target.length) {
+			return;
+		}
+
+		if (isOperationsShellHtml(content) || ($target.is('section') && /^\s*<section\b/i.test(content))) {
+			$target.replaceWith(content);
+			window.setTimeout(function () {
+				refreshSearchableSelects($('.cmp-wrap'));
+				enhanceResponsiveTables($('.cmp-wrap'));
+				initOperationsCalendar();
+			}, 0);
+			return;
+		}
+
+		$target.html(content);
+		window.setTimeout(function () {
+			refreshSearchableSelects($target.closest('.cmp-wrap').length ? $target.closest('.cmp-wrap') : $('.cmp-wrap'));
+			enhanceResponsiveTables($target.closest('.cmp-wrap').length ? $target.closest('.cmp-wrap') : $('.cmp-wrap'));
+			initOperationsCalendar();
+		}, 0);
+	}
+
+	function serializeFormObject($form) {
+		const payload = {};
+
+		$form.serializeArray().forEach(function (item) {
+			payload[item.name] = item.value;
+		});
+
+		return payload;
+	}
+
+	function padOperationsNumber(value) {
+		return ('0' + String(value)).slice(-2);
+	}
+
+	function formatOperationsDateTimeLocal(value, allDay) {
+		let date = value instanceof Date ? new Date(value.getTime()) : new Date(String(value || '').replace(' ', 'T'));
+
+		if (!date || Number.isNaN(date.getTime())) {
+			return '';
+		}
+
+		if (allDay) {
+			return [
+				date.getFullYear(),
+				padOperationsNumber(date.getMonth() + 1),
+				padOperationsNumber(date.getDate())
+			].join('-') + 'T00:00';
+		}
+
+		return [
+			date.getFullYear(),
+			padOperationsNumber(date.getMonth() + 1),
+			padOperationsNumber(date.getDate())
+		].join('-') + 'T' + padOperationsNumber(date.getHours()) + ':' + padOperationsNumber(date.getMinutes());
+	}
+
+	function parseOperationsRecurrenceRule(rule) {
+		const defaults = {
+			recurrence_freq: 'none',
+			recurrence_interval: 1,
+			recurrence_until: '',
+			recurrence_count: 0
+		};
+		let parsed;
+
+		if (!rule) {
+			return defaults;
+		}
+
+		try {
+			parsed = JSON.parse(String(rule));
+		} catch (error) {
+			return defaults;
+		}
+
+		if (!parsed || typeof parsed !== 'object') {
+			return defaults;
+		}
+
+		return {
+			recurrence_freq: String(parsed.freq || 'none'),
+			recurrence_interval: String(parsed.interval || 1),
+			recurrence_until: String(parsed.until || ''),
+			recurrence_count: String(parsed.count || 0)
+		};
+	}
+
+	function getOperationsCalendarFilters() {
+		const $form = $('.cmp-operations-calendar-filters').first();
+
+		return $form.length ? serializeFormObject($form) : {};
+	}
+
+	function getOperationsSectionForm(section) {
+		const sectionName = String(section || '');
+		let $form = $();
+
+		if (sectionName === 'calendar') {
+			$form = $('.cmp-operations-calendar-filters').first();
+		}
+
+		if (!$form.length) {
+			$form = $('.cmp-filter-form').filter(function () {
+				const $current = $(this);
+				const currentSection = String($current.find('[name="section"]').val() || '');
+
+				return currentSection === sectionName && String($current.data('cmp-action') || '') === 'cmp_filter_operations_section';
+			}).first();
+		}
+
+		return $form;
+	}
+
+	function refreshOperationsSection(section, targetSelector) {
+		const $form = getOperationsSectionForm(section);
+		const data = $form.length ? $form.serializeArray() : [];
+
+		data.push({ name: 'action', value: 'cmp_filter_operations_section' });
+		data.push({ name: 'nonce', value: getAjaxNonce() });
+		data.push({ name: 'section', value: String(section || 'dashboard') });
+
+		return $.post(ajaxEndpoint, data).done(function (response) {
+			if (response && response.success && response.data && response.data.html) {
+				injectAjaxHtml(targetSelector || '.cmp-operations-shell', response.data.html);
+			}
+		});
+	}
+
+	function refreshOperationsCalendar() {
+		if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.refetchEvents === 'function') {
+			cmpOperationsCalendarInstance.refetchEvents();
+		}
+	}
+
+	function syncOperationsEventForm(payload) {
+		const $form = $('.cmp-operations-event-form').first();
+
+		if (!$form.length) {
+			return;
+		}
+
+		Object.keys(payload).forEach(function (key) {
+			const $field = $form.find('[name="' + key + '"]').first();
+
+			if (!$field.length) {
+				return;
+			}
+
+			if ($field.is(':checkbox')) {
+				$field.prop('checked', String(payload[key]) === '1' || payload[key] === 1 || payload[key] === true);
+				return;
+			}
+
+			$field.val(payload[key]);
+		});
+
+		refreshSearchableSelects($form.closest('.cmp-wrap'));
+	}
+
+	function fillOperationsEventForm(event) {
+		const $form = $('.cmp-operations-event-form').first();
+		const props = event && event.extendedProps ? event.extendedProps : {};
+		const recurrence = parseOperationsRecurrenceRule(props.recurrenceRule || '');
+		const payload = {
+			id: event && event.id ? event.id : 0,
+			title: event && event.title ? event.title : '',
+			event_type: props.eventType || 'other',
+			status: props.status || 'planned',
+			priority: props.priority || 'normal',
+			batch_id: props.batchId || 0,
+			class_id: props.classId || 0,
+			teacher_user_id: props.teacherUserId || 0,
+			assigned_user_id: props.assignedUserId || 0,
+			start_at: event && event.start ? formatOperationsDateTimeLocal(event.start, !!event.allDay) : '',
+			end_at: event && (event.end || event.start) ? formatOperationsDateTimeLocal(event.end || event.start, !!event.allDay) : '',
+			all_day: event && event.allDay ? 1 : 0,
+			location: props.location || '',
+			notes: props.notes || '',
+			reminder_at: props.reminderAt ? formatOperationsDateTimeLocal(props.reminderAt, false) : '',
+			reminder_channel: props.reminderChannel || 'email',
+			recurrence_freq: recurrence.recurrence_freq,
+			recurrence_interval: recurrence.recurrence_interval,
+			recurrence_until: recurrence.recurrence_until,
+			recurrence_count: recurrence.recurrence_count
+		};
+
+		if (!$form.length) {
+			return;
+		}
+
+		syncOperationsEventForm(payload);
+
+		window.setTimeout(function () {
+			$form.find('[name="title"]').first().trigger('focus');
+		}, 0);
+	}
+
+	function buildOperationsEventPayloadFromCalendar(event) {
+		const props = event && event.extendedProps ? event.extendedProps : {};
+		const recurrence = parseOperationsRecurrenceRule(props.recurrenceRule || '');
+
+		return {
+			id: event && event.id ? event.id : 0,
+			title: event && event.title ? event.title : '',
+			event_type: props.eventType || 'other',
+			status: props.status || 'planned',
+			priority: props.priority || 'normal',
+			source_type: 'manual',
+			source_id: 0,
+			class_id: props.classId || 0,
+			batch_id: props.batchId || 0,
+			teacher_user_id: props.teacherUserId || 0,
+			assigned_user_id: props.assignedUserId || 0,
+			start_at: event && event.start ? formatOperationsDateTimeLocal(event.start, !!event.allDay) : '',
+			end_at: event && (event.end || event.start) ? formatOperationsDateTimeLocal(event.end || event.start, !!event.allDay) : '',
+			all_day: event && event.allDay ? 1 : 0,
+			location: props.location || '',
+			notes: props.notes || '',
+			color: props.backgroundColor || '',
+			reminder_at: props.reminderAt || '',
+			reminder_channel: props.reminderChannel || 'email',
+			recurrence_freq: recurrence.recurrence_freq,
+			recurrence_interval: recurrence.recurrence_interval,
+			recurrence_until: recurrence.recurrence_until,
+			recurrence_count: recurrence.recurrence_count
+		};
+	}
+
+	function saveOperationsCalendarEvent(info) {
+		const payload = buildOperationsEventPayloadFromCalendar(info.event);
+		const $feedback = $('.cmp-operations-event-form [data-cmp-feedback]').first();
+
+		payload.action = 'cmp_save_operations_event_ajax';
+		payload.nonce = getAjaxNonce();
+		payload.operations_section = 'calendar';
+
+		if ($feedback.length) {
+			updateFeedback($feedback, 'Saving event...', false);
+		}
+
+		return $.post(ajaxEndpoint, payload).done(function (response) {
+			if (!response || !response.success || !response.data) {
+				if (typeof info.revert === 'function') {
+					info.revert();
+				}
+				showAdminNotice('Event could not be saved.', 'error');
+				if ($feedback.length) {
+					updateFeedback($feedback, 'Event could not be saved.', true);
+				}
+				return;
+			}
+
+			showAdminNotice(response.data.message || 'Saved successfully.', 'success');
+
+			if (response.data.refresh) {
+				handleSectionRefresh(response.data.refresh);
+			} else {
+				refreshOperationsCalendar();
+			}
+
+			if ($feedback.length) {
+				updateFeedback($feedback, response.data.message || 'Saved successfully.', false);
+			}
+		}).fail(function (xhr) {
+			if (typeof info.revert === 'function') {
+				info.revert();
+			}
+			handleEntityActionFailure(xhr, $feedback);
+		});
+	}
+
+	function initOperationsCalendar() {
+		const $calendar = $('#cmp-operations-calendar').first();
+
+		if (!$calendar.length || typeof FullCalendar === 'undefined') {
+			return;
+		}
+
+		if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.destroy === 'function') {
+			cmpOperationsCalendarInstance.destroy();
+			cmpOperationsCalendarInstance = null;
+		}
+
+		cmpOperationsCalendarInstance = new FullCalendar.Calendar($calendar[0], {
+			initialView: String($calendar.data('cmp-default-view') || (window.CMPOperations && CMPOperations.calendarView) || 'dayGridMonth'),
+			height: 'auto',
+			editable: true,
+			selectable: true,
+			navLinks: true,
+			nowIndicator: true,
+			dayMaxEvents: true,
+			headerToolbar: {
+				left: 'prev,next today',
+				center: 'title',
+				right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
+			},
+			events: function (fetchInfo, successCallback, failureCallback) {
+				const filters = getOperationsCalendarFilters();
+				const payload = $.extend({}, filters, {
+					action: 'cmp_get_operations_calendar_events',
+					nonce: getAjaxNonce(),
+					start: fetchInfo.startStr,
+					end: fetchInfo.endStr
+				});
+
+				$.post(ajaxEndpoint, payload).done(function (response) {
+					if (response && response.success && response.data && Array.isArray(response.data.events)) {
+						successCallback(response.data.events);
+						return;
+					}
+
+					failureCallback(new Error('Could not load calendar events.'));
+				}).fail(function (xhr) {
+					failureCallback(xhr);
+				});
+			},
+			loading: function (isLoading) {
+				$calendar.closest('.cmp-panel').toggleClass('is-loading', !!isLoading);
+			},
+			dateClick: function (info) {
+				fillOperationsEventForm({
+					id: 0,
+					title: '',
+					allDay: info.allDay,
+					start: info.date,
+					end: info.allDay ? info.date : new Date(info.date.getTime() + (60 * 60 * 1000)),
+					extendedProps: {}
+				});
+			},
+			eventClick: function (info) {
+				info.jsEvent.preventDefault();
+				fillOperationsEventForm(info.event);
+				window.setTimeout(function () {
+					const $form = $('.cmp-operations-event-form').first();
+					if ($form.length) {
+						window.scrollTo({ top: Math.max(0, $form.offset().top - 120), behavior: 'smooth' });
+					}
+				}, 0);
+			},
+			eventDrop: function (info) {
+				saveOperationsCalendarEvent(info);
+			},
+			eventResize: function (info) {
+				saveOperationsCalendarEvent(info);
+			}
+		});
+
+		$calendar.data('cmp-calendar-ready', true);
+		$calendar[0]._cmpCalendar = cmpOperationsCalendarInstance;
+		cmpOperationsCalendarInstance.render();
+	}
+
 	$(function () {
 		const delayedFilter = debounce(function () {
 			runAjaxFilter($(this).closest('.cmp-filter-form'));
-		}, 250);
+		}, 400);
+		const delayedOperationsCalendarRefresh = debounce(function () {
+			refreshOperationsCalendar();
+		}, 400);
 
 		refreshSearchableSelects($('.cmp-wrap'));
+		enhanceResponsiveTables($('.cmp-wrap'));
+		updateRegistrationCountdowns();
+		window.setInterval(updateRegistrationCountdowns, 1000);
 
 		$('[data-cmp-class-select]').each(function () {
 			const $select = $(this);
@@ -903,6 +1709,8 @@
 			updateExportLink($(this));
 		});
 
+		syncInterestedExportForm();
+
 		$(document).on('submit', '.cmp-filter-form', function (event) {
 			if (!$(this).data('cmp-action')) {
 				return;
@@ -912,8 +1720,68 @@
 			runAjaxFilter($(this));
 		});
 
+		$(document).on('submit', '.cmp-operations-search-form', function (event) {
+			event.preventDefault();
+			runAjaxFilter($(this));
+		});
+
+		$(document).on('submit', '.cmp-operations-calendar-filters', function (event) {
+			event.preventDefault();
+			refreshOperationsCalendar();
+		});
+
+		$(document).on('change', '.cmp-operations-calendar-filters [name="view"]', function () {
+			const viewName = String($(this).val() || 'dayGridMonth');
+
+			if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.changeView === 'function') {
+				cmpOperationsCalendarInstance.changeView(viewName);
+			}
+
+			refreshOperationsCalendar();
+		});
+
+		$(document).on('change', '.cmp-operations-calendar-filters select, .cmp-operations-calendar-filters input', function (event) {
+			if ($(this).is('[name="view"]')) {
+				return;
+			}
+
+			if ($(this).is('[type="search"]')) {
+				return;
+			}
+
+			event.preventDefault();
+			refreshOperationsCalendar();
+		});
+
+		$(document).on('input', '.cmp-operations-calendar-filters input[type="search"]', function () {
+			delayedOperationsCalendarRefresh();
+		});
+
+		$(document).on('click', '[data-cmp-calendar-refresh]', function (event) {
+			event.preventDefault();
+			refreshOperationsCalendar();
+		});
+
+		$(document).on('click', '.cmp-operations-event-form [type="reset"]', function () {
+			window.setTimeout(function () {
+				const $form = $('.cmp-operations-event-form').first();
+				if ($form.length) {
+					$form.find('[name="id"]').val('0');
+				}
+			}, 0);
+		});
+
+		$(document).on('submit', 'form[data-cmp-ajax-form]', function (event) {
+			event.preventDefault();
+			submitAjaxForm($(this));
+		});
+
 		$(document).on('submit', 'form[action*="admin-post.php"]:not([data-cmp-confirm])', function (event) {
 			if (event.isDefaultPrevented()) {
+				return;
+			}
+
+			if ($(this).data('cmp-ajax-form')) {
 				return;
 			}
 
@@ -1123,6 +1991,31 @@
 			$('.cmp-student-select').prop('checked', checked);
 		});
 
+		$(document).on('submit', '.cmp-interested-export-form', function () {
+			const $form = $(this);
+			const scope = String($form.find('[name="scope"]').val() || '');
+			const $selectedField = $form.find('[name="selected_ids"]').first();
+			const selectedIds = $('.cmp-interested-select:checked').map(function () {
+				return $(this).val();
+			}).get();
+			const $feedback = $form.find('[data-cmp-export-feedback]').first();
+
+			$selectedField.val(scope === 'selected' ? selectedIds.join(',') : '');
+
+			if (scope === 'selected' && !selectedIds.length) {
+				if ($feedback.length) {
+					updateFeedback($feedback, 'Select at least one interested student before exporting selected rows.', true);
+				}
+				return false;
+			}
+
+			if ($feedback.length) {
+				updateFeedback($feedback, '', false);
+			}
+
+			return true;
+		});
+
 		$(document).on('click', '#cmp-student-bulk-apply', function () {
 			const $button = $(this);
 			const $feedback = $('#cmp-student-bulk-feedback');
@@ -1194,6 +2087,9 @@
 			const $button = $(this);
 			const studentId = String($button.data('cmp-student-id') || '');
 			const $feedback = $($button.data('cmp-feedback') || '');
+			const href = String($button.attr('href') || '');
+			const parsedUrl = href ? new URL(href, window.location.href) : null;
+			const linkNonce = parsedUrl ? String(parsedUrl.searchParams.get('_wpnonce') || '') : '';
 			const originalText = getElementText($button);
 
 			if (!studentId) {
@@ -1205,7 +2101,42 @@
 			setElementText($button, 'Sending...');
 			updateFeedback($feedback, 'Sending email...', false);
 
-			requestStudentEmail(studentId).done(function (response) {
+			requestStudentEmail(studentId, linkNonce).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					updateFeedback($feedback, 'Email could not be sent.', true);
+					showAdminNotice('Email could not be sent.', 'error');
+					return;
+				}
+
+				updateFeedback($feedback, response.data.message || 'Email sent successfully.', false);
+				showAdminNotice(response.data.message || 'Email sent successfully.', 'success');
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$button.prop('disabled', false).removeAttr('aria-disabled').removeClass('is-busy');
+				setElementText($button, originalText);
+			});
+		});
+
+		$(document).on('click', '[data-cmp-interested-email="1"]', function (event) {
+			const $button = $(this);
+			const leadId = String($button.data('cmp-lead-id') || '');
+			const $feedback = $($button.data('cmp-feedback') || '');
+			const href = String($button.attr('href') || '');
+			const parsedUrl = href ? new URL(href, window.location.href) : null;
+			const linkNonce = parsedUrl ? String(parsedUrl.searchParams.get('_wpnonce') || '') : '';
+			const originalText = getElementText($button);
+
+			if (!leadId) {
+				return;
+			}
+
+			event.preventDefault();
+			$button.prop('disabled', true).attr('aria-disabled', 'true').addClass('is-busy');
+			setElementText($button, 'Sending...');
+			updateFeedback($feedback, 'Sending email...', false);
+
+			requestInterestedStudentEmail(leadId, linkNonce).done(function (response) {
 				if (!response || !response.success || !response.data) {
 					updateFeedback($feedback, 'Email could not be sent.', true);
 					showAdminNotice('Email could not be sent.', 'error');
@@ -1297,18 +2228,19 @@
 			const formData = new window.FormData($form[0]);
 			const importType = String($form.data('cmp-ajax-import') || '');
 			const formNonce = String($form.find('input[name="_wpnonce"]').val() || '');
+			const busyLabel = String($form.data('cmp-busy-label') || 'Importing...');
 
-		function restoreButton() {
-			$button.prop('disabled', false).removeClass('is-busy');
-			setElementText($button, originalText);
-			refreshSearchableSelects($form.closest('.cmp-wrap'));
-		}
+			function restoreButton() {
+				$button.prop('disabled', false).removeClass('is-busy');
+				setElementText($button, originalText);
+				refreshSearchableSelects($form.closest('.cmp-wrap'));
+			}
 
 			event.preventDefault();
 
 			$button.prop('disabled', true).addClass('is-busy');
-			setElementText($button, 'Importing...');
-			updateFeedback($feedback, 'Importing...', false);
+			setElementText($button, busyLabel);
+			updateFeedback($feedback, busyLabel, false);
 
 			$.ajax({
 				url: ajaxEndpoint,
@@ -1349,6 +2281,30 @@
 					return;
 				}
 
+				if (importType === 'razorpay-page' && response.data.session_id) {
+					updateFeedback($feedback, formatProgressMessage(response.data.message || 'Importing...', response.data.progress), false);
+
+					runRazorpayImportSession(response.data.session_id, formNonce, $feedback, function (error, finalData) {
+						if (error) {
+							if (error.responseJSON) {
+								handleEntityActionFailure(error, $feedback);
+							} else {
+								updateFeedback($feedback, 'Import failed.', true);
+								showAdminNotice('Import failed.', 'error');
+							}
+
+							restoreButton();
+							return;
+						}
+
+						updateFeedback($feedback, finalData && finalData.message ? finalData.message : 'Import completed.', false);
+						showAdminNotice(finalData && finalData.message ? finalData.message : 'Import completed.', 'success');
+						restoreButton();
+					});
+
+					return;
+				}
+
 				updateFeedback($feedback, response.data.message || 'Import completed.', false);
 				showAdminNotice(response.data.message || 'Import completed.', 'success');
 
@@ -1361,5 +2317,6 @@
 		});
 
 		renderCharts();
+		initOperationsCalendar();
 	});
 })(jQuery);

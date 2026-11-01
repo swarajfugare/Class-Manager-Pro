@@ -46,6 +46,17 @@ function cmp_render_all_data_page() {
 		<h1><?php esc_html_e( 'All Data', 'class-manager-pro' ); ?></h1>
 		<p class="cmp-page-intro"><?php esc_html_e( 'Review the complete student dataset with class, batch, and fee details in one place.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-all-data' ); ?>
+		<?php
+		cmp_render_workflow_tabs(
+			array(
+				array( 'key' => 'settings', 'label' => __( 'Settings', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-settings' ) ),
+				array( 'key' => 'all-data', 'label' => __( 'All Data', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-all-data' ) ),
+			),
+			'all-data',
+			__( 'Settings sections', 'class-manager-pro' )
+		);
+		?>
 
 		<form method="get" class="cmp-filter-form cmp-toolbar">
 			<input type="hidden" name="page" value="cmp-all-data">

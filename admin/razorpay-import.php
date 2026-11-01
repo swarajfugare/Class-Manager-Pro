@@ -53,11 +53,19 @@ function cmp_render_razorpay_import_page() {
 	$class_id       = absint( cmp_field( $_GET, 'class_id', $selected_batch ? (int) $selected_batch->class_id : ( $source_batch ? (int) $source_batch->class_id : 0 ) ) );
 	$batch_id       = $selected_batch ? (int) $selected_batch->id : absint( cmp_field( $_GET, 'batch_id', $source_batch ? (int) $source_batch->id : 0 ) );
 	$load_attempted = '' !== $manual_id || '' !== $selected_id || $source_batch_id > 0;
+	$page_preview   = array();
+	$page_logs      = array();
+
+	if ( '' !== $page_id ) {
+		$page_preview = cmp_get_razorpay_page_payment_preview( $page_id, $selected_batch ? cmp_clean_title_text( $selected_batch->batch_name ) : ( $source_batch ? cmp_clean_title_text( $source_batch->batch_name ) : '' ), 25 );
+	}
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></h1>
 		<p class="cmp-page-intro"><?php esc_html_e( 'Enter a Razorpay Payment Link ID, Payment Page ID, or page URL, review the captured payments, and import students into the correct class and batch.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-razorpay-import' ); ?>
+		<?php cmp_render_payment_page_nav( 'cmp-razorpay-import' ); ?>
 
 		<?php if ( $selected_batch ) : ?>
 			<section class="cmp-panel">
@@ -72,7 +80,7 @@ function cmp_render_razorpay_import_page() {
 			<div class="cmp-panel-header">
 				<div>
 					<h2><?php esc_html_e( 'Import Students (CSV / Excel)', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'Upload a Razorpay CSV or spreadsheet export, choose the class and batch, then import students safely in bulk. Captured payments assign the selected batch, add the 2.36% Razorpay charge for reporting, and failed payments go to Interested Students instead of the main student list.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Upload a Razorpay CSV or spreadsheet export, choose the class and batch, then import students safely in bulk. Captured payments assign the selected batch, store the student fee, Razorpay commission, and net amount separately, and failed payments go to Interested Students instead of the main student list.', 'class-manager-pro' ); ?></p>
 				</div>
 			</div>
 
@@ -180,25 +188,38 @@ function cmp_render_razorpay_import_page() {
 			<?php endif; ?>
 
 			<?php if ( '' !== $page_id ) : ?>
-				<?php
-				$page_name = $selected_batch ? cmp_clean_title_text( $selected_batch->batch_name ) : ( $source_batch ? cmp_clean_title_text( $source_batch->batch_name ) : '' );
-				$payments = cmp_get_successful_razorpay_payments_for_link( $page_id, $page_name );
-				?>
-
-				<?php if ( is_wp_error( $payments ) ) : ?>
+				<?php if ( is_wp_error( $page_preview ) ) : ?>
 					<section class="cmp-panel">
 						<div class="cmp-callout cmp-callout-warning">
-							<p><?php echo esc_html( $payments->get_error_message() ); ?></p>
+							<p><?php echo esc_html( $page_preview->get_error_message() ); ?></p>
 						</div>
 					</section>
 				<?php else : ?>
 					<section class="cmp-panel">
 						<div class="cmp-panel-header">
 							<div>
-								<h2><?php echo esc_html( $page_id ); ?></h2>
-								<p class="cmp-muted"><?php echo esc_html( sprintf( __( '%1$d successful captured payments found. Duplicate payment IDs are skipped automatically on import, and Razorpay imports add the 2.36%% gateway charge to reporting totals.', 'class-manager-pro' ), count( $payments ) ) ); ?></p>
+								<h2><?php echo esc_html( $page_preview['page_name'] ? $page_preview['page_name'] : $page_preview['page_id'] ); ?></h2>
+								<p class="cmp-muted"><?php echo esc_html( sprintf( __( 'Razorpay page %1$s is %2$s and currently exposes %3$d captured payments.', 'class-manager-pro' ), $page_preview['page_id'], $page_preview['page_status'] ? strtoupper( $page_preview['page_status'] ) : __( 'UNKNOWN', 'class-manager-pro' ), (int) $page_preview['total_payments'] ) ); ?></p>
 							</div>
+							<?php if ( '' !== $page_preview['page_status'] ) : ?>
+								<span class="cmp-inline-badge cmp-inline-badge-success"><?php echo esc_html( strtoupper( $page_preview['page_status'] ) ); ?></span>
+							<?php endif; ?>
 						</div>
+
+						<div class="cmp-callout cmp-callout-info">
+							<p><?php echo esc_html( sprintf( __( 'Preview mode fetched %1$d payment(s). The remaining %2$d payment(s) will be processed in background chunks if the page is large.', 'class-manager-pro' ), (int) $page_preview['preview_count'], max( 0, (int) $page_preview['total_payments'] - (int) $page_preview['preview_count'] ) ) ); ?></p>
+							<?php if ( ! empty( $page_preview['has_more'] ) ) : ?>
+								<p><?php esc_html_e( 'Large pages are imported in AJAX batches to avoid timeouts.', 'class-manager-pro' ); ?></p>
+							<?php endif; ?>
+						</div>
+
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-space-top" data-cmp-ajax-import="razorpay-connection" data-cmp-feedback="#cmp-razorpay-connection-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Testing connection...', 'class-manager-pro' ); ?>">
+							<input type="hidden" name="action" value="cmp_test_razorpay_connection">
+							<input type="hidden" name="razorpay_page_id" value="<?php echo esc_attr( $page_id ); ?>">
+							<?php wp_nonce_field( 'cmp_test_razorpay_connection' ); ?>
+							<?php submit_button( __( 'Test Page Access', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+						</form>
+						<p class="cmp-muted" id="cmp-razorpay-connection-feedback"><?php esc_html_e( 'The connection test will confirm authentication, page access, and API response speed.', 'class-manager-pro' ); ?></p>
 
 						<div class="cmp-table-scroll">
 							<table class="widefat striped">
@@ -207,18 +228,18 @@ function cmp_render_razorpay_import_page() {
 										<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
 										<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
 										<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
-										<th><?php esc_html_e( 'Original', 'class-manager-pro' ); ?></th>
-										<th><?php esc_html_e( 'Charge', 'class-manager-pro' ); ?></th>
-										<th><?php esc_html_e( 'Final', 'class-manager-pro' ); ?></th>
+										<th><?php esc_html_e( 'Student Fee', 'class-manager-pro' ); ?></th>
+										<th><?php esc_html_e( 'Commission', 'class-manager-pro' ); ?></th>
+										<th><?php esc_html_e( 'Net Received', 'class-manager-pro' ); ?></th>
 										<th><?php esc_html_e( 'Payment ID', 'class-manager-pro' ); ?></th>
 										<th><?php esc_html_e( 'Date', 'class-manager-pro' ); ?></th>
 									</tr>
 								</thead>
 								<tbody>
-									<?php if ( empty( $payments ) ) : ?>
+									<?php if ( empty( $page_preview['preview_payments'] ) ) : ?>
 										<tr><td colspan="8"><?php esc_html_e( 'No captured payments were found for this Razorpay reference.', 'class-manager-pro' ); ?></td></tr>
 									<?php else : ?>
-										<?php foreach ( $payments as $payment ) : ?>
+										<?php foreach ( $page_preview['preview_payments'] as $payment ) : ?>
 											<?php $preview = cmp_payment_student_preview( $payment ); ?>
 											<tr>
 												<td><?php echo esc_html( $preview['name'] ); ?></td>
@@ -237,16 +258,16 @@ function cmp_render_razorpay_import_page() {
 						</div>
 					</section>
 
-					<?php if ( ! empty( $payments ) ) : ?>
+					<?php if ( ! empty( $page_preview['preview_payments'] ) ) : ?>
 						<section class="cmp-panel">
 							<div class="cmp-panel-header">
 								<div>
 									<h2><?php esc_html_e( 'Import Students', 'class-manager-pro' ); ?></h2>
-									<p class="cmp-muted"><?php esc_html_e( 'Every successful payment is matched to the selected batch. Existing students and existing payment IDs are not duplicated, and the Razorpay charge is stored separately from the student fee amount.', 'class-manager-pro' ); ?></p>
+									<p class="cmp-muted"><?php esc_html_e( 'Every successful payment is matched to the selected batch. Existing students and existing payment IDs are not duplicated, and large imports continue in background chunks to keep the screen responsive.', 'class-manager-pro' ); ?></p>
 								</div>
 							</div>
 
-							<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" data-cmp-ajax-import="razorpay-page" data-cmp-feedback="#cmp-razorpay-page-import-feedback">
+							<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" data-cmp-ajax-import="razorpay-page" data-cmp-feedback="#cmp-razorpay-page-import-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Importing payments...', 'class-manager-pro' ); ?>">
 								<input type="hidden" name="action" value="cmp_import_razorpay_page_to_batch">
 								<input type="hidden" name="razorpay_page_id" value="<?php echo esc_attr( $page_id ); ?>">
 								<input type="hidden" name="return_page" value="<?php echo esc_attr( $selected_batch ? 'cmp-batches' : 'cmp-razorpay-import' ); ?>">
@@ -285,6 +306,48 @@ function cmp_render_razorpay_import_page() {
 							</form>
 						</section>
 					<?php endif; ?>
+
+					<?php
+					$page_logs = array_filter(
+						cmp_get_admin_logs( 25 ),
+						static function ( $log ) {
+							return isset( $log->action ) && 'razorpay_import' === $log->action;
+						}
+					);
+					?>
+
+					<section class="cmp-panel">
+						<div class="cmp-panel-header">
+							<div>
+								<h2><?php esc_html_e( 'Recent Razorpay Imports', 'class-manager-pro' ); ?></h2>
+								<p class="cmp-muted"><?php esc_html_e( 'The latest import activity is stored in the admin audit trail and logs the page, batch, counts, and import source.', 'class-manager-pro' ); ?></p>
+							</div>
+						</div>
+						<div class="cmp-log-container">
+							<table class="widefat striped">
+								<thead>
+									<tr>
+										<th><?php esc_html_e( 'Timestamp', 'class-manager-pro' ); ?></th>
+										<th><?php esc_html_e( 'Admin', 'class-manager-pro' ); ?></th>
+										<th><?php esc_html_e( 'Details', 'class-manager-pro' ); ?></th>
+									</tr>
+								</thead>
+								<tbody>
+									<?php if ( empty( $page_logs ) ) : ?>
+										<tr><td colspan="3"><?php esc_html_e( 'No Razorpay imports have been logged yet.', 'class-manager-pro' ); ?></td></tr>
+									<?php else : ?>
+										<?php foreach ( array_slice( $page_logs, 0, 5 ) as $log ) : ?>
+											<tr>
+												<td><?php echo esc_html( $log->created_at ); ?></td>
+												<td><?php echo esc_html( $log->admin_name ? $log->admin_name : __( 'System', 'class-manager-pro' ) ); ?></td>
+												<td><?php echo esc_html( $log->message ? $log->message : __( 'Razorpay import activity recorded.', 'class-manager-pro' ) ); ?></td>
+											</tr>
+										<?php endforeach; ?>
+									<?php endif; ?>
+								</tbody>
+							</table>
+						</div>
+					</section>
 				<?php endif; ?>
 			<?php endif; ?>
 		<?php endif; ?>

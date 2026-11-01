@@ -23,7 +23,7 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 	$selected_batch = $is_edit ? (int) $student->batch_id : absint( cmp_field( $_GET, 'batch_id', 0 ) );
 	$status         = $is_edit ? $student->status : 'active';
 	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form cmp-student-form">
+	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form cmp-student-form" data-cmp-ajax-form="cmp_save_student_ajax">
 		<input type="hidden" name="action" value="cmp_save_student">
 		<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
 		<?php if ( $is_edit ) : ?>
@@ -48,7 +48,10 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-student-email"><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></label></th>
-				<td><input type="email" id="cmp-student-email" name="email" class="regular-text" value="<?php echo esc_attr( $is_edit ? $student->email : '' ); ?>"></td>
+				<td>
+					<input type="email" id="cmp-student-email" name="email" class="regular-text" value="<?php echo esc_attr( $is_edit ? $student->email : '' ); ?>" required>
+					<p class="description"><?php esc_html_e( 'A valid email address is required for admissions, follow-up notifications, and duplicate matching.', 'class-manager-pro' ); ?></p>
+				</td>
 			</tr>
 			<tr>
 				<th scope="row"><label for="cmp-student-class"><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></label></th>
@@ -92,6 +95,17 @@ function cmp_render_student_form( $student = null, $return_page = 'cmp-students'
 							<option value="<?php echo esc_attr( $option ); ?>" <?php selected( $status, $option ); ?>><?php echo esc_html( ucfirst( $option ) ); ?></option>
 						<?php endforeach; ?>
 					</select>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><?php esc_html_e( 'Capacity Override', 'class-manager-pro' ); ?></th>
+				<td>
+					<input type="hidden" name="capacity_override" value="0">
+					<label>
+						<input type="checkbox" name="capacity_override" value="1">
+						<?php esc_html_e( 'Allow this admission even if the batch limit has been reached.', 'class-manager-pro' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'Use this only when you need to manually override the maximum student count.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -281,11 +295,27 @@ function cmp_render_students_page() {
 
 	$action     = sanitize_key( cmp_field( $_GET, 'action' ) );
 	$id         = absint( cmp_field( $_GET, 'id', 0 ) );
+	$current_tab = sanitize_key( cmp_field( $_GET, 'tab', 'active' ) );
+	if ( ! in_array( $current_tab, array( 'active', 'interested', 'pending', 'completed' ), true ) ) {
+		$current_tab = 'active';
+	}
 	$student    = ( 'edit' === $action && $id ) ? cmp_get_student( $id ) : null;
 	$filters    = cmp_read_student_filters( $_GET );
+
+	if ( empty( $action ) ) {
+		if ( 'active' === $current_tab && '' === $filters['status'] ) {
+			$filters['status'] = 'active';
+		} elseif ( 'completed' === $current_tab ) {
+			$filters['status'] = 'completed';
+		} elseif ( 'pending' === $current_tab ) {
+			$filters['fee_status'] = 'pending';
+		}
+	}
+
 	$paged      = cmp_get_current_page_number();
 	$per_page   = cmp_get_default_per_page();
 	$pagination = cmp_get_pagination_data( cmp_get_students_count( $filters ), $paged, $per_page );
+	$pagination_filters = array_merge( $filters, array( 'tab' => $current_tab ) );
 	$row_args   = array_merge(
 		$filters,
 		array(
@@ -309,11 +339,27 @@ function cmp_render_students_page() {
 		),
 		'cmp_export_students'
 	);
+	$student_tabs = array(
+		array( 'key' => 'active', 'label' => __( 'Active', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students', array( 'tab' => 'active', 'status' => 'active' ) ) ),
+		array( 'key' => 'interested', 'label' => __( 'Interested', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students', array( 'tab' => 'interested' ) ) ),
+		array( 'key' => 'pending', 'label' => __( 'Pending', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ),
+		array( 'key' => 'completed', 'label' => __( 'Completed', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students', array( 'tab' => 'completed', 'status' => 'completed' ) ) ),
+	);
 	?>
 	<div class="wrap cmp-wrap">
 		<h1><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Students can now arrive from three paths: manual entry, the shared batch intake form, or imported Razorpay data. Batch fee controls the default total fee for new records.', 'class-manager-pro' ); ?></p>
+		<p class="cmp-page-intro"><?php esc_html_e( 'One student workspace for active admissions, interested leads, pending fee follow-ups, completed students, bulk actions, and quick communication.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-students' ); ?>
+		<?php cmp_render_workflow_tabs( $student_tabs, $current_tab, __( 'Student sections', 'class-manager-pro' ) ); ?>
+
+		<?php if ( 'interested' === $current_tab && empty( $action ) ) : ?>
+			<?php cmp_render_interested_students_workspace( true ); ?>
+		</div>
+			<?php
+			return;
+		endif;
+		?>
 
 		<div class="cmp-cards cmp-cards-4">
 			<div class="cmp-card">
@@ -343,8 +389,9 @@ function cmp_render_students_page() {
 			</section>
 		<?php endif; ?>
 
-		<form method="get" class="cmp-filter-form cmp-toolbar">
+		<form method="get" class="cmp-filter-form cmp-toolbar" data-cmp-action="cmp_filter_students" data-cmp-target="#cmp-student-results-wrap">
 			<input type="hidden" name="page" value="cmp-students">
+			<input type="hidden" name="tab" value="<?php echo esc_attr( $current_tab ); ?>">
 			<input type="search" name="search" value="<?php echo esc_attr( $filters['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search name, phone, email, ID', 'class-manager-pro' ); ?>">
 			<select name="class_id" data-cmp-class-select>
 				<option value="0"><?php esc_html_e( 'All classes', 'class-manager-pro' ); ?></option>
@@ -364,6 +411,9 @@ function cmp_render_students_page() {
 					<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $filters['status'], $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
 				<?php endforeach; ?>
 			</select>
+			<?php if ( 'pending' === $current_tab ) : ?>
+				<input type="hidden" name="fee_status" value="pending">
+			<?php endif; ?>
 			<button type="submit" class="button button-primary"><?php esc_html_e( 'Filter', 'class-manager-pro' ); ?></button>
 			<a class="button cmp-export-link" data-base-url="<?php echo esc_url( $export_url ); ?>" href="<?php echo esc_url( $export_url ); ?>"><?php esc_html_e( 'Export CSV', 'class-manager-pro' ); ?></a>
 			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import Students (CSV / Excel)', 'class-manager-pro' ); ?></a>
@@ -403,32 +453,34 @@ function cmp_render_students_page() {
 			<span class="cmp-muted" id="cmp-student-bulk-feedback"></span>
 		</div>
 
-		<section class="cmp-panel">
-			<div class="cmp-table-scroll">
-				<table class="widefat striped">
-					<thead>
-						<tr>
-							<th><input type="checkbox" id="cmp-student-select-all" data-cmp-select-all=".cmp-student-select"></th>
-							<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Payment Status', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
-							<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
-						</tr>
-					</thead>
-					<tbody class="cmp-student-results">
-						<?php echo cmp_render_student_rows( $row_args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-					</tbody>
-				</table>
-			</div>
-			<?php cmp_render_pagination( $pagination, $filters ); ?>
-		</section>
+		<div id="cmp-student-results-wrap">
+			<section class="cmp-panel">
+				<div class="cmp-table-scroll">
+					<table class="widefat striped">
+						<thead>
+							<tr>
+								<th><input type="checkbox" id="cmp-student-select-all" data-cmp-select-all=".cmp-student-select"></th>
+								<th><?php esc_html_e( 'Name', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Total Fee', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Paid Fee', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Pending Fee', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Payment Status', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+							</tr>
+						</thead>
+						<tbody class="cmp-student-results">
+							<?php echo cmp_render_student_rows( $row_args ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+						</tbody>
+					</table>
+				</div>
+				<?php cmp_render_pagination( $pagination, $pagination_filters ); ?>
+			</section>
+		</div>
 
 		<?php if ( ! $student && 'view' !== $action ) : ?>
 			<section class="cmp-panel" id="cmp-add-student">

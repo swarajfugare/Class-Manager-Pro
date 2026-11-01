@@ -22,7 +22,7 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 	$now        = current_time( 'timestamp' );
 	$student_id = $is_edit ? (int) $payment->student_id : absint( $selected_student_id );
 	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" id="<?php echo esc_attr( $is_edit ? 'cmp-edit-payment' : 'cmp-add-payment' ); ?>">
+	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" id="<?php echo esc_attr( $is_edit ? 'cmp-edit-payment' : 'cmp-add-payment' ); ?>" data-cmp-ajax-form="cmp_save_payment_ajax">
 		<input type="hidden" name="action" value="cmp_save_payment">
 		<input type="hidden" name="return_page" value="cmp-payments">
 		<?php if ( $is_edit ) : ?>
@@ -136,12 +136,16 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
  */
 function cmp_render_payment_page_nav( $current_page ) {
 	$current_page = cmp_clean_return_page( $current_page, 'cmp-payments' );
-	?>
-	<nav class="nav-tab-wrapper">
-		<a class="nav-tab <?php echo esc_attr( 'cmp-payments' === $current_page ? 'nav-tab-active' : '' ); ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments' ) ); ?>"><?php esc_html_e( 'Payments', 'class-manager-pro' ); ?></a>
-		<a class="nav-tab <?php echo esc_attr( 'cmp-payments-trash' === $current_page ? 'nav-tab-active' : '' ); ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments-trash' ) ); ?>"><?php esc_html_e( 'Trash', 'class-manager-pro' ); ?></a>
-	</nav>
-	<?php
+	cmp_render_workflow_tabs(
+		array(
+			array( 'key' => 'cmp-payments', 'label' => __( 'Manual & Completed', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-payments' ) ),
+			array( 'key' => 'cmp-razorpay-import', 'label' => __( 'Razorpay Import', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-razorpay-import' ) ),
+			array( 'key' => 'cmp-interested-students', 'label' => __( 'Interest Leads', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-students', array( 'tab' => 'interested' ) ) ),
+			array( 'key' => 'cmp-payments-trash', 'label' => __( 'Trash', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-payments-trash' ) ),
+		),
+		$current_page,
+		__( 'Payment sections', 'class-manager-pro' )
+	);
 }
 
 /**
@@ -195,7 +199,7 @@ function cmp_render_payment_detail_panel( $payment_id, $page_slug = 'cmp-payment
 	$delete_url       = cmp_get_payment_delete_url( (int) $payment->id, 'cmp-payments' );
 	$edit_url         = cmp_get_payment_edit_url( (int) $payment->id, 'cmp-payments' );
 	?>
-	<section class="cmp-panel">
+	<section class="cmp-panel cmp-payment-list-section" id="cmp-payment-list-section">
 		<div class="cmp-panel-header">
 			<div>
 				<h2><?php echo esc_html( sprintf( __( 'Payment #%d', 'class-manager-pro' ), (int) $payment->id ) ); ?></h2>
@@ -218,10 +222,9 @@ function cmp_render_payment_detail_panel( $payment_id, $page_slug = 'cmp-payment
 			<p><span><?php esc_html_e( 'Student ID', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $payment->student_unique_id ? $payment->student_unique_id : __( 'Not available', 'class-manager-pro' ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $class_label ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch_label ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $payment->amount ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Original Amount', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( isset( $payment->original_amount ) && (float) $payment->original_amount > 0 ? $payment->original_amount : $payment->amount ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Charge Amount', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( isset( $payment->charge_amount ) ? $payment->charge_amount : 0 ) ); ?></strong></p>
-			<p><span><?php esc_html_e( 'Final Amount', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( cmp_get_payment_display_total( $payment ) ) ); ?></strong></p>
+			<p><span><?php esc_html_e( 'Student Fee', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $payment->amount ) ); ?></strong></p>
+			<p><span><?php esc_html_e( 'Razorpay Commission', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( isset( $payment->charge_amount ) ? $payment->charge_amount : 0 ) ); ?></strong></p>
+			<p><span><?php esc_html_e( 'Net Amount Received', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( cmp_get_payment_display_total( $payment ) ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Mode', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( ucfirst( $payment->payment_mode ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Transaction ID', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $payment->transaction_id ? $payment->transaction_id : __( 'Not set', 'class-manager-pro' ) ); ?></strong></p>
 			<p><span><?php esc_html_e( 'Payment Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $payment->payment_date ); ?></strong></p>
@@ -233,8 +236,8 @@ function cmp_render_payment_detail_panel( $payment_id, $page_slug = 'cmp-payment
 
 		<h3><?php esc_html_e( 'Audit History', 'class-manager-pro' ); ?></h3>
 		<div class="cmp-table-scroll">
-			<table class="widefat striped">
-				<thead>
+				<table class="widefat striped">
+					<thead>
 					<tr>
 						<th><?php esc_html_e( 'Time', 'class-manager-pro' ); ?></th>
 						<th><?php esc_html_e( 'Action', 'class-manager-pro' ); ?></th>
@@ -319,57 +322,8 @@ function cmp_render_payment_list_section( $payments, $pagination, $filters, $pag
 						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
 					</tr>
 				</thead>
-				<tbody>
-					<?php if ( empty( $payments ) ) : ?>
-						<tr><td colspan="<?php echo esc_attr( $is_trash ? 8 : 9 ); ?>"><?php echo esc_html( $empty_message ); ?></td></tr>
-					<?php else : ?>
-						<?php foreach ( $payments as $payment ) : ?>
-							<?php
-							$view_url         = cmp_get_payment_view_url( (int) $payment->id, $page_slug );
-							$edit_url         = cmp_get_payment_edit_url( (int) $payment->id, 'cmp-payments' );
-							$delete_url       = cmp_get_payment_delete_url( (int) $payment->id, 'cmp-payments' );
-							$restore_url      = cmp_get_payment_restore_url( (int) $payment->id, 'cmp-payments' );
-							$force_delete_url = cmp_get_payment_force_delete_url( (int) $payment->id, 'cmp-payments-trash' );
-							?>
-							<tr data-cmp-row-id="payment-<?php echo esc_attr( (int) $payment->id ); ?>">
-								<?php if ( ! $is_trash ) : ?>
-									<td><input type="checkbox" class="cmp-payment-select" value="<?php echo esc_attr( (int) $payment->id ); ?>"></td>
-								<?php endif; ?>
-								<td>#<?php echo esc_html( (int) $payment->id ); ?></td>
-								<td><?php echo esc_html( $payment->student_name ? $payment->student_name : __( 'Unknown student', 'class-manager-pro' ) ); ?><br><span class="cmp-muted"><?php echo esc_html( $payment->student_unique_id ); ?></span></td>
-								<td><?php echo esc_html( $payment->class_name ? $payment->class_name : __( 'Unassigned', 'class-manager-pro' ) ); ?><br><span class="cmp-muted"><?php echo esc_html( $payment->batch_name ? $payment->batch_name : __( 'Not assigned', 'class-manager-pro' ) ); ?></span></td>
-								<td>
-									<?php echo esc_html( cmp_format_money( $payment->amount ) ); ?>
-									<?php if ( cmp_payment_has_gateway_charge( $payment ) ) : ?>
-										<br><span class="cmp-muted"><?php echo esc_html( sprintf( __( 'Final %s', 'class-manager-pro' ), cmp_format_money( cmp_get_payment_display_total( $payment ) ) ) ); ?></span>
-									<?php endif; ?>
-								</td>
-								<td><?php echo esc_html( ucfirst( $payment->payment_mode ) ); ?></td>
-								<td><?php echo esc_html( $payment->transaction_id ? $payment->transaction_id : __( 'Not set', 'class-manager-pro' ) ); ?></td>
-								<td><?php echo esc_html( $payment->payment_date ); ?></td>
-								<td class="cmp-actions">
-									<a href="<?php echo esc_url( $view_url ); ?>"><?php esc_html_e( 'View', 'class-manager-pro' ); ?></a>
-									<?php if ( ! $is_trash ) : ?>
-										<a href="<?php echo esc_url( $edit_url ); ?>"><?php esc_html_e( 'Edit', 'class-manager-pro' ); ?></a>
-										<a
-											class="cmp-delete-link"
-											href="<?php echo esc_url( $delete_url ); ?>"
-											data-id="<?php echo esc_attr( (int) $payment->id ); ?>"
-											data-type="payment"
-											data-cmp-ajax-delete="1"
-											data-cmp-entity-type="payment"
-											data-cmp-entity-id="<?php echo esc_attr( (int) $payment->id ); ?>"
-											data-cmp-confirm="<?php echo esc_attr( $delete_confirm ); ?>"
-											data-cmp-feedback="#<?php echo esc_attr( $feedback_id ); ?>"
-										><?php echo esc_html( $delete_label ); ?></a>
-									<?php else : ?>
-										<?php cmp_render_payment_action_form( $restore_url, __( 'Restore', 'class-manager-pro' ), __( 'Restore this payment?', 'class-manager-pro' ), 'button button-primary' ); ?>
-										<?php cmp_render_payment_action_form( $force_delete_url, __( 'Delete Permanently', 'class-manager-pro' ), __( 'Permanently delete this payment? This cannot be undone.', 'class-manager-pro' ) ); ?>
-									<?php endif; ?>
-								</td>
-							</tr>
-						<?php endforeach; ?>
-					<?php endif; ?>
+				<tbody id="cmp-payment-table-body">
+					<?php echo cmp_render_payment_rows( $payments, $page_slug ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 				</tbody>
 			</table>
 		</div>
@@ -441,6 +395,7 @@ function cmp_render_payments_screen( $deleted_status = 'active' ) {
 	<div class="wrap cmp-wrap">
 		<h1><?php echo esc_html( $page_title ); ?></h1>
 		<p class="cmp-page-intro"><?php echo esc_html( $page_intro ); ?></p>
+		<?php cmp_render_admin_workflow_nav( $page_slug ); ?>
 		<?php cmp_render_payment_page_nav( $page_slug ); ?>
 		<?php cmp_render_notice(); ?>
 
@@ -480,9 +435,10 @@ function cmp_render_payments_screen( $deleted_status = 'active' ) {
 			</section>
 		<?php endif; ?>
 
-		<form method="get" class="cmp-toolbar">
-			<input type="hidden" name="page" value="<?php echo esc_attr( $page_slug ); ?>">
-			<input type="search" name="search" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search student, transaction, payment ID', 'class-manager-pro' ); ?>">
+	<form method="get" class="cmp-toolbar cmp-filter-form" data-cmp-action="cmp_filter_payments" data-cmp-target="#cmp-payment-list-section">
+		<input type="hidden" name="page" value="<?php echo esc_attr( $page_slug ); ?>">
+		<input type="hidden" name="page_slug" value="<?php echo esc_attr( $page_slug ); ?>">
+		<input type="search" name="search" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search student, transaction, payment ID', 'class-manager-pro' ); ?>">
 			<select name="payment_mode" data-cmp-searchable="1">
 				<option value=""><?php esc_html_e( 'All modes', 'class-manager-pro' ); ?></option>
 				<?php foreach ( cmp_payment_modes() as $mode ) : ?>

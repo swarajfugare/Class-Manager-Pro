@@ -104,6 +104,12 @@ function cmp_get_tutor_instructors( $include_user_id = 0 ) {
 		);
 
 		foreach ( $candidate_users as $candidate_user ) {
+			$candidate_user = get_userdata( isset( $candidate_user->ID ) ? (int) $candidate_user->ID : 0 );
+
+			if ( ! ( $candidate_user instanceof WP_User ) ) {
+				continue;
+			}
+
 			if (
 				user_can( $candidate_user, 'tutor_instructor' ) ||
 				user_can( $candidate_user, 'manage_tutor' ) ||
@@ -889,3 +895,164 @@ function cmp_sync_batch_students_tutor_enrollment( $batch_id ) {
 		cmp_sync_student_tutor_enrollment( (int) $student->id );
 	}
 }
+
+/**
+ * Returns teacher profile data, including the signature asset.
+ *
+ * @param int $teacher_user_id Teacher user ID.
+ * @return array
+ */
+function cmp_get_teacher_signature_data( $teacher_user_id ) {
+	$teacher_user_id = absint( $teacher_user_id );
+	$user = $teacher_user_id ? get_userdata( $teacher_user_id ) : null;
+
+	if ( ! ( $user instanceof WP_User ) ) {
+		return array(
+			'teacher_user_id'      => 0,
+			'teacher_name'         => '',
+			'teacher_signature_id' => 0,
+			'teacher_signature_url'=> '',
+			'has_signature'        => false,
+		);
+	}
+
+	$signature_id  = absint( get_user_meta( $teacher_user_id, 'cmp_teacher_signature_id', true ) );
+	$signature_url = esc_url_raw( (string) get_user_meta( $teacher_user_id, 'cmp_teacher_signature_url', true ) );
+
+	if ( '' === $signature_url && $signature_id ) {
+		$signature_url = wp_get_attachment_url( $signature_id ) ? esc_url_raw( wp_get_attachment_url( $signature_id ) ) : '';
+	}
+
+	return array(
+		'teacher_user_id'      => $teacher_user_id,
+		'teacher_name'         => sanitize_text_field( $user->display_name ),
+		'teacher_signature_id' => $signature_id,
+		'teacher_signature_url'=> $signature_url,
+		'has_signature'        => '' !== $signature_url,
+	);
+}
+
+/**
+ * Enqueues media assets for the teacher profile signature picker.
+ *
+ * @param string $hook_suffix Admin hook suffix.
+ * @return void
+ */
+function cmp_enqueue_teacher_signature_assets( $hook_suffix ) {
+	if ( ! in_array( $hook_suffix, array( 'profile.php', 'user-edit.php' ), true ) ) {
+		return;
+	}
+
+	wp_enqueue_media();
+}
+
+/**
+ * Renders the teacher signature fields on the user profile screen.
+ *
+ * @param WP_User $user User being edited.
+ * @return void
+ */
+function cmp_render_teacher_signature_profile_fields( $user ) {
+	if ( ! ( $user instanceof WP_User ) ) {
+		return;
+	}
+
+	$signature_id  = absint( get_user_meta( $user->ID, 'cmp_teacher_signature_id', true ) );
+	$signature_url = esc_url_raw( (string) get_user_meta( $user->ID, 'cmp_teacher_signature_url', true ) );
+
+	if ( '' === $signature_url && $signature_id ) {
+		$signature_url = wp_get_attachment_url( $signature_id ) ? esc_url_raw( wp_get_attachment_url( $signature_id ) ) : '';
+	}
+	?>
+	<h2><?php esc_html_e( 'Teacher Signature', 'class-manager-pro' ); ?></h2>
+	<table class="form-table" role="presentation">
+		<tr>
+			<th scope="row"><?php esc_html_e( 'Teacher Name', 'class-manager-pro' ); ?></th>
+			<td>
+				<strong><?php echo esc_html( $user->display_name ); ?></strong>
+				<p class="description"><?php esc_html_e( 'This is the display name used on certificates.', 'class-manager-pro' ); ?></p>
+			</td>
+		</tr>
+		<tr>
+			<th scope="row"><label for="cmp_teacher_signature_url"><?php esc_html_e( 'Teacher Signature Image', 'class-manager-pro' ); ?></label></th>
+			<td>
+				<input type="hidden" id="cmp_teacher_signature_id" name="cmp_teacher_signature_id" value="<?php echo esc_attr( $signature_id ); ?>">
+				<input type="url" class="regular-text" id="cmp_teacher_signature_url" name="cmp_teacher_signature_url" value="<?php echo esc_attr( $signature_url ); ?>" placeholder="<?php esc_attr_e( 'Paste or choose a transparent signature image URL', 'class-manager-pro' ); ?>">
+				<button type="button" class="button" id="cmp_teacher_signature_pick"><?php esc_html_e( 'Choose Signature', 'class-manager-pro' ); ?></button>
+				<button type="button" class="button" id="cmp_teacher_signature_clear"><?php esc_html_e( 'Clear', 'class-manager-pro' ); ?></button>
+				<p class="description"><?php esc_html_e( 'Use a transparent PNG or JPG of the teacher signature. If blank, certificates will still generate and the signature area will stay empty.', 'class-manager-pro' ); ?></p>
+				<?php if ( $signature_url ) : ?>
+					<p style="margin-top:12px;">
+						<img src="<?php echo esc_url( $signature_url ); ?>" alt="<?php echo esc_attr( $user->display_name ); ?>" style="max-width:280px;height:auto;border:1px solid #dcdcde;background:#fff;padding:8px;border-radius:8px;">
+					</p>
+				<?php endif; ?>
+			</td>
+		</tr>
+	</table>
+	<script>
+	(function($){
+		var frame;
+		$(document).on('click', '#cmp_teacher_signature_pick', function(e){
+			e.preventDefault();
+			if ( frame ) {
+				frame.open();
+				return;
+			}
+			frame = wp.media({
+				title: '<?php echo esc_js( __( 'Select Teacher Signature', 'class-manager-pro' ) ); ?>',
+				button: { text: '<?php echo esc_js( __( 'Use this image', 'class-manager-pro' ) ); ?>' },
+				multiple: false
+			});
+			frame.on('select', function(){
+				var attachment = frame.state().get('selection').first().toJSON();
+				$('#cmp_teacher_signature_id').val(attachment.id || 0);
+				$('#cmp_teacher_signature_url').val(attachment.url || '');
+			});
+			frame.open();
+		});
+
+		$(document).on('click', '#cmp_teacher_signature_clear', function(e){
+			e.preventDefault();
+			$('#cmp_teacher_signature_id').val(0);
+			$('#cmp_teacher_signature_url').val('');
+		});
+	})(jQuery);
+	</script>
+	<?php
+}
+
+/**
+ * Saves teacher signature metadata from the user profile screen.
+ *
+ * @param int $user_id User ID.
+ * @return void
+ */
+function cmp_save_teacher_signature_profile_fields( $user_id ) {
+	$user_id = absint( $user_id );
+
+	if ( ! $user_id || ! current_user_can( 'edit_user', $user_id ) ) {
+		return;
+	}
+
+	if ( ! isset( $_POST['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['_wpnonce'] ) ), 'update-user_' . $user_id ) ) {
+		return;
+	}
+
+	$signature_id  = absint( wp_unslash( $_POST['cmp_teacher_signature_id'] ?? 0 ) );
+	$signature_url = esc_url_raw( trim( (string) wp_unslash( $_POST['cmp_teacher_signature_url'] ?? '' ) ) );
+
+	if ( '' === $signature_url ) {
+		delete_user_meta( $user_id, 'cmp_teacher_signature_url' );
+		delete_user_meta( $user_id, 'cmp_teacher_signature_id' );
+		return;
+	}
+
+	update_user_meta( $user_id, 'cmp_teacher_signature_id', $signature_id );
+	update_user_meta( $user_id, 'cmp_teacher_signature_url', $signature_url );
+}
+
+add_action( 'admin_enqueue_scripts', 'cmp_enqueue_teacher_signature_assets' );
+add_action( 'show_user_profile', 'cmp_render_teacher_signature_profile_fields' );
+add_action( 'edit_user_profile', 'cmp_render_teacher_signature_profile_fields' );
+add_action( 'personal_options_update', 'cmp_save_teacher_signature_profile_fields' );
+add_action( 'edit_user_profile_update', 'cmp_save_teacher_signature_profile_fields' );

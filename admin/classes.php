@@ -19,7 +19,7 @@ function cmp_render_class_form( $class = null, $return_page = 'cmp-classes' ) {
 	$is_edit = $class && ! empty( $class->id );
 	$courses = cmp_get_tutor_courses();
 	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" data-cmp-ajax-form="cmp_save_class_ajax">
 		<input type="hidden" name="action" value="cmp_save_class">
 		<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
 		<?php if ( $is_edit ) : ?>
@@ -74,9 +74,20 @@ function cmp_render_classes_page() {
 	$rows   = cmp_get_classes();
 	?>
 	<div class="wrap cmp-wrap">
-		<h1><?php esc_html_e( 'Classes', 'class-manager-pro' ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Keep classes as the top-level structure. Batch fee now controls the real selling price, while class fee stays as a default template for new batches and older data.', 'class-manager-pro' ); ?></p>
+		<h1><?php esc_html_e( 'Classes & Batches', 'class-manager-pro' ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Manage classes as templates, then expand into batches for students, attendance, payments, announcements, teachers, and Tutor LMS links.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-classes' ); ?>
+		<?php
+		cmp_render_workflow_tabs(
+			array(
+				array( 'key' => 'classes', 'label' => __( 'Classes', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-classes' ) ),
+				array( 'key' => 'batches', 'label' => __( 'Batches', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-batches' ) ),
+			),
+			'classes',
+			__( 'Class and batch sections', 'class-manager-pro' )
+		);
+		?>
 
 		<section class="cmp-panel">
 			<h2><?php echo esc_html( $class ? __( 'Edit Class', 'class-manager-pro' ) : __( 'Add Class', 'class-manager-pro' ) ); ?></h2>
@@ -115,7 +126,7 @@ function cmp_render_classes_page() {
 						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
 					</tr>
 				</thead>
-				<tbody>
+				<tbody id="cmp-class-table-body">
 					<?php if ( empty( $rows ) ) : ?>
 						<tr><td colspan="7"><?php esc_html_e( 'No classes found.', 'class-manager-pro' ); ?></td></tr>
 					<?php else : ?>

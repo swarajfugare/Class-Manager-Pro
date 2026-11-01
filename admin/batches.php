@@ -22,7 +22,7 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 	$teachers        = cmp_get_teacher_users( $is_edit ? (int) $batch->teacher_user_id : 0 );
 	$status          = $is_edit ? $batch->status : 'active';
 	?>
-	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" data-cmp-ajax-form="cmp_save_batch_ajax">
 		<input type="hidden" name="action" value="cmp_save_batch">
 		<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
 		<?php if ( $is_edit ) : ?>
@@ -145,6 +145,17 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 						<input type="checkbox" id="cmp-batch-is-free" name="is_free" value="1" <?php checked( $is_edit && ! empty( $batch->is_free ), true ); ?>>
 						<?php esc_html_e( 'Students fill the intake form without Razorpay payment.', 'class-manager-pro' ); ?>
 					</label>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row"><label for="cmp-batch-permanent-registration-enabled"><?php esc_html_e( 'Permanent Registration Link', 'class-manager-pro' ); ?></label></th>
+				<td>
+					<input type="hidden" name="permanent_registration_enabled" value="0">
+					<label>
+						<input type="checkbox" id="cmp-batch-permanent-registration-enabled" name="permanent_registration_enabled" value="1" <?php checked( $is_edit && ! empty( $batch->permanent_registration_enabled ), true ); ?>>
+						<?php esc_html_e( 'Enable one permanent public link for this free batch.', 'class-manager-pro' ); ?>
+					</label>
+					<p class="description"><?php esc_html_e( 'Free batches can stay open on one permanent URL. Paid batches keep using secure temporary links.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<?php if ( $is_edit ) : ?>
@@ -640,14 +651,19 @@ function cmp_render_batch_expenses_tab( $batch, $metrics ) {
  * @return void
  */
 function cmp_render_batch_registration_links_panel( $batch ) {
-	$temp_token      = cmp_get_batch_registration_token_for_batch( (int) $batch->id );
-	$temp_link_url   = $temp_token ? cmp_get_batch_temporary_registration_url( $temp_token ) : '';
+	$overview        = cmp_get_batch_registration_overview( (int) $batch->id );
+	$temp_token      = ! empty( $overview['temporary_token'] ) ? $overview['temporary_token'] : cmp_get_batch_registration_token_for_batch( (int) $batch->id, false );
+	$permanent_link  = cmp_get_batch_permanent_registration_url( $batch );
+	$permanent_qr    = cmp_get_registration_qr_url( $permanent_link, 220 );
+	$temp_status     = $temp_token ? cmp_get_batch_registration_link_status( $temp_token ) : array( 'key' => 'inactive', 'label' => __( 'Inactive', 'class-manager-pro' ), 'description' => __( 'No registration link is active right now.', 'class-manager-pro' ) );
+	$perm_status     = ! empty( $overview['permanent_status'] ) ? $overview['permanent_status'] : array( 'key' => 'inactive', 'label' => __( 'Inactive', 'class-manager-pro' ) );
+	$temp_link_url   = 'active' === $temp_status['key'] ? cmp_get_batch_temporary_registration_url( $temp_token ) : '';
 	?>
 	<section class="cmp-panel" id="cmp-batch-registration-links">
 		<div class="cmp-panel-header">
 			<div>
 				<h2><?php esc_html_e( 'Registration Links', 'class-manager-pro' ); ?></h2>
-				<p class="cmp-muted"><?php esc_html_e( 'Generate a temporary registration link that stays active for 10 minutes from creation time unless you close it earlier.', 'class-manager-pro' ); ?></p>
+				<p class="cmp-muted"><?php esc_html_e( 'Use temporary links for secure admissions and enable a permanent link for free batches when you need unlimited submissions.', 'class-manager-pro' ); ?></p>
 			</div>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
 				<input type="hidden" name="action" value="cmp_generate_batch_registration_link">
@@ -661,35 +677,114 @@ function cmp_render_batch_registration_links_panel( $batch ) {
 			<div class="cmp-panel-header">
 				<div>
 					<h3><?php esc_html_e( 'Temporary Registration Link', 'class-manager-pro' ); ?></h3>
-					<p class="cmp-muted"><?php esc_html_e( 'Only temporary registration links are available for this batch.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Temporary links stay active for 10 minutes from creation time unless you close them earlier.', 'class-manager-pro' ); ?></p>
 				</div>
 			</div>
 
-			<?php if ( $temp_token && $temp_link_url ) : ?>
-				<div class="cmp-inline-tools">
-					<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $temp_link_url ); ?>" id="cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>">
-					<button type="button" class="button" data-cmp-copy-target="#cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
-					<a class="button" href="<?php echo esc_url( $temp_link_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Form', 'class-manager-pro' ); ?></a>
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
-						<input type="hidden" name="action" value="cmp_close_batch_registration_link">
-						<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
-						<?php wp_nonce_field( 'cmp_close_batch_registration_link_' . (int) $batch->id ); ?>
-						<button type="submit" class="button"><?php esc_html_e( 'Close Link', 'class-manager-pro' ); ?></button>
-					</form>
+			<?php if ( $temp_token ) : ?>
+				<div class="cmp-inline-tools cmp-space-top">
+					<span class="cmp-inline-badge cmp-inline-badge-<?php echo esc_attr( $temp_status['key'] ); ?>"><?php echo esc_html( $temp_status['label'] ); ?></span>
+					<span class="cmp-muted">
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: %s: creation date */
+								__( 'Created at %s', 'class-manager-pro' ),
+								$temp_token->created_at
+							)
+						);
+						?>
+					</span>
+					<?php if ( $temp_link_url ) : ?>
+						<span class="cmp-muted">
+							<?php esc_html_e( 'Remaining validity:', 'class-manager-pro' ); ?>
+							<strong class="cmp-registration-countdown" data-cmp-expiry-at="<?php echo esc_attr( $temp_token->expires_at ); ?>"><?php echo esc_html( $temp_token->expires_at ); ?></strong>
+						</span>
+					<?php endif; ?>
 				</div>
-				<p class="description">
-					<?php
-					echo esc_html(
-						sprintf(
-							/* translators: %s: expiry datetime */
-							__( 'Active until %s.', 'class-manager-pro' ),
-							$temp_token->expires_at
-						)
-					);
-					?>
-				</p>
+				<?php if ( $temp_link_url ) : ?>
+					<div class="cmp-inline-tools">
+						<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $temp_link_url ); ?>" id="cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>">
+						<button type="button" class="button" data-cmp-copy-target="#cmp-batch-temp-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
+						<a class="button" href="<?php echo esc_url( $temp_link_url ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Form', 'class-manager-pro' ); ?></a>
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+							<input type="hidden" name="action" value="cmp_close_batch_registration_link">
+							<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+							<?php wp_nonce_field( 'cmp_close_batch_registration_link_' . (int) $batch->id ); ?>
+							<button type="submit" class="button"><?php esc_html_e( 'Close Link', 'class-manager-pro' ); ?></button>
+						</form>
+					</div>
+					<p class="description">
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: %s: expiry datetime */
+								__( 'Active until %s.', 'class-manager-pro' ),
+								$temp_token->expires_at
+							)
+						);
+						?>
+					</p>
+				<?php else : ?>
+					<div class="cmp-callout cmp-callout-info">
+						<p><?php echo esc_html( $temp_status['description'] ); ?></p>
+						<p class="cmp-muted"><?php esc_html_e( 'Generate a new temporary link when you want to open admissions again for this batch.', 'class-manager-pro' ); ?></p>
+					</div>
+				<?php endif; ?>
 			<?php else : ?>
-				<p><?php esc_html_e( 'No active temporary registration link is available right now.', 'class-manager-pro' ); ?></p>
+				<div class="cmp-callout cmp-callout-info">
+					<p><?php esc_html_e( 'No temporary registration link has been created for this batch yet.', 'class-manager-pro' ); ?></p>
+				</div>
+			<?php endif; ?>
+		</section>
+
+		<section class="cmp-panel cmp-panel-nested">
+			<div class="cmp-panel-header">
+				<div>
+					<h3><?php esc_html_e( 'Permanent Registration Link', 'class-manager-pro' ); ?></h3>
+					<p class="cmp-muted"><?php esc_html_e( 'This link appears only for free batches when the permanent-link option is enabled.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+
+			<?php if ( ! empty( $batch->is_free ) && ! empty( $batch->permanent_registration_enabled ) && $permanent_link ) : ?>
+				<div class="cmp-inline-tools">
+					<input type="text" class="large-text code" readonly value="<?php echo esc_attr( $permanent_link ); ?>" id="cmp-batch-permanent-link-<?php echo esc_attr( (int) $batch->id ); ?>">
+					<button type="button" class="button" data-cmp-copy-target="#cmp-batch-permanent-link-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Copy Link', 'class-manager-pro' ); ?></button>
+					<a class="button" href="<?php echo esc_url( $permanent_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Open Form', 'class-manager-pro' ); ?></a>
+				</div>
+				<div class="cmp-inline-tools cmp-space-top">
+					<span class="cmp-inline-badge cmp-inline-badge-<?php echo esc_attr( $perm_status['key'] ); ?>"><?php echo esc_html( $perm_status['label'] ); ?></span>
+					<span class="cmp-muted">
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: 1: registrations count 2: last registration date */
+								__( 'Registrations: %1$s. Last registration: %2$s.', 'class-manager-pro' ),
+								number_format_i18n( (int) $overview['successful_registrations'] ),
+								! empty( $overview['last_registration_at'] ) ? $overview['last_registration_at'] : __( 'Never', 'class-manager-pro' )
+							)
+						);
+						?>
+					</span>
+				</div>
+				<?php if ( $permanent_qr ) : ?>
+					<div class="cmp-registration-qr">
+						<img src="<?php echo esc_url( $permanent_qr ); ?>" alt="<?php esc_attr_e( 'Permanent registration QR code', 'class-manager-pro' ); ?>">
+						<p class="cmp-muted"><?php esc_html_e( 'Scan to open the permanent registration form.', 'class-manager-pro' ); ?></p>
+					</div>
+				<?php endif; ?>
+			<?php elseif ( empty( $batch->is_free ) ) : ?>
+				<div class="cmp-callout cmp-callout-warning">
+					<p><?php esc_html_e( 'Make this batch free before enabling a permanent registration link.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Paid batches must continue using temporary links for secure admissions.', 'class-manager-pro' ); ?></p>
+				</div>
+			<?php elseif ( empty( $batch->permanent_registration_enabled ) ) : ?>
+				<div class="cmp-callout cmp-callout-info">
+					<p><?php esc_html_e( 'Enable the permanent registration link option in the batch editor to show this URL.', 'class-manager-pro' ); ?></p>
+					<p class="cmp-muted"><?php esc_html_e( 'Once enabled, the link stays available for free batches until the setting is turned off.', 'class-manager-pro' ); ?></p>
+				</div>
+			<?php else : ?>
+				<p><?php esc_html_e( 'No permanent registration link is available right now.', 'class-manager-pro' ); ?></p>
 			<?php endif; ?>
 		</section>
 	</section>
@@ -845,6 +940,152 @@ function cmp_render_batch_announcements_tab( $batch ) {
 }
 
 /**
+ * Renders the batch admissions tab.
+ *
+ * @param object $batch Batch row.
+ * @return void
+ */
+function cmp_render_batch_admissions_tab( $batch ) {
+	$search    = sanitize_text_field( cmp_field( $_GET, 'registration_search', '' ) );
+	$overview  = cmp_get_batch_registration_overview( (int) $batch->id );
+	$history   = cmp_get_batch_registration_history( (int) $batch->id, $search, 12 );
+	$latest_temp_token = cmp_get_batch_registration_token_for_batch( (int) $batch->id, false );
+	$latest_temp_status = $latest_temp_token ? cmp_get_batch_registration_link_status( $latest_temp_token ) : $overview['temporary_status'];
+	$search_id = 'cmp-batch-registration-search-' . (int) $batch->id;
+	?>
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Registration Overview', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Track admission flow, link usage, and recent student joins in one workspace.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
+		<div class="cmp-cards cmp-cards-4">
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Total Registrations', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['total_registrations'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( "Today's Registrations", 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['today_registrations'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Pending Registrations', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['pending_registrations'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Successful Registrations', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['successful_registrations'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Temporary Links', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['temporary_links'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Permanent Links', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( number_format_i18n( (int) $overview['permanent_links'] ) ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( $overview['registration_status_label'] ); ?></strong>
+			</div>
+			<div class="cmp-card">
+				<span><?php esc_html_e( 'Capacity', 'class-manager-pro' ); ?></span>
+				<strong><?php echo esc_html( $overview['batch_full'] ? __( 'Batch Full', 'class-manager-pro' ) : ( $overview['capacity_limit'] > 0 ? $overview['capacity_remaining'] . ' ' . __( 'left', 'class-manager-pro' ) : __( 'Open', 'class-manager-pro' ) ) ); ?></strong>
+			</div>
+		</div>
+	</section>
+
+	<div class="cmp-grid cmp-grid-2">
+		<section class="cmp-panel cmp-panel-nested">
+			<div class="cmp-panel-header">
+				<div>
+					<h3><?php esc_html_e( 'Temporary Link Snapshot', 'class-manager-pro' ); ?></h3>
+					<p class="cmp-muted"><?php esc_html_e( 'Temporary links are ideal for paid batches and one-time admissions.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+			<p>
+				<span class="cmp-inline-badge cmp-inline-badge-<?php echo esc_attr( $latest_temp_status['key'] ); ?>"><?php echo esc_html( $latest_temp_status['label'] ); ?></span>
+			</p>
+			<p class="cmp-muted"><?php echo esc_html( $latest_temp_status['description'] ); ?></p>
+			<p class="cmp-muted"><?php echo esc_html( sprintf( __( 'Last registration: %s', 'class-manager-pro' ), ! empty( $overview['last_registration_at'] ) ? $overview['last_registration_at'] : __( 'Never', 'class-manager-pro' ) ) ); ?></p>
+		</section>
+		<section class="cmp-panel cmp-panel-nested">
+			<div class="cmp-panel-header">
+				<div>
+					<h3><?php esc_html_e( 'Permanent Link Snapshot', 'class-manager-pro' ); ?></h3>
+					<p class="cmp-muted"><?php esc_html_e( 'Free batches can keep a permanent link open when enabled.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+			<p>
+				<span class="cmp-inline-badge cmp-inline-badge-<?php echo esc_attr( $overview['permanent_status']['key'] ); ?>"><?php echo esc_html( $overview['permanent_status']['label'] ); ?></span>
+			</p>
+			<p class="cmp-muted"><?php echo esc_html( $overview['permanent_status']['description'] ); ?></p>
+			<p class="cmp-muted"><?php echo esc_html( sprintf( __( 'Registrations captured: %s', 'class-manager-pro' ), number_format_i18n( (int) $overview['successful_registrations'] ) ) ); ?></p>
+		</section>
+	</div>
+
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Registration History', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Search by student name, mobile number, or email to review admission history.', 'class-manager-pro' ); ?></p>
+			</div>
+			<form method="get" class="cmp-inline-form">
+				<input type="hidden" name="page" value="cmp-batches">
+				<input type="hidden" name="action" value="view">
+				<input type="hidden" name="id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+				<input type="hidden" name="tab" value="admissions">
+				<label class="screen-reader-text" for="<?php echo esc_attr( $search_id ); ?>"><?php esc_html_e( 'Search registrations', 'class-manager-pro' ); ?></label>
+				<input type="search" id="<?php echo esc_attr( $search_id ); ?>" name="registration_search" value="<?php echo esc_attr( $search ); ?>" placeholder="<?php esc_attr_e( 'Search by name, mobile, or email', 'class-manager-pro' ); ?>">
+				<?php submit_button( __( 'Search', 'class-manager-pro' ), 'secondary', '', false ); ?>
+			</form>
+		</div>
+
+		<div class="cmp-table-scroll">
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Contact', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Method', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Source', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Time', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if ( empty( $history ) ) : ?>
+						<tr>
+							<td colspan="6"><?php esc_html_e( 'No registration history found for this batch.', 'class-manager-pro' ); ?></td>
+						</tr>
+					<?php else : ?>
+						<?php foreach ( $history as $row ) : ?>
+							<tr>
+								<td>
+									<strong><?php echo esc_html( ! empty( $row->student_name ) ? $row->student_name : __( 'Unknown', 'class-manager-pro' ) ); ?></strong><br>
+									<span class="cmp-muted"><?php echo esc_html( ! empty( $row->student_unique_id ) ? $row->student_unique_id : '' ); ?></span>
+								</td>
+								<td>
+									<?php echo esc_html( ! empty( $row->student_phone ) ? $row->student_phone : __( 'Not set', 'class-manager-pro' ) ); ?><br>
+									<span class="cmp-muted"><?php echo esc_html( ! empty( $row->student_email ) ? $row->student_email : __( 'Not set', 'class-manager-pro' ) ); ?></span>
+								</td>
+								<td><?php echo esc_html( ! empty( $row->registration_method_label ) ? $row->registration_method_label : __( 'Manual', 'class-manager-pro' ) ); ?></td>
+								<td><?php echo esc_html( ! empty( $row->registration_source_label ) ? $row->registration_source_label : __( 'Manual', 'class-manager-pro' ) ); ?></td>
+								<td><?php echo esc_html( $row->created_at ); ?></td>
+								<td><span class="cmp-inline-badge"><?php echo esc_html( ! empty( $row->registration_status_label ) ? $row->registration_status_label : __( 'Successful', 'class-manager-pro' ) ); ?></span></td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
+		</div>
+	</section>
+	<?php
+}
+
+/**
  * Renders the batch detail panel.
  *
  * @param object $batch Batch row.
@@ -855,7 +1096,7 @@ function cmp_render_batch_detail_panel( $batch ) {
 	$course_url      = ! empty( $batch->course_id ) ? cmp_get_tutor_course_url( (int) $batch->course_id ) : '';
 	$current_tab     = sanitize_key( cmp_field( $_GET, 'tab', 'students' ) );
 
-	if ( ! in_array( $current_tab, array( 'students', 'attendance', 'expenses', 'announcements' ), true ) ) {
+	if ( ! in_array( $current_tab, array( 'students', 'attendance', 'expenses', 'announcements', 'admissions' ), true ) ) {
 		$current_tab = 'students';
 	}
 	?>
@@ -863,6 +1104,7 @@ function cmp_render_batch_detail_panel( $batch ) {
 		<h1><?php echo esc_html( $batch->batch_name ); ?></h1>
 		<p class="cmp-page-intro"><?php esc_html_e( 'This page is focused on one batch only: students, attendance, expenses, import, and linked learning details.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-batches' ); ?>
 
 		<div class="cmp-toolbar">
 			<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>"><?php esc_html_e( 'Back to Batches', 'class-manager-pro' ); ?></a>
@@ -881,11 +1123,11 @@ function cmp_render_batch_detail_panel( $batch ) {
 			<?php endif; ?>
 		</div>
 
-		<div class="cmp-cards cmp-cards-3">
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( number_format_i18n( $metrics['student_count'] ) ); ?></strong>
-			</div>
+	<div class="cmp-cards cmp-cards-3">
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Students', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( number_format_i18n( $metrics['student_count'] ) ); ?></strong>
+		</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Collected', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $metrics['revenue'] ) ); ?></strong>
@@ -902,13 +1144,48 @@ function cmp_render_batch_detail_panel( $batch ) {
 				<span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
 			</div>
-			<div class="cmp-card">
-				<span><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( ucfirst( $batch->status ) ); ?></strong>
-			</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( ucfirst( $batch->status ) ); ?></strong>
 		</div>
+	</div>
 
-		<section class="cmp-panel">
+	<?php
+	$auto_summary = function_exists( 'cmp_smartcertify_get_batch_auto_summary' ) ? cmp_smartcertify_get_batch_auto_summary( (int) $batch->id ) : array();
+	$certificate_status = ! empty( $auto_summary['generated_count'] ) ? __( 'Generated', 'class-manager-pro' ) : ( 'completed' === (string) $batch->status ? __( 'Queued', 'class-manager-pro' ) : __( 'Pending', 'class-manager-pro' ) );
+	?>
+	<div class="cmp-cards cmp-cards-3" style="margin-top:16px;">
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Certificate Status', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( $certificate_status ); ?></strong>
+		</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Queue Status', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( $auto_summary['queue_status'] ?? __( 'Not queued', 'class-manager-pro' ) ); ?></strong>
+		</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Generated Count', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( number_format_i18n( intval( $auto_summary['generated_count'] ?? 0 ) ) ); ?></strong>
+		</div>
+	</div>
+
+	<?php if ( 'completed' === (string) $batch->status ) : ?>
+		<div class="cmp-panel" style="margin-top:16px;">
+			<p style="margin-top:0;"><?php esc_html_e( 'Need to regenerate certificates for this completed batch? This will remove the previous auto-generated set and queue SmartCertify again with fresh certificates and codes.', 'class-manager-pro' ); ?></p>
+			<?php if ( function_exists( 'cmp_smartcertify_is_available' ) && cmp_smartcertify_is_available() ) : ?>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+					<input type="hidden" name="action" value="cmp_generate_batch_certificates_again">
+					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+					<?php wp_nonce_field( 'cmp_generate_batch_certificates_again_' . (int) $batch->id ); ?>
+					<button type="submit" class="button button-primary"><?php esc_html_e( 'Generate Certificates Again', 'class-manager-pro' ); ?></button>
+				</form>
+			<?php else : ?>
+				<p class="cmp-muted"><?php esc_html_e( 'SmartCertify is not available on this site, so certificate regeneration is unavailable.', 'class-manager-pro' ); ?></p>
+			<?php endif; ?>
+		</div>
+	<?php endif; ?>
+
+	<section class="cmp-panel">
 			<div class="cmp-detail-grid">
 				<p><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_name ); ?></strong></p>
 				<p><span><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_get_teacher_label( (int) $batch->teacher_user_id ) ); ?></strong></p>
@@ -930,6 +1207,7 @@ function cmp_render_batch_detail_panel( $batch ) {
 				<a class="nav-tab <?php echo 'attendance' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'attendance' ) ) ); ?>"><?php esc_html_e( 'Attendance', 'class-manager-pro' ); ?></a>
 			<?php endif; ?>
 			<a class="nav-tab <?php echo 'expenses' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'expenses' ) ) ); ?>"><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></a>
+			<a class="nav-tab <?php echo 'admissions' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'admissions' ) ) ); ?>"><?php esc_html_e( 'Admissions', 'class-manager-pro' ); ?></a>
 			<a class="nav-tab <?php echo 'announcements' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'announcements' ) ) ); ?>"><?php esc_html_e( 'Announcements', 'class-manager-pro' ); ?></a>
 		</nav>
 
@@ -937,6 +1215,8 @@ function cmp_render_batch_detail_panel( $batch ) {
 			<?php cmp_render_batch_attendance_panel( $batch ); ?>
 		<?php elseif ( 'expenses' === $current_tab ) : ?>
 			<?php cmp_render_batch_expenses_tab( $batch, $metrics ); ?>
+		<?php elseif ( 'admissions' === $current_tab ) : ?>
+			<?php cmp_render_batch_admissions_tab( $batch ); ?>
 		<?php elseif ( 'announcements' === $current_tab ) : ?>
 			<?php cmp_render_batch_announcements_tab( $batch ); ?>
 		<?php else : ?>
@@ -969,9 +1249,20 @@ function cmp_render_batches_page() {
 	}
 	?>
 	<div class="wrap cmp-wrap">
-		<h1><?php echo esc_html( $edit_batch ? __( 'Edit Batch', 'class-manager-pro' ) : ( 'add' === $action ? __( 'Add Batch', 'class-manager-pro' ) : __( 'Batches', 'class-manager-pro' ) ) ); ?></h1>
-		<p class="cmp-page-intro"><?php esc_html_e( 'Keep the batch list simple, then open a single batch when you need students, attendance, or Razorpay import.', 'class-manager-pro' ); ?></p>
+		<h1><?php echo esc_html( $edit_batch ? __( 'Edit Batch', 'class-manager-pro' ) : ( 'add' === $action ? __( 'Add Batch', 'class-manager-pro' ) : __( 'Classes & Batches', 'class-manager-pro' ) ) ); ?></h1>
+		<p class="cmp-page-intro"><?php esc_html_e( 'Work from class structure into batch workspaces for students, attendance, payments, announcements, teachers, and Tutor LMS connections.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php cmp_render_admin_workflow_nav( 'cmp-batches' ); ?>
+		<?php
+		cmp_render_workflow_tabs(
+			array(
+				array( 'key' => 'classes', 'label' => __( 'Classes', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-classes' ) ),
+				array( 'key' => 'batches', 'label' => __( 'Batches', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-batches' ) ),
+			),
+			'batches',
+			__( 'Class and batch sections', 'class-manager-pro' )
+		);
+		?>
 
 		<?php if ( $edit_batch || 'add' === $action ) : ?>
 			<div class="cmp-toolbar">
@@ -1068,7 +1359,7 @@ function cmp_render_batches_page() {
 							<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
 						</tr>
 					</thead>
-					<tbody>
+					<tbody id="cmp-batch-table-body">
 						<?php if ( empty( $batch_rows ) ) : ?>
 							<tr><td colspan="10"><?php esc_html_e( 'No batches found.', 'class-manager-pro' ); ?></td></tr>
 						<?php else : ?>

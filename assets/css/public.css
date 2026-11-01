@@ -1,5 +1,8 @@
 .cmp-public-theme-shell {
-	background: #f3f6fb;
+	background:
+		radial-gradient(circle at top left, rgba(34, 113, 177, 0.08), transparent 32%),
+		radial-gradient(circle at top right, rgba(0, 163, 42, 0.08), transparent 30%),
+		#f3f6fb;
 	color: #1d2327;
 	font-family: inherit;
 	min-height: 70vh;
@@ -15,6 +18,49 @@
 	margin: 0 auto;
 	max-width: 1120px;
 	padding: 48px 20px 72px;
+}
+
+.cmp-public-steps {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	margin: 0 0 18px;
+}
+
+.cmp-public-step {
+	align-items: center;
+	background: rgba(255, 255, 255, 0.8);
+	border: 1px solid rgba(34, 113, 177, 0.12);
+	border-radius: 14px;
+	color: #475569;
+	display: flex;
+	gap: 10px;
+	padding: 12px 14px;
+}
+
+.cmp-public-step.is-active {
+	background: linear-gradient(135deg, rgba(34, 113, 177, 0.14), rgba(0, 163, 42, 0.08));
+	border-color: rgba(34, 113, 177, 0.35);
+	color: #0f172a;
+}
+
+.cmp-public-step.is-complete {
+	background: rgba(16, 185, 129, 0.08);
+	border-color: rgba(16, 185, 129, 0.2);
+}
+
+.cmp-public-step-index {
+	align-items: center;
+	background: #111827;
+	border-radius: 999px;
+	color: #fff;
+	display: inline-flex;
+	flex: 0 0 auto;
+	font-size: 11px;
+	font-weight: 700;
+	height: 26px;
+	justify-content: center;
+	width: 26px;
 }
 
 .cmp-public-hero {
@@ -120,6 +166,82 @@
 	color: #8a2424;
 }
 
+.cmp-public-success {
+	background: linear-gradient(180deg, rgba(34, 113, 177, 0.08), rgba(0, 163, 42, 0.05));
+	border: 1px solid rgba(34, 113, 177, 0.18);
+	border-radius: 18px;
+	margin-bottom: 18px;
+	padding: 24px;
+}
+
+.cmp-public-success-badge {
+	background: #111827;
+	border-radius: 999px;
+	color: #fff;
+	display: inline-flex;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	margin-bottom: 14px;
+	padding: 8px 12px;
+	text-transform: uppercase;
+}
+
+.cmp-public-success h2 {
+	font-size: 30px;
+	margin: 0 0 10px;
+}
+
+.cmp-public-success-intro {
+	color: #50575e;
+	font-size: 17px;
+	line-height: 1.6;
+	margin: 0 0 18px;
+	max-width: 760px;
+}
+
+.cmp-public-success-grid {
+	display: grid;
+	gap: 14px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cmp-public-success-grid-span {
+	grid-column: 1 / -1;
+}
+
+.cmp-public-success-grid div {
+	background: rgba(255, 255, 255, 0.8);
+	border: 1px solid rgba(34, 113, 177, 0.12);
+	border-radius: 12px;
+	padding: 14px 16px;
+}
+
+.cmp-public-success-grid span {
+	color: #646970;
+	display: block;
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	margin-bottom: 8px;
+	text-transform: uppercase;
+}
+
+.cmp-public-success-grid strong {
+	display: block;
+	font-size: 16px;
+	line-height: 1.45;
+	overflow-wrap: anywhere;
+}
+
+.cmp-public-success-grid-span strong {
+	font-size: 17px;
+}
+
+.cmp-public-success-actions {
+	margin-top: 18px;
+}
+
 .cmp-public-form {
 	display: grid;
 	gap: 20px;
@@ -211,6 +333,7 @@
 }
 
 @media (max-width: 900px) {
+	.cmp-public-steps,
 	.cmp-public-hero,
 	.cmp-public-grid {
 		grid-template-columns: 1fr;
@@ -233,5 +356,9 @@
 
 	.cmp-public-button {
 		width: 100%;
+	}
+
+	.cmp-public-success-grid {
+		grid-template-columns: 1fr;
 	}
 }

@@ -148,6 +148,9 @@ function cmp_render_teacher_console_page() {
 		<h1><?php esc_html_e( 'Teacher Console', 'class-manager-pro' ); ?></h1>
 		<p class="cmp-page-intro"><?php esc_html_e( 'Use a simpler teacher workspace with separate overview, students, interested follow-ups, and attendance sections for each batch.', 'class-manager-pro' ); ?></p>
 		<?php cmp_render_notice(); ?>
+		<?php if ( $is_admin ) : ?>
+			<?php cmp_render_admin_workflow_nav( 'cmp-teacher-console' ); ?>
+		<?php endif; ?>
 
 		<?php if ( $is_admin ) : ?>
 			<section class="cmp-panel">
@@ -570,7 +573,7 @@ function cmp_render_teacher_console_page() {
 							</div>
 						</div>
 
-						<?php cmp_render_interested_students_table( $interested_students, __( 'No failed payment attempts are linked to this batch right now.', 'class-manager-pro' ), $interested_table_context ); ?>
+						<?php echo cmp_render_interested_students_table( $interested_students, __( 'No failed payment attempts are linked to this batch right now.', 'class-manager-pro' ), $interested_table_context ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
 					</section>
 				<?php endif; ?>
 

@@ -172,45 +172,76 @@ class CMP_Razorpay_Webhook {
 			$name = $phone;
 		}
 
-		$student = null;
+		$student_id          = 0;
+		$registration_batch   = $batch ? $batch : ( $batch_id ? cmp_get_batch( $batch_id ) : null );
+		$registration_payload = array(
+			'name'  => $name,
+			'phone' => $phone,
+			'email' => $email,
+		);
 
-		if ( $recent_match && ! empty( $recent_match['student_id'] ) && ( ! $batch_id || empty( $recent_match['batch_id'] ) || (int) $recent_match['batch_id'] === (int) $batch_id ) ) {
-			$student = cmp_get_student( (int) $recent_match['student_id'] );
-		}
-
-		if ( ! $student && $batch_id ) {
-			$student = cmp_find_student_in_batch_by_contact( $batch_id, $phone, $email );
-		}
-
-		if ( ! $student ) {
-			$student = cmp_find_reusable_import_student( $batch, $name, $email, $phone, $class_id );
-		}
-
-		if ( ! $student ) {
-			$class = $class_id ? cmp_get_class( $class_id ) : null;
-			$fee   = $batch ? cmp_get_batch_effective_fee( $batch ) : ( $class ? (float) $class->total_fee : 0 );
-
-			$student_id = cmp_insert_student(
+		if ( $registration_batch ) {
+			$registration_result = cmp_process_batch_registration(
+				$registration_batch,
+				$registration_payload,
 				array(
-					'name'      => $name,
-					'phone'     => $phone,
-					'email'     => $email,
-					'class_id'  => $class_id,
-					'batch_id'  => $batch_id,
-					'total_fee' => isset( $meta['total_fee'] ) ? cmp_money_value( $meta['total_fee'] ) : $fee,
-					'paid_fee'  => 0,
-					'status'    => 'active',
-					'notes'     => __( 'Created by Razorpay webhook.', 'class-manager-pro' ),
+					'registration_method' => 'razorpay_import',
+					'registration_source' => 'razorpay_webhook',
+					'send_notifications'  => true,
+					'total_fee'           => isset( $meta['total_fee'] ) ? cmp_money_value( $meta['total_fee'] ) : $amount,
+					'paid_fee'            => null,
+					'status'              => 'active',
+					'notes_prefix'        => __( 'Created by Razorpay webhook.', 'class-manager-pro' ),
 				)
 			);
 
-			if ( is_wp_error( $student_id ) ) {
-				cmp_log_event( 'error', 'Razorpay webhook student creation failed.', array( 'message' => $student_id->get_error_message() ) );
-				return new WP_Error( $student_id->get_error_code(), $student_id->get_error_message(), array( 'status' => 400 ) );
+			if ( is_wp_error( $registration_result ) ) {
+				cmp_log_event( 'error', 'Razorpay webhook student creation failed.', array( 'message' => $registration_result->get_error_message() ) );
+				return new WP_Error( $registration_result->get_error_code(), $registration_result->get_error_message(), array( 'status' => 400 ) );
 			}
+
+			$student_id = (int) $registration_result;
 		} else {
-			$student_id = (int) $student->id;
-			self::maybe_update_student_assignment( $student, $class_id, $batch_id );
+			$student = null;
+
+			if ( $recent_match && ! empty( $recent_match['student_id'] ) && ( ! $batch_id || empty( $recent_match['batch_id'] ) || (int) $recent_match['batch_id'] === (int) $batch_id ) ) {
+				$student = cmp_get_student( (int) $recent_match['student_id'] );
+			}
+
+			if ( ! $student && $batch_id ) {
+				$student = cmp_find_student_in_batch_by_contact( $batch_id, $phone, $email );
+			}
+
+			if ( ! $student ) {
+				$student = cmp_find_reusable_import_student( $batch, $name, $email, $phone, $class_id );
+			}
+
+			if ( ! $student ) {
+				$class = $class_id ? cmp_get_class( $class_id ) : null;
+				$fee   = $batch ? cmp_get_batch_effective_fee( $batch ) : ( $class ? (float) $class->total_fee : 0 );
+
+				$student_id = cmp_insert_student(
+					array(
+						'name'      => $name,
+						'phone'     => $phone,
+						'email'     => $email,
+						'class_id'  => $class_id,
+						'batch_id'  => $batch_id,
+						'total_fee' => isset( $meta['total_fee'] ) ? cmp_money_value( $meta['total_fee'] ) : $fee,
+						'paid_fee'  => 0,
+						'status'    => 'active',
+						'notes'     => __( 'Created by Razorpay webhook.', 'class-manager-pro' ),
+					)
+				);
+
+				if ( is_wp_error( $student_id ) ) {
+					cmp_log_event( 'error', 'Razorpay webhook student creation failed.', array( 'message' => $student_id->get_error_message() ) );
+					return new WP_Error( $student_id->get_error_code(), $student_id->get_error_message(), array( 'status' => 400 ) );
+				}
+			} else {
+				$student_id = (int) $student->id;
+				self::maybe_update_student_assignment( $student, $class_id, $batch_id );
+			}
 		}
 
 		$payment_date = isset( $payment['created_at'] ) && is_numeric( $payment['created_at'] )

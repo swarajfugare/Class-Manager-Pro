@@ -1743,6 +1743,43 @@
 			});
 		});
 
+		$(document).on('click', '[data-cmp-send-wa="1"]', function (event) {
+			const $button = $(this);
+			const studentId = String($button.data('cmp-student-id') || '');
+			const $feedback = $($button.data('cmp-feedback') || '');
+			const originalText = getElementText($button);
+
+			if (!studentId) {
+				return;
+			}
+
+			event.preventDefault();
+			$button.prop('disabled', true).attr('aria-disabled', 'true').addClass('is-busy');
+			setElementText($button, 'Sending...');
+			updateFeedback($feedback, 'Sending WhatsApp message...', false);
+
+			$.post(ajaxEndpoint, {
+				action: 'cmp_send_student_direct_whatsapp',
+				student_id: studentId,
+				_wpnonce: getAjaxNonce()
+			}).done(function (response) {
+				if (!response || !response.success || !response.data) {
+					const msg = response && response.data && response.data.message ? response.data.message : 'WhatsApp delivery failed.';
+					updateFeedback($feedback, msg, true);
+					showAdminNotice(msg, 'error');
+					return;
+				}
+
+				updateFeedback($feedback, response.data.message || 'WhatsApp message delivered!', false);
+				showAdminNotice(response.data.message || 'WhatsApp message delivered!', 'success');
+			}).fail(function (xhr) {
+				handleEntityActionFailure(xhr, $feedback);
+			}).always(function () {
+				$button.prop('disabled', false).removeAttr('aria-disabled').removeClass('is-busy');
+				setElementText($button, originalText);
+			});
+		});
+
 		$(document).on('click', '[data-cmp-interested-email="1"]', function (event) {
 			const $button = $(this);
 			const leadId = String($button.data('cmp-lead-id') || '');

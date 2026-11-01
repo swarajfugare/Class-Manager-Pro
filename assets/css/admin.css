@@ -308,8 +308,8 @@
 
 .cmp-action-grid {
 	display: grid;
-	gap: 12px;
-	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 14px;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .cmp-action-card {
@@ -869,6 +869,18 @@
 	border-color: #cf222e;
 }
 
+.cmp-actions a.cmp-send-wa-api-link {
+	background: #e6f9ed;
+	color: #128c7e;
+	border-color: #a3e6be;
+}
+
+.cmp-actions a.cmp-send-wa-api-link:hover {
+	background: #128c7e;
+	color: #ffffff;
+	border-color: #128c7e;
+}
+
 .cmp-delete-link {
 	color: #b32d2e;
 }
@@ -881,13 +893,15 @@
 
 .cmp-delete-link.is-busy,
 .button.is-busy,
-.cmp-send-email-link.is-busy {
+.cmp-send-email-link.is-busy,
+.cmp-send-wa-api-link.is-busy {
 	position: relative;
 }
 
 .cmp-delete-link.is-busy::after,
 .button.is-busy::after,
-.cmp-send-email-link.is-busy::after {
+.cmp-send-email-link.is-busy::after,
+.cmp-send-wa-api-link.is-busy::after {
 	animation: cmp-spin 0.8s linear infinite;
 	border: 2px solid currentColor;
 	border-right-color: transparent;

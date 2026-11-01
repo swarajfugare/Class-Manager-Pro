@@ -203,6 +203,10 @@ function cmp_build_wordpress_username_from_email( $email ) {
  * @return void
  */
 function cmp_send_course_enrollment_email( $student, $course_id ) {
+	if ( ! (bool) get_option( 'cmp_email_student_on_enrollment', 0 ) ) {
+		return;
+	}
+
 	$student = is_array( $student ) ? (object) $student : $student;
 	$email   = isset( $student->email ) ? sanitize_email( $student->email ) : '';
 
@@ -359,7 +363,16 @@ function cmp_sync_student_wordpress_user( $student_id, $student_data = null ) {
 		);
 
 		if ( function_exists( 'wp_new_user_notification' ) ) {
-			wp_new_user_notification( (int) $user_result, null, 'both' );
+			$notify_admin   = (bool) get_option( 'cmp_notify_admin_on_admission', 0 );
+			$notify_student = (bool) get_option( 'cmp_email_student_on_admission', 0 );
+
+			if ( $notify_admin && $notify_student ) {
+				wp_new_user_notification( (int) $user_result, null, 'both' );
+			} elseif ( $notify_student ) {
+				wp_new_user_notification( (int) $user_result, null, 'user' );
+			} elseif ( $notify_admin ) {
+				wp_new_user_notification( (int) $user_result, null, 'admin' );
+			}
 		}
 
 		$user = get_userdata( (int) $user_result );
@@ -775,7 +788,29 @@ function cmp_enroll_student_in_specific_tutor_course( $student_id, $course_id ) 
 
 	$enrolled = false;
 
+	// Temporarily suppress Tutor LMS automatic emails to instructors/admin if anti-spam is enabled
+	$suppress_teacher_email = ! (bool) get_option( 'cmp_notify_teacher_on_admission', 0 );
+	$suppress_admin_email   = ! (bool) get_option( 'cmp_notify_admin_on_admission', 0 );
+
+	if ( $suppress_teacher_email ) {
+		add_filter( 'tutor_email_send_to_instructor', '__return_false', 999 );
+		add_filter( 'tutor_email_instructor_course_enrolled', '__return_false', 999 );
+	}
+	if ( $suppress_admin_email ) {
+		add_filter( 'tutor_email_send_to_admin', '__return_false', 999 );
+		add_filter( 'tutor_email_admin_course_enrolled', '__return_false', 999 );
+	}
+
 	$enrolled = cmp_do_tutor_course_enrollment( $course_id, $user_id );
+
+	if ( $suppress_teacher_email ) {
+		remove_filter( 'tutor_email_send_to_instructor', '__return_false', 999 );
+		remove_filter( 'tutor_email_instructor_course_enrolled', '__return_false', 999 );
+	}
+	if ( $suppress_admin_email ) {
+		remove_filter( 'tutor_email_send_to_admin', '__return_false', 999 );
+		remove_filter( 'tutor_email_admin_course_enrolled', '__return_false', 999 );
+	}
 
 	if ( ! $enrolled ) {
 		$enrolled = cmp_create_tutor_enrollment_row( $course_id, $user_id );

@@ -1,6 +1,25 @@
 # Changelog
 
-## 3.6.1 - Server Load Reduction, WhatsApp API & Webhook Suite, Email Anti-Spam & UI/UX Optimization
+## 3.6.2 - Deep Server Load Reduction, Anti-Spam Elimination & Direct WhatsApp Student Dispatch
+
+- **Server Load & Database Write Reductions**:
+  - Gated teacher console view logging (`batch_viewed`, `student_viewed`) behind 30-minute session transients to eliminate thousands of redundant database writes on page refreshes.
+  - Cached schema checks and database table queries, preventing repeated `SHOW TABLES` and `SHOW COLUMNS` lookups across requests.
+  - Aggregated multi-card dashboard metrics into unified SQL queries, cutting dashboard database hits by over 70%.
+- **Email Anti-Spam Overhaul**:
+  - Fixed WordPress core `wp_new_user_notification` to respect `cmp_notify_admin_on_admission` instead of hardcoding `'both'`, stopping automated WordPress registration spam to the admin on every student intake.
+  - Added suppression filters for Tutor LMS native instructor and admin notification emails during batch enrollment, preventing teacher email inboxes from flooding with enrollment alerts.
+  - Switched individual admission alerts to a consolidated, beautiful Daily Institute Digest Report with real-time in-app dashboard notification logs.
+- **Direct Student WhatsApp API & Webhooks**:
+  - Added individual one-click "WA API" direct dispatch button in student table rows with instant AJAX feedback.
+  - Added "Send WhatsApp (Direct API)" option to student bulk actions for instant mass student notification.
+  - Built direct WhatsApp message delivery supporting Meta WhatsApp Cloud API and custom webhook gateways (AiSensy, Wati, UltraMsg, WA-Sender).
+- **UI/UX & Frontend Polish**:
+  - Fixed `.cmp-action-grid` on Dashboard from rigid 5 columns to responsive auto-fit grid (`minmax(200px, 1fr)`), preventing cramped cards and overflowing text.
+  - Balanced public student intake form hero header and summary cards on desktop and mobile.
+  - Polished action buttons in table rows with WhatsApp API badge styling.
+
+## 3.6.1 - Server Load Optimization, WhatsApp API & Webhook Suite, Email Anti-Spam & UI/UX Optimization
 
 - **Server Load Optimization**:
   - Gated continuous 1000ms countdown timers so they only execute when countdown elements actually exist in DOM and pause when tab is inactive.

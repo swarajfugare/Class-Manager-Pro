@@ -428,6 +428,7 @@ function cmp_render_students_page() {
 				<option value="change_status"><?php esc_html_e( 'Change status', 'class-manager-pro' ); ?></option>
 				<option value="move_to_batch"><?php esc_html_e( 'Move to batch', 'class-manager-pro' ); ?></option>
 				<option value="send_mail"><?php esc_html_e( 'Send Mail', 'class-manager-pro' ); ?></option>
+				<option value="send_whatsapp"><?php esc_html_e( 'Send WhatsApp (Direct API)', 'class-manager-pro' ); ?></option>
 				<option value="clear_payment"><?php esc_html_e( 'Clear Payment', 'class-manager-pro' ); ?></option>
 				<option value="export"><?php esc_html_e( 'Export selected', 'class-manager-pro' ); ?></option>
 			</select>

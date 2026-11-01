@@ -80,10 +80,10 @@
 }
 
 .cmp-public-hero {
-	align-items: end;
+	align-items: stretch;
 	display: grid;
 	gap: 24px;
-	grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.8fr);
+	grid-template-columns: minmax(0, 1.3fr) minmax(320px, 1fr);
 	margin-bottom: 24px;
 	min-width: 0;
 }
@@ -98,14 +98,15 @@
 }
 
 .cmp-public-hero h1 {
-	font-size: 44px;
-	line-height: 1.05;
+	font-size: 40px;
+	line-height: 1.1;
 	margin: 0 0 12px;
+	word-break: break-word;
 }
 
 .cmp-public-subtitle {
 	color: #50575e;
-	font-size: 18px;
+	font-size: 17px;
 	line-height: 1.6;
 	margin: 0;
 	max-width: 700px;
@@ -115,16 +116,17 @@
 .cmp-public-summary {
 	background: #fff;
 	border: 1px solid #dcdcde;
-	border-radius: 8px;
+	border-radius: 10px;
 	box-shadow: 0 12px 35px rgba(18, 34, 56, 0.06);
 }
 
 .cmp-public-summary {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 16px;
+	grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+	gap: 12px;
 	min-width: 0;
-	padding: 20px;
+	padding: 18px;
+	align-content: center;
 }
 
 .cmp-public-summary div {

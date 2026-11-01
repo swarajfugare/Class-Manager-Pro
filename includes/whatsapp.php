@@ -13,6 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 add_action( 'rest_api_init', 'cmp_register_whatsapp_webhook_routes' );
 add_action( 'wp_ajax_cmp_test_whatsapp_connection', 'cmp_ajax_test_whatsapp_connection' );
+add_action( 'wp_ajax_cmp_send_student_direct_whatsapp', 'cmp_ajax_send_student_direct_whatsapp' );
 add_action( 'admin_post_cmp_save_whatsapp_settings', 'cmp_handle_save_whatsapp_settings' );
 
 /**
@@ -486,4 +487,39 @@ function cmp_ajax_test_whatsapp_connection() {
 	} else {
 		wp_send_json_error( array( 'message' => isset( $result['message'] ) ? $result['message'] : __( 'Delivery failed.', 'class-manager-pro' ) ) );
 	}
+}
+
+/**
+ * AJAX handler to send direct WhatsApp message to a specific student.
+ */
+function cmp_ajax_send_student_direct_whatsapp() {
+	check_ajax_referer( 'cmp_admin_nonce' );
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => __( 'Permission denied.', 'class-manager-pro' ) ), 403 );
+	}
+
+	$student_id = absint( cmp_field( $_POST, 'student_id', 0 ) );
+	$student    = function_exists( 'cmp_get_student' ) ? cmp_get_student( $student_id ) : null;
+
+	if ( ! $student ) {
+		wp_send_json_error( array( 'message' => __( 'Student not found.', 'class-manager-pro' ) ), 404 );
+	}
+
+	if ( empty( $student->phone ) ) {
+		wp_send_json_error( array( 'message' => __( 'Student has no phone number on record.', 'class-manager-pro' ) ), 400 );
+	}
+
+	$batch  = ! empty( $student->batch_id ) && function_exists( 'cmp_get_batch' ) ? cmp_get_batch( (int) $student->batch_id ) : null;
+	$result = cmp_maybe_send_direct_whatsapp_welcome( $student, $batch );
+
+	if ( false === $result ) {
+		wp_send_json_error( array( 'message' => __( 'WhatsApp API delivery is disabled in Settings. Please enable it under Settings > WhatsApp API.', 'class-manager-pro' ) ), 400 );
+	}
+
+	if ( ! empty( $result['success'] ) ) {
+		wp_send_json_success( array( 'message' => __( 'Direct WhatsApp message dispatched successfully!', 'class-manager-pro' ) ) );
+	}
+
+	wp_send_json_error( array( 'message' => ! empty( $result['message'] ) ? $result['message'] : __( 'Delivery failed.', 'class-manager-pro' ) ) );
 }

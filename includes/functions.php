@@ -7645,6 +7645,9 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 		}
 		if ( $whatsapp_url ) {
 			echo '<a href="' . esc_url( $whatsapp_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'WhatsApp', 'class-manager-pro' ) . '</a> ';
+			if ( function_exists( 'cmp_get_whatsapp_settings' ) && cmp_get_whatsapp_settings()['enabled'] ) {
+				echo '<a class="cmp-send-wa-api-link" href="#" data-cmp-send-wa="1" data-cmp-student-id="' . esc_attr( (int) $student->id ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'WA API', 'class-manager-pro' ) . '</a> ';
+			}
 		}
 		echo '<a class="cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $student->id ) . '" data-type="student" data-cmp-ajax-delete="1" data-cmp-entity-type="student" data-cmp-entity-id="' . esc_attr( (int) $student->id ) . '" data-cmp-confirm="' . esc_attr__( 'Delete this student?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'Delete', 'class-manager-pro' ) . '</a>';
 		echo '</td>';
@@ -8441,6 +8444,76 @@ function cmp_process_admin_entity_ajax_action( $forced_entity_type = '' ) {
 		);
 	}
 
+	if ( 'send_whatsapp' === $task ) {
+		if ( 'student' !== $entity_type ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'This bulk action is only supported for students.', 'class-manager-pro' ),
+				),
+				400
+			);
+		}
+
+		$students = cmp_get_students_by_ids( $entity_ids );
+		$sent     = 0;
+		$failed   = 0;
+		$skipped  = 0;
+
+		foreach ( $students as $student ) {
+			if ( empty( $student->phone ) ) {
+				++$skipped;
+				continue;
+			}
+
+			$batch  = ! empty( $student->batch_id ) ? cmp_get_batch( (int) $student->batch_id ) : null;
+			$result = function_exists( 'cmp_maybe_send_direct_whatsapp_welcome' ) ? cmp_maybe_send_direct_whatsapp_welcome( $student, $batch ) : false;
+
+			if ( false === $result ) {
+				wp_send_json_error(
+					array(
+						'message' => __( 'WhatsApp API delivery is disabled in Settings. Please enable it under Settings > WhatsApp API.', 'class-manager-pro' ),
+					),
+					400
+				);
+			}
+
+			if ( ! empty( $result['success'] ) ) {
+				++$sent;
+			} else {
+				++$failed;
+			}
+		}
+
+		$message = sprintf(
+			/* translators: %d: count */
+			__( 'WhatsApp API messages sent to %d students.', 'class-manager-pro' ),
+			$sent
+		);
+
+		if ( $skipped > 0 ) {
+			$message .= ' ' . sprintf(
+				/* translators: %d: count */
+				_n( '%d skipped (missing phone).', '%d skipped (missing phone).', $skipped, 'class-manager-pro' ),
+				$skipped
+			);
+		}
+
+		if ( $failed > 0 ) {
+			$message .= ' ' . sprintf(
+				/* translators: %d: count */
+				_n( '%d failed delivery.', '%d failed delivery.', $failed, 'class-manager-pro' ),
+				$failed
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'message'     => $message,
+				'entity_type' => 'student',
+			)
+		);
+	}
+
 	if ( 'clear_payment' === $task ) {
 		if ( 'student' !== $entity_type ) {
 			wp_send_json_error(
@@ -8471,6 +8544,76 @@ function cmp_process_admin_entity_ajax_action( $forced_entity_type = '' ) {
 				/* translators: %d: failed students */
 				_n( '%d student could not be updated.', '%d students could not be updated.', $summary['failed'], 'class-manager-pro' ),
 				(int) $summary['failed']
+			);
+		}
+
+		wp_send_json_success(
+			array(
+				'message'     => $message,
+				'entity_type' => 'student',
+			)
+		);
+	}
+
+	if ( 'send_whatsapp' === $task ) {
+		if ( 'student' !== $entity_type ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'This bulk action is only supported for students.', 'class-manager-pro' ),
+				),
+				400
+			);
+		}
+
+		$students = cmp_get_students_by_ids( $entity_ids );
+		$sent     = 0;
+		$failed   = 0;
+		$skipped  = 0;
+
+		foreach ( $students as $student ) {
+			if ( empty( $student->phone ) ) {
+				++$skipped;
+				continue;
+			}
+
+			$batch  = ! empty( $student->batch_id ) ? cmp_get_batch( (int) $student->batch_id ) : null;
+			$result = function_exists( 'cmp_maybe_send_direct_whatsapp_welcome' ) ? cmp_maybe_send_direct_whatsapp_welcome( $student, $batch ) : false;
+
+			if ( false === $result ) {
+				wp_send_json_error(
+					array(
+						'message' => __( 'WhatsApp API delivery is disabled in Settings. Please enable it under Settings > WhatsApp API.', 'class-manager-pro' ),
+					),
+					400
+				);
+			}
+
+			if ( ! empty( $result['success'] ) ) {
+				++$sent;
+			} else {
+				++$failed;
+			}
+		}
+
+		$message = sprintf(
+			/* translators: %d: count */
+			__( 'WhatsApp API messages sent to %d students.', 'class-manager-pro' ),
+			$sent
+		);
+
+		if ( $skipped > 0 ) {
+			$message .= ' ' . sprintf(
+				/* translators: %d: count */
+				_n( '%d skipped (missing phone).', '%d skipped (missing phone).', $skipped, 'class-manager-pro' ),
+				$skipped
+			);
+		}
+
+		if ( $failed > 0 ) {
+			$message .= ' ' . sprintf(
+				/* translators: %d: count */
+				_n( '%d failed delivery.', '%d failed delivery.', $failed, 'class-manager-pro' ),
+				$failed
 			);
 		}
 

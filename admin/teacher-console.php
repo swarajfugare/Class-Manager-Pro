@@ -100,33 +100,41 @@ function cmp_render_teacher_console_page() {
 	}
 
 	if ( $selected_batch && get_current_user_id() && (int) $selected_batch->teacher_user_id === get_current_user_id() ) {
-		cmp_log_teacher_action(
-			array(
-				'teacher_user_id' => get_current_user_id(),
-				'batch_id'        => (int) $selected_batch->id,
-				'action'          => 'batch_viewed',
-				'message'         => sprintf(
-					/* translators: %s: batch name */
-					__( 'Viewed batch "%s".', 'class-manager-pro' ),
-					$selected_batch->batch_name
-				),
-			)
-		);
-
-		if ( $selected_student ) {
+		$throttle_key = 'cmp_tch_view_' . get_current_user_id() . '_' . (int) $selected_batch->id;
+		if ( ! get_transient( $throttle_key ) ) {
+			set_transient( $throttle_key, 1, 30 * MINUTE_IN_SECONDS );
 			cmp_log_teacher_action(
 				array(
 					'teacher_user_id' => get_current_user_id(),
 					'batch_id'        => (int) $selected_batch->id,
-					'student_id'      => (int) $selected_student->id,
-					'action'          => 'student_viewed',
+					'action'          => 'batch_viewed',
 					'message'         => sprintf(
-						/* translators: %s: student name */
-						__( 'Viewed student "%s".', 'class-manager-pro' ),
-						$selected_student->name
+						/* translators: %s: batch name */
+						__( 'Viewed batch "%s".', 'class-manager-pro' ),
+						$selected_batch->batch_name
 					),
 				)
 			);
+		}
+
+		if ( $selected_student ) {
+			$student_throttle_key = 'cmp_tch_stud_view_' . get_current_user_id() . '_' . (int) $selected_student->id;
+			if ( ! get_transient( $student_throttle_key ) ) {
+				set_transient( $student_throttle_key, 1, 30 * MINUTE_IN_SECONDS );
+				cmp_log_teacher_action(
+					array(
+						'teacher_user_id' => get_current_user_id(),
+						'batch_id'        => (int) $selected_batch->id,
+						'student_id'      => (int) $selected_student->id,
+						'action'          => 'student_viewed',
+						'message'         => sprintf(
+							/* translators: %s: student name */
+							__( 'Viewed student "%s".', 'class-manager-pro' ),
+							$selected_student->name
+						),
+					)
+				);
+			}
 		}
 	}
 

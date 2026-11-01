@@ -473,6 +473,21 @@ function cmp_log_admin_action( $action, $object_type, $object_id = 0, $message =
 }
 
 /**
+ * Helper to log admin activity or events safely.
+ *
+ * @param string $action Action key.
+ * @param string $message Activity message.
+ * @param array  $context Optional context data.
+ * @return int|WP_Error
+ */
+function cmp_log_admin_activity( $action, $message = '', $context = array() ) {
+	$object_id   = isset( $context['student_id'] ) ? absint( $context['student_id'] ) : ( isset( $context['batch_id'] ) ? absint( $context['batch_id'] ) : 0 );
+	$object_type = isset( $context['student_id'] ) ? 'student' : ( isset( $context['batch_id'] ) ? 'batch' : 'system' );
+
+	return cmp_log_admin_action( $action, $object_type, $object_id, $message );
+}
+
+/**
  * Returns allowed dashboard date filters.
  *
  * @return array

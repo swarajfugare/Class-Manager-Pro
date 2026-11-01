@@ -37,6 +37,7 @@ add_action( 'admin_post_cmp_send_student_follow_up_email', 'cmp_handle_send_stud
 add_action( 'admin_post_cmp_save_attendance_settings', 'cmp_handle_save_attendance_settings' );
 add_action( 'admin_post_cmp_save_attendance', 'cmp_handle_save_attendance' );
 add_action( 'admin_post_cmp_sync_razorpay_payments', 'cmp_handle_sync_razorpay_payments' );
+add_action( 'admin_post_cmp_sync_all_payment_pages', 'cmp_handle_sync_all_payment_pages' );
 add_action( 'admin_post_cmp_enroll_student_next_course', 'cmp_handle_enroll_student_next_course' );
 add_action( 'admin_init', 'cmp_handle_csv_export' );
 add_action( 'init', 'cmp_schedule_daily_fee_reminders' );
@@ -2618,7 +2619,7 @@ function cmp_razorpay_reference_candidates( $value ) {
 			}
 		}
 
-		if ( preg_match_all( '/(?:plink|pay|order|page|ppage)_[A-Za-z0-9_]+/', $candidate, $matches ) ) {
+		if ( preg_match_all( '/(?:plink|pl|pay|order|page|ppage)_[A-Za-z0-9_]+/i', $candidate, $matches ) ) {
 			foreach ( $matches[0] as $match ) {
 				$candidates[] = $match;
 			}
@@ -10403,19 +10404,144 @@ function cmp_extract_all_razorpay_references( $payment = array(), $payment_link 
 		$references[] = (string) $payment_link['description'];
 	}
 
-	// Notes & Metadata fields
-	$note_keys = array(
-		'payment_page_id', 'razorpay_page_id', 'page_id', 'payment_link_id',
-		'page_slug', 'payment_page_url', 'payment_link', 'razorpay_link',
-		'form_name', 'batch_name', 'batch_id', 'batch_token', 'cmp_batch_token', 'public_token'
-	);
-	foreach ( $note_keys as $key ) {
-		if ( isset( $meta[ $key ] ) && is_scalar( $meta[ $key ] ) && '' !== trim( (string) $meta[ $key ] ) ) {
-			$references[] = trim( (string) $meta[ $key ] );
+	// Extract ALL scalar keys and values from notes & metadata
+	foreach ( $meta as $k => $v ) {
+		if ( is_scalar( $k ) && '' !== trim( (string) $k ) ) {
+			$references[] = trim( (string) $k );
+		}
+		if ( is_scalar( $v ) && '' !== trim( (string) $v ) ) {
+			$references[] = trim( (string) $v );
+		}
+	}
+
+	// Check if any pl_ or plink_ or page_ IDs exist anywhere in the payment JSON
+	$raw_json = wp_json_encode( array( $payment, $payment_link, $payload ) );
+	if ( preg_match_all( '/\b((?:pl|plink|ppage|page)_[A-Za-z0-9_]+)\b/i', $raw_json, $matches ) ) {
+		foreach ( $matches[1] as $match ) {
+			$references[] = $match;
 		}
 	}
 
 	return array_values( array_unique( array_filter( array_map( 'trim', $references ) ) ) );
+}
+
+/**
+ * Determines whether a Razorpay payment belongs to a specific Payment Page ID, reference, or title.
+ *
+ * @param array  $payment Razorpay payment entity.
+ * @param string $target_reference Page ID, link ID, URL, or slug (e.g. 'pl_TtZ3AHnvOHwHw2').
+ * @param string $target_title Optional page or batch title (e.g. 'Ready Rangoli Class').
+ * @return bool
+ */
+function cmp_payment_matches_reference_or_title( $payment, $target_reference = '', $target_title = '' ) {
+	if ( ! is_array( $payment ) ) {
+		return false;
+	}
+
+	$target_reference = trim( (string) $target_reference );
+	$target_title     = trim( (string) $target_title );
+
+	if ( '' === $target_reference && '' === $target_title ) {
+		return false;
+	}
+
+	// Extract clean page ID from target reference if it's a URL or contains prefixes
+	$clean_target_id = $target_reference;
+
+	if ( preg_match( '/\b((?:pl|plink|ppage|page)_[A-Za-z0-9_]+)\b/i', $target_reference, $matches ) ) {
+		$clean_target_id = $matches[1];
+	} elseif ( false !== strpos( $target_reference, 'pages.razorpay.com/' ) || false !== strpos( $target_reference, 'rzp.io/' ) ) {
+		$parts = wp_parse_url( $target_reference );
+		$path  = isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
+		$segs  = explode( '/', $path );
+		if ( ! empty( $segs ) ) {
+			$clean_target_id = $segs[0];
+		}
+	}
+
+	// Build target tokens
+	$tokens = array();
+
+	if ( '' !== $target_reference ) {
+		$tokens[] = strtolower( $target_reference );
+	}
+
+	if ( '' !== $clean_target_id ) {
+		$tokens[] = strtolower( $clean_target_id );
+		if ( 0 === stripos( $clean_target_id, 'pl_' ) ) {
+			$tokens[] = strtolower( substr( $clean_target_id, 3 ) );
+		}
+	}
+
+	$tokens = array_values( array_unique( array_filter( $tokens ) ) );
+
+	// 1. Check notes object directly (both keys and values)
+	$notes = isset( $payment['notes'] ) && is_array( $payment['notes'] ) ? $payment['notes'] : array();
+
+	foreach ( $notes as $note_key => $note_val ) {
+		if ( is_scalar( $note_val ) ) {
+			$val_str   = trim( (string) $note_val );
+			$val_lower = strtolower( $val_str );
+
+			foreach ( $tokens as $token ) {
+				if ( '' !== $token && ( $val_lower === $token || false !== strpos( $val_lower, $token ) ) ) {
+					return true;
+				}
+			}
+
+			if ( '' !== $target_title && ( false !== stripos( $val_str, $target_title ) || false !== stripos( $target_title, $val_str ) ) ) {
+				return true;
+			}
+		}
+
+		if ( is_scalar( $note_key ) ) {
+			$key_lower = strtolower( trim( (string) $note_key ) );
+			foreach ( $tokens as $token ) {
+				if ( '' !== $token && false !== strpos( $key_lower, $token ) ) {
+					return true;
+				}
+			}
+		}
+	}
+
+	// 2. Check payment description (e.g. holds Payment Page Title like "Ready Rangoli Class")
+	if ( ! empty( $payment['description'] ) && is_scalar( $payment['description'] ) ) {
+		$desc       = trim( (string) $payment['description'] );
+		$desc_lower = strtolower( $desc );
+
+		foreach ( $tokens as $token ) {
+			if ( '' !== $token && false !== strpos( $desc_lower, $token ) ) {
+				return true;
+			}
+		}
+
+		if ( '' !== $target_title && ( false !== stripos( $desc, $target_title ) || false !== stripos( $target_title, $desc ) ) ) {
+			return true;
+		}
+	}
+
+	// 3. Check payment_link_id on payment
+	if ( ! empty( $payment['payment_link_id'] ) && is_scalar( $payment['payment_link_id'] ) ) {
+		$plink = strtolower( trim( (string) $payment['payment_link_id'] ) );
+		foreach ( $tokens as $token ) {
+			if ( '' !== $token && $plink === $token ) {
+				return true;
+			}
+		}
+	}
+
+	// 4. Raw JSON check for any occurrences
+	$raw_json = wp_json_encode( $payment );
+
+	if ( '' !== $clean_target_id && false !== stripos( $raw_json, $clean_target_id ) ) {
+		return true;
+	}
+
+	if ( '' !== $target_title && false !== stripos( $raw_json, $target_title ) ) {
+		return true;
+	}
+
+	return false;
 }
 
 /**
@@ -10838,6 +10964,10 @@ function cmp_get_razorpay_payment_page_title_from_payment( $payment ) {
  * @return bool
  */
 function cmp_razorpay_payment_matches_page( $payment, $page_id, $page_name = '' ) {
+	if ( cmp_payment_matches_reference_or_title( $payment, $page_id, $page_name ) ) {
+		return true;
+	}
+
 	$page_id        = sanitize_text_field( $page_id );
 	$page_name      = cmp_clean_title_text( $page_name );
 	$meta           = cmp_razorpay_entity_meta( $payment );
@@ -11503,89 +11633,125 @@ function cmp_get_successful_razorpay_payments_for_link( $page_id, $page_name = '
  * @return array|WP_Error
  */
 function cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name = '' ) {
-	static $cache = array();
-
 	$page_id   = sanitize_text_field( $page_id );
 	$page_name = cmp_clean_title_text( $page_name );
-	$cache_key = md5( wp_json_encode( array( $page_id, $page_name ) ) );
 
-	if ( isset( $cache[ $cache_key ] ) ) {
-		return $cache[ $cache_key ];
+	if ( '' === $page_id ) {
+		return new WP_Error( 'cmp_razorpay_page_missing', __( 'Please enter or choose a Razorpay page ID.', 'class-manager-pro' ) );
 	}
 
-	$page_link = cmp_get_razorpay_payment_link( $page_id );
+	$payment_ids      = array();
+	$preview_payments = array();
+	$detected_name    = $page_name;
 
-	if ( is_wp_error( $page_link ) ) {
-		return $page_link;
-	}
-
-	$page_meta = cmp_razorpay_entity_meta( $page_link );
-	$page_name  = '' !== $page_name ? $page_name : cmp_clean_title_text( cmp_first_scalar_value( array( $page_meta['form_name'] ?? '', $page_meta['payment_page_title'] ?? '', $page_meta['page_title'] ?? '', isset( $page_link['description'] ) ? $page_link['description'] : '', $page_id ) ) );
-	$page_status = sanitize_key( cmp_first_scalar_value( array( $page_link['status'] ?? '', $page_meta['status'] ?? '' ) ) );
-	$payment_ids = array();
-	$linked_payments = isset( $page_link['payments'] ) && is_array( $page_link['payments'] ) ? $page_link['payments'] : array();
-	$source = 'payment_link';
-
-	foreach ( $linked_payments as $linked_payment ) {
-		if ( ! is_array( $linked_payment ) ) {
-			continue;
+	// Clean page ID from URL or prefix
+	$clean_id = $page_id;
+	if ( preg_match( '/\b((?:pl|plink|ppage|page)_[A-Za-z0-9_]+)\b/i', $page_id, $matches ) ) {
+		$clean_id = $matches[1];
+	} elseif ( false !== strpos( $page_id, 'pages.razorpay.com/' ) || false !== strpos( $page_id, 'rzp.io/' ) ) {
+		$parts = wp_parse_url( $page_id );
+		$path  = isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
+		$segs  = explode( '/', $path );
+		if ( ! empty( $segs ) ) {
+			$clean_id = $segs[0];
 		}
+	}
 
-		$payment_id = cmp_first_scalar_value(
+	$count     = 100;
+	$skip      = 0;
+	$max_pages = 5; // Search up to 500 payments
+	$page_num  = 0;
+
+	do {
+		$response = cmp_razorpay_api_get(
+			'payments',
 			array(
-				$linked_payment['payment_id'] ?? '',
-				$linked_payment['id'] ?? '',
+				'count' => $count,
+				'skip'  => $skip,
 			)
 		);
 
-		if ( '' !== $payment_id ) {
-			$payment_ids[] = sanitize_text_field( $payment_id );
-		}
-	}
-
-	$payment_ids = array_values( array_unique( array_filter( $payment_ids ) ) );
-
-	if ( empty( $payment_ids ) ) {
-		$source = 'payments_api';
-		$fallback_payments = cmp_get_razorpay_payments_for_sync(
-			array(
-				'search' => '',
-			)
-		);
-
-		if ( is_wp_error( $fallback_payments ) ) {
-			return $fallback_payments;
+		if ( is_wp_error( $response ) ) {
+			if ( empty( $payment_ids ) ) {
+				return $response;
+			}
+			break;
 		}
 
-		foreach ( $fallback_payments as $payment ) {
-			if ( ! cmp_razorpay_payment_matches_page( $payment, $page_id, $page_name ) ) {
+		$page_items = isset( $response['items'] ) && is_array( $response['items'] ) ? $response['items'] : array();
+
+		foreach ( $page_items as $payment ) {
+			if ( ! is_array( $payment ) ) {
 				continue;
 			}
 
-			$payment_id = isset( $payment['id'] ) && is_scalar( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+			if ( ! cmp_payment_matches_reference_or_title( $payment, $clean_id, $page_name ) ) {
+				continue;
+			}
 
-			if ( '' !== $payment_id ) {
-				$payment_ids[] = $payment_id;
+			$pay_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+			if ( '' === $pay_id || in_array( $pay_id, $payment_ids, true ) ) {
+				continue;
+			}
+
+			if ( cmp_is_successful_razorpay_payment( $payment ) ) {
+				$payment_ids[] = $pay_id;
+				if ( count( $preview_payments ) < 25 ) {
+					$preview_payments[] = $payment;
+				}
+
+				if ( '' === $detected_name ) {
+					if ( ! empty( $payment['description'] ) && is_scalar( $payment['description'] ) ) {
+						$detected_name = sanitize_text_field( $payment['description'] );
+					} elseif ( ! empty( $payment['notes']['form_name'] ) && is_scalar( $payment['notes']['form_name'] ) ) {
+						$detected_name = sanitize_text_field( $payment['notes']['form_name'] );
+					}
+				}
 			}
 		}
 
-		$payment_ids = array_values( array_unique( array_filter( $payment_ids ) ) );
+		$skip += count( $page_items );
+		++$page_num;
+	} while ( count( $page_items ) === $count && $page_num < $max_pages );
+
+	// Fallback for standard payment link IDs (plink_...) if nothing found in payments API
+	if ( empty( $payment_ids ) && 0 === stripos( $clean_id, 'plink_' ) ) {
+		$direct_link = cmp_razorpay_api_get( 'payment_links/' . rawurlencode( $clean_id ) );
+		if ( ! is_wp_error( $direct_link ) && is_array( $direct_link ) ) {
+			$linked_payments = isset( $direct_link['payments'] ) && is_array( $direct_link['payments'] ) ? $direct_link['payments'] : array();
+			foreach ( $linked_payments as $lp ) {
+				$l_id = cmp_first_scalar_value( array( $lp['payment_id'] ?? '', $lp['id'] ?? '' ) );
+				if ( '' !== $l_id && ! in_array( $l_id, $payment_ids, true ) ) {
+					$payment_ids[] = sanitize_text_field( $l_id );
+				}
+			}
+		}
 	}
 
-	$result = array(
-		'page_link'    => $page_link,
-		'page_id'      => $page_id,
-		'page_name'    => $page_name,
-		'page_status'  => $page_status,
-		'source'       => $source,
-		'payment_ids'  => $payment_ids,
-		'total_payments' => count( $payment_ids ),
-		'page_meta'    => $page_meta,
+	$final_name = '' !== $detected_name ? $detected_name : ( '' !== $page_name ? $page_name : $clean_id );
+
+	return array(
+		'page_link'        => array(
+			'id'          => $clean_id,
+			'description' => $final_name,
+			'notes'       => array(
+				'payment_page_id' => $clean_id,
+				'form_name'       => $final_name,
+			),
+		),
+		'page_id'          => $clean_id,
+		'page_name'        => $final_name,
+		'page_status'      => 'active',
+		'source'           => 'payments_api',
+		'payment_ids'      => array_values( array_unique( $payment_ids ) ),
+		'total_payments'   => count( $payment_ids ),
+		'preview_payments' => $preview_payments,
+		'page_meta'        => array(
+			'form_name'       => $final_name,
+			'payment_page_id' => $clean_id,
+		),
 	);
-
-	$cache[ $cache_key ] = $result;
-
-	return $result;
 }
 
 /**
@@ -11600,6 +11766,12 @@ function cmp_get_razorpay_page_payment_preview( $page_id, $page_name = '', $limi
 	$metadata = cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name );
 
 	if ( is_wp_error( $metadata ) ) {
+		return $metadata;
+	}
+
+	if ( ! empty( $metadata['preview_payments'] ) ) {
+		$metadata['preview_count'] = count( $metadata['preview_payments'] );
+		$metadata['has_more']      = count( $metadata['payment_ids'] ) > count( $metadata['preview_payments'] );
 		return $metadata;
 	}
 
@@ -11623,10 +11795,6 @@ function cmp_get_razorpay_page_payment_preview( $page_id, $page_name = '', $limi
 		}
 
 		if ( ! cmp_is_successful_razorpay_payment( $payment ) ) {
-			continue;
-		}
-
-		if ( ! cmp_razorpay_payment_matches_page( $payment, $metadata['page_id'], $metadata['page_name'] ) ) {
 			continue;
 		}
 
@@ -12263,17 +12431,19 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 
 	global $wpdb;
 
-	$batches = $wpdb->get_results(
+	$target_page_id  = ! empty( $args['target_page_id'] ) ? sanitize_text_field( $args['target_page_id'] ) : '';
+	$target_batch_id = ! empty( $args['batch_id'] ) ? absint( $args['batch_id'] ) : 0;
+
+	// Fetch all batches
+	$all_batches = $wpdb->get_results(
 		'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee,
 		        COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee
 		FROM ' . cmp_table( 'batches' ) . ' b
 		LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
-		WHERE ( b.razorpay_page_id IS NOT NULL AND b.razorpay_page_id <> "" )
-		   OR ( b.razorpay_link IS NOT NULL AND b.razorpay_link <> "" )
 		ORDER BY b.id ASC'
 	);
 
-	if ( empty( $batches ) ) {
+	if ( empty( $all_batches ) ) {
 		return array(
 			'success'            => true,
 			'batches_checked'    => 0,
@@ -12282,7 +12452,7 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 			'failed_leads_count' => 0,
 			'duplicates_count'   => 0,
 			'batch_stats'        => array(),
-			'message'            => __( 'No batches currently have a Razorpay Payment Page ID configured. Please edit a batch and enter its Payment Page ID first.', 'class-manager-pro' ),
+			'message'            => __( 'No batches found in the system. Please create a class and batch first.', 'class-manager-pro' ),
 		);
 	}
 
@@ -12290,7 +12460,7 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 	$batch_map     = array();
 	$page_to_batch = array();
 
-	foreach ( $batches as $batch ) {
+	foreach ( $all_batches as $batch ) {
 		$refs = array();
 
 		if ( ! empty( $batch->razorpay_page_id ) ) {
@@ -12328,7 +12498,7 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 		$page_to_batch[ (int) $batch->id ] = array(
 			'batch_id'   => (int) $batch->id,
 			'batch_name' => $batch->batch_name,
-			'page_id'    => ! empty( $batch->razorpay_page_id ) ? $batch->razorpay_page_id : $batch->razorpay_link,
+			'page_id'    => ! empty( $batch->razorpay_page_id ) ? $batch->razorpay_page_id : ( ! empty( $batch->razorpay_link ) ? $batch->razorpay_link : '' ),
 			'captured'   => 0,
 			'failed'     => 0,
 			'duplicates' => 0,
@@ -12340,16 +12510,24 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 	$processed_payment_ids = array();
 	$skip                  = 0;
 	$count                 = 100;
-	$max_pages             = 3; // Up to 300 payments for performance
+	$max_pages             = 5; // Allow up to 500 payments
 	$page_num              = 0;
 
+	$api_params = array(
+		'count' => $count,
+	);
+	if ( ! empty( $args['from'] ) ) {
+		$api_params['from'] = absint( $args['from'] );
+	}
+	if ( ! empty( $args['to'] ) ) {
+		$api_params['to'] = absint( $args['to'] );
+	}
+
 	do {
+		$api_params['skip'] = $skip;
 		$response = cmp_razorpay_api_get(
 			'payments',
-			array(
-				'count' => $count,
-				'skip'  => $skip,
-			)
+			$api_params
 		);
 
 		if ( is_wp_error( $response ) ) {
@@ -12375,11 +12553,11 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 		++$page_num;
 	} while ( count( $items ) === $count && $page_num < $max_pages );
 
-	// Also check direct payment links for batches whose payment page ID was not seen
+	// Also check direct payment links for batches whose payment page ID is a standard plink_ link
 	$link_resolve_cache = array();
 
-	foreach ( $batches as $batch ) {
-		if ( empty( $batch->razorpay_page_id ) ) {
+	foreach ( $all_batches as $batch ) {
+		if ( empty( $batch->razorpay_page_id ) || 0 !== stripos( $batch->razorpay_page_id, 'plink_' ) ) {
 			continue;
 		}
 
@@ -12389,8 +12567,8 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 			if ( is_array( $d_payment ) && ! empty( $d_payment['id'] ) ) {
 				$d_id = sanitize_text_field( $d_payment['id'] );
 				if ( ! isset( $processed_payment_ids[ $d_id ] ) ) {
-					$all_payments[]                  = $d_payment;
-					$processed_payment_ids[ $d_id ]  = true;
+					$all_payments[]                 = $d_payment;
+					$processed_payment_ids[ $d_id ] = true;
 				}
 			}
 		}
@@ -12409,23 +12587,64 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 
 		// Resolve which batch this payment belongs to
 		$matched_batch = null;
-		$payment_refs  = cmp_extract_all_razorpay_references( $payment );
 
-		foreach ( $payment_refs as $ref ) {
-			$norm_tokens = cmp_razorpay_reference_candidates( $ref );
-			foreach ( $norm_tokens as $token ) {
-				if ( isset( $batch_map[ $token ] ) ) {
-					$matched_batch = $batch_map[ $token ];
-					break 2;
+		// If a target batch was requested, verify match first
+		if ( $target_batch_id > 0 ) {
+			foreach ( $all_batches as $b ) {
+				if ( (int) $b->id === $target_batch_id ) {
+					if ( cmp_payment_matches_reference_or_title( $payment, $b->razorpay_page_id, $b->batch_name ) || ( '' !== $target_page_id && cmp_payment_matches_reference_or_title( $payment, $target_page_id ) ) ) {
+						$matched_batch = $b;
+					}
+					break;
 				}
 			}
 		}
 
+		// 1. Direct candidate matching
 		if ( ! $matched_batch ) {
-			$matched_batch = cmp_get_batch_by_razorpay_reference( $payment_refs );
+			$payment_refs = cmp_extract_all_razorpay_references( $payment );
+
+			foreach ( $payment_refs as $ref ) {
+				$norm_tokens = cmp_razorpay_reference_candidates( $ref );
+				foreach ( $norm_tokens as $token ) {
+					if ( isset( $batch_map[ $token ] ) ) {
+						$matched_batch = $batch_map[ $token ];
+						break 2;
+					}
+				}
+			}
+
+			if ( ! $matched_batch ) {
+				$matched_batch = cmp_get_batch_by_razorpay_reference( $payment_refs );
+			}
 		}
 
-		// If still not matched, check if payment has payment_link_id and resolve it
+		// 2. Target page ID matching if provided
+		if ( ! $matched_batch && '' !== $target_page_id ) {
+			if ( cmp_payment_matches_reference_or_title( $payment, $target_page_id ) ) {
+				foreach ( $all_batches as $b ) {
+					if ( cmp_payment_matches_reference_or_title( $payment, $b->razorpay_page_id, $b->batch_name ) ) {
+						$matched_batch = $b;
+						break;
+					}
+				}
+				if ( ! $matched_batch && ! empty( $all_batches ) ) {
+					$matched_batch = $all_batches[0];
+				}
+			}
+		}
+
+		// 3. Fallback matching across all batches using reference and title matching (e.g. "Ready Rangoli Class")
+		if ( ! $matched_batch ) {
+			foreach ( $all_batches as $b ) {
+				if ( cmp_payment_matches_reference_or_title( $payment, $b->razorpay_page_id, $b->batch_name ) ) {
+					$matched_batch = $b;
+					break;
+				}
+			}
+		}
+
+		// 4. If still not matched, check if payment has payment_link_id and resolve it
 		if ( ! $matched_batch && ! empty( $payment['payment_link_id'] ) ) {
 			$plink_id = sanitize_text_field( $payment['payment_link_id'] );
 
@@ -12456,6 +12675,29 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 
 		if ( ! $matched_batch ) {
 			continue; // Payment does not belong to any configured batch
+		}
+
+		// Auto-populate batch razorpay_page_id if it was empty and we identified a pl_ ID
+		if ( empty( $matched_batch->razorpay_page_id ) ) {
+			$detected_pl_id = '';
+			if ( '' !== $target_page_id && 0 === stripos( $target_page_id, 'pl_' ) ) {
+				$detected_pl_id = $target_page_id;
+			} elseif ( preg_match( '/\b(pl_[A-Za-z0-9_]+)\b/i', wp_json_encode( $payment ), $pl_matches ) ) {
+				$detected_pl_id = $pl_matches[1];
+			}
+
+			if ( '' !== $detected_pl_id ) {
+				$wpdb->update(
+					cmp_table( 'batches' ),
+					array( 'razorpay_page_id' => $detected_pl_id ),
+					array( 'id' => (int) $matched_batch->id ),
+					array( '%s' ),
+					array( '%d' )
+				);
+				$matched_batch->razorpay_page_id                      = $detected_pl_id;
+				$page_to_batch[ (int) $matched_batch->id ]['page_id'] = $detected_pl_id;
+				$batch_map[ strtolower( $detected_pl_id ) ]           = $matched_batch;
+			}
 		}
 
 		$batch_key = (int) $matched_batch->id;
@@ -12554,7 +12796,7 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 	);
 
 	$summary = array(
-		'batches_checked'    => count( $batches ),
+		'batches_checked'    => count( $all_batches ),
 		'payments_inspected' => count( $all_payments ),
 		'captured_count'     => $captured_count,
 		'failed_leads_count' => $failed_leads_count,
@@ -12566,11 +12808,11 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 	update_option( 'cmp_last_razorpay_sync_summary', $summary );
 
 	$message = sprintf(
-		__( 'Sync complete! %1$d successful payment(s) enrolled into batches, %2$d failed payment(s) added to leads, and %3$d existing payment(s) skipped across %4$d configured batch(es).', 'class-manager-pro' ),
+		__( 'Sync complete! %1$d successful payment(s) enrolled into batches, %2$d failed payment(s) added to leads, and %3$d existing payment(s) skipped across %4$d inspected batch(es).', 'class-manager-pro' ),
 		$captured_count,
 		$failed_leads_count,
 		$duplicates_count,
-		count( $batches )
+		count( $all_batches )
 	);
 
 	$summary['success'] = true;
@@ -12580,13 +12822,51 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 }
 
 /**
+ * Admin-post fallback handler for syncing all Razorpay payment pages.
+ */
+function cmp_handle_sync_all_payment_pages() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_sync_all_payment_pages' );
+
+	$args = array();
+	if ( ! empty( $_POST['razorpay_page_id'] ) ) {
+		$args['target_page_id'] = sanitize_text_field( wp_unslash( $_POST['razorpay_page_id'] ) );
+	}
+	if ( ! empty( $_POST['batch_id'] ) ) {
+		$args['batch_id'] = absint( $_POST['batch_id'] );
+	}
+
+	$result = cmp_sync_all_razorpay_payment_pages( $args );
+
+	if ( is_wp_error( $result ) ) {
+		cmp_set_notice( $result->get_error_message(), 'error' );
+	} else {
+		cmp_set_notice( ! empty( $result['message'] ) ? $result['message'] : __( 'Sync completed.', 'class-manager-pro' ), 'success' );
+	}
+
+	wp_safe_redirect( cmp_admin_url( 'cmp-settings' ) );
+	exit;
+}
+
+/**
  * AJAX handler for syncing all Razorpay payment pages.
  */
 function cmp_ajax_sync_all_payment_pages() {
 	cmp_require_manage_options_ajax();
 	check_ajax_referer( 'cmp_sync_all_payment_pages' );
 
-	$result = cmp_sync_all_razorpay_payment_pages();
+	$args = array();
+	if ( ! empty( $_POST['razorpay_page_id'] ) ) {
+		$args['target_page_id'] = sanitize_text_field( wp_unslash( $_POST['razorpay_page_id'] ) );
+	}
+	if ( ! empty( $_POST['batch_id'] ) ) {
+		$args['batch_id'] = absint( $_POST['batch_id'] );
+	}
+	if ( ! empty( $_POST['from'] ) ) {
+		$args['from'] = absint( $_POST['from'] );
+	}
+
+	$result = cmp_sync_all_razorpay_payment_pages( $args );
 
 	if ( is_wp_error( $result ) ) {
 		wp_send_json_error(

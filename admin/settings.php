@@ -148,11 +148,15 @@ function cmp_render_settings_page() {
 
 			<div class="cmp-callout cmp-space-top">
 				<h3><?php esc_html_e( 'Auto-Sync All Razorpay Payment Pages', 'class-manager-pro' ); ?></h3>
-				<p><?php esc_html_e( 'Scan all batches with an entered Razorpay Payment Page ID, fetch live payment details from Razorpay, automatically enroll captured payments into their matching batches, and route failed payment attempts into the Leads / Interested Students list.', 'class-manager-pro' ); ?></p>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-inline-form-stack" data-cmp-ajax-import="razorpay-sync-all" data-cmp-feedback="#cmp-razorpay-sync-all-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Syncing all payment pages with Razorpay...', 'class-manager-pro' ); ?>">
+				<p><?php esc_html_e( 'Fetch live payment details from Razorpay, automatically enroll captured payments into their matching batches, and route failed payment attempts into the Leads / Interested Students list. Batches can match by entered Payment Page ID (e.g. pl_xxx) or by Page Title (e.g. "Ready Rangoli Class").', 'class-manager-pro' ); ?></p>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-inline-form-stack" data-cmp-ajax-import="razorpay-sync-all" data-cmp-feedback="#cmp-razorpay-sync-all-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Syncing with Razorpay...', 'class-manager-pro' ); ?>">
 					<input type="hidden" name="action" value="cmp_sync_all_payment_pages">
 					<?php wp_nonce_field( 'cmp_sync_all_payment_pages' ); ?>
-					<?php submit_button( __( 'Sync All Razorpay Payment Pages Now', 'class-manager-pro' ), 'primary', 'submit', false, array( 'id' => 'cmp-btn-sync-all-pages' ) ); ?>
+					<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+						<input type="text" name="razorpay_page_id" class="regular-text" style="max-width:320px;" placeholder="<?php esc_attr_e( 'Optional: Page ID (e.g. pl_TtZ3AHnvOHwHw2)', 'class-manager-pro' ); ?>">
+						<?php submit_button( __( 'Sync Razorpay Payments Now', 'class-manager-pro' ), 'primary', 'submit', false, array( 'id' => 'cmp-btn-sync-all-pages' ) ); ?>
+					</div>
+					<p class="description" style="margin-top:2px;"><?php esc_html_e( 'Leave page ID blank to scan all batches, or enter a specific Payment Page ID to focus sync.', 'class-manager-pro' ); ?></p>
 				</form>
 				<div class="cmp-muted cmp-space-top" id="cmp-razorpay-sync-all-feedback">
 					<?php if ( ! empty( $last_sync_at ) ) : ?>

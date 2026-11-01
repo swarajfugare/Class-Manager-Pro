@@ -106,8 +106,8 @@ function cmp_render_batch_form( $batch = null, $return_page = 'cmp-batches' ) {
 			<tr>
 				<th scope="row"><label for="cmp-batch-razorpay-page-id"><?php esc_html_e( 'Razorpay Payment Page ID', 'class-manager-pro' ); ?></label></th>
 				<td>
-					<input type="text" id="cmp-batch-razorpay-page-id" name="razorpay_page_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->razorpay_page_id : '' ); ?>" placeholder="pp_xxx">
-					<p class="description"><?php esc_html_e( 'Save the Payment Page ID here, then use Import Students to pull captured payments into this batch.', 'class-manager-pro' ); ?></p>
+					<input type="text" id="cmp-batch-razorpay-page-id" name="razorpay_page_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $batch->razorpay_page_id : '' ); ?>" placeholder="pl_xxx (e.g. pl_TtZ3AHnvOHwHw2)">
+					<p class="description"><?php esc_html_e( 'Enter your Razorpay Payment Page ID (e.g. pl_TtZ3AHnvOHwHw2) or full Payment Page URL. Captured payments will automatically enroll into this batch.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>

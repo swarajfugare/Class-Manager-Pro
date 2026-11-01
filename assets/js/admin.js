@@ -1967,6 +1967,26 @@
 					return;
 				}
 
+				if (importType === 'razorpay-sync-all') {
+					var syncData = response.data || {};
+					var feedbackHtml = '<div class="notice notice-success inline" style="margin:12px 0;padding:12px 14px;border-left-color:#10b981;background:#f0fdf4;border-radius:4px;">' +
+						'<strong style="display:block;color:#065f46;font-size:14px;margin-bottom:6px;">' + (syncData.message || 'Payment pages synced successfully.') + '</strong>';
+
+					if (syncData.batch_stats && syncData.batch_stats.length > 0) {
+						feedbackHtml += '<ul style="margin:8px 0 0 16px;list-style:disc;color:#1e3a8a;font-size:13px;line-height:1.6;">';
+						$.each(syncData.batch_stats, function(idx, item) {
+							feedbackHtml += '<li><strong>' + item.batch_name + ':</strong> ' + item.captured + ' enrolled, ' + item.failed + ' leads, ' + item.duplicates + ' skipped</li>';
+						});
+						feedbackHtml += '</ul>';
+					}
+					feedbackHtml += '</div>';
+
+					$feedback.html(feedbackHtml);
+					showAdminNotice(syncData.message || 'Sync completed successfully.', 'success');
+					restoreButton();
+					return;
+				}
+
 				updateFeedback($feedback, response.data.message || 'Import completed.', false);
 				showAdminNotice(response.data.message || 'Import completed.', 'success');
 

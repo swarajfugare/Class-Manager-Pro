@@ -71,6 +71,7 @@ add_action( 'wp_ajax_cmp_save_batch_ajax', 'cmp_ajax_save_batch' );
 add_action( 'wp_ajax_cmp_save_student_ajax', 'cmp_ajax_save_student' );
 add_action( 'wp_ajax_cmp_save_payment_ajax', 'cmp_ajax_save_payment' );
 add_action( 'wp_ajax_cmp_save_interested_student_follow_up_ajax', 'cmp_ajax_save_interested_student_follow_up' );
+add_action( 'wp_ajax_cmp_sync_all_payment_pages', 'cmp_ajax_sync_all_payment_pages' );
 
 /**
  * Returns a plugin table name.
@@ -2652,7 +2653,7 @@ function cmp_get_batch_by_razorpay_reference( $references ) {
 	}
 
 	$batches = $wpdb->get_results(
-		'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee
+		'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee
 		FROM ' . cmp_table( 'batches' ) . ' b
 		LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
 		WHERE ( b.razorpay_link IS NOT NULL AND b.razorpay_link <> "" ) OR ( b.razorpay_page_id IS NOT NULL AND b.razorpay_page_id <> "" )
@@ -9789,7 +9790,7 @@ function cmp_get_batch_by_razorpay_page_id( $page_id ) {
 		return null;
 	}
 
-	return $wpdb->get_row(
+	$batch = $wpdb->get_row(
 		$wpdb->prepare(
 			'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee, COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee
 			FROM ' . cmp_table( 'batches' ) . ' b
@@ -9799,6 +9800,12 @@ function cmp_get_batch_by_razorpay_page_id( $page_id ) {
 			$page_id
 		)
 	);
+
+	if ( $batch ) {
+		return $batch;
+	}
+
+	return cmp_get_batch_by_razorpay_reference( $page_id );
 }
 
 /**
@@ -10322,6 +10329,93 @@ function cmp_is_successful_razorpay_payment( $payment ) {
 	}
 
 	return true;
+}
+
+/**
+ * Determines whether a Razorpay payment represents a failed attempt.
+ *
+ * @param array $payment Razorpay payment entity.
+ * @return bool
+ */
+function cmp_is_failed_razorpay_payment( $payment ) {
+	if ( ! is_array( $payment ) ) {
+		return false;
+	}
+
+	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
+
+	if ( 'failed' === $status ) {
+		return true;
+	}
+
+	if ( ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Extracts all candidate references from Razorpay payment, link, and webhook payload.
+ *
+ * @param array $payment Payment entity.
+ * @param array $payment_link Payment Link entity.
+ * @param array $payload Raw webhook payload.
+ * @return array
+ */
+function cmp_extract_all_razorpay_references( $payment = array(), $payment_link = array(), $payload = array() ) {
+	$payment      = is_array( $payment ) ? $payment : array();
+	$payment_link = is_array( $payment_link ) ? $payment_link : array();
+	$meta         = array_merge( cmp_razorpay_entity_meta( $payment_link ), cmp_razorpay_entity_meta( $payment ) );
+	$references   = array();
+
+	// Direct IDs from payment entity
+	if ( ! empty( $payment['payment_link_id'] ) && is_scalar( $payment['payment_link_id'] ) ) {
+		$references[] = (string) $payment['payment_link_id'];
+	}
+	if ( ! empty( $payment['id'] ) && is_scalar( $payment['id'] ) ) {
+		$references[] = (string) $payment['id'];
+	}
+	if ( ! empty( $payment['order_id'] ) && is_scalar( $payment['order_id'] ) ) {
+		$references[] = (string) $payment['order_id'];
+	}
+	if ( ! empty( $payment['description'] ) && is_scalar( $payment['description'] ) ) {
+		$references[] = (string) $payment['description'];
+	}
+	if ( ! empty( $payment['payment_link_reference_id'] ) && is_scalar( $payment['payment_link_reference_id'] ) ) {
+		$references[] = (string) $payment['payment_link_reference_id'];
+	}
+
+	// Direct IDs from payment_link entity
+	if ( ! empty( $payment_link['id'] ) && is_scalar( $payment_link['id'] ) ) {
+		$references[] = (string) $payment_link['id'];
+	}
+	if ( ! empty( $payment_link['short_url'] ) && is_scalar( $payment_link['short_url'] ) ) {
+		$references[] = (string) $payment_link['short_url'];
+	}
+	if ( ! empty( $payment_link['url'] ) && is_scalar( $payment_link['url'] ) ) {
+		$references[] = (string) $payment_link['url'];
+	}
+	if ( ! empty( $payment_link['reference_id'] ) && is_scalar( $payment_link['reference_id'] ) ) {
+		$references[] = (string) $payment_link['reference_id'];
+	}
+	if ( ! empty( $payment_link['description'] ) && is_scalar( $payment_link['description'] ) ) {
+		$references[] = (string) $payment_link['description'];
+	}
+
+	// Notes & Metadata fields
+	$note_keys = array(
+		'payment_page_id', 'razorpay_page_id', 'page_id', 'payment_link_id',
+		'page_slug', 'payment_page_url', 'payment_link', 'razorpay_link',
+		'form_name', 'batch_name', 'batch_id', 'batch_token', 'cmp_batch_token', 'public_token'
+	);
+	foreach ( $note_keys as $key ) {
+		if ( isset( $meta[ $key ] ) && is_scalar( $meta[ $key ] ) && '' !== trim( (string) $meta[ $key ] ) ) {
+			$references[] = trim( (string) $meta[ $key ] );
+		}
+	}
+
+	return array_values( array_unique( array_filter( array_map( 'trim', $references ) ) ) );
 }
 
 /**
@@ -12145,6 +12239,365 @@ function cmp_process_razorpay_payment_sync( $args = array() ) {
 	update_option( 'cmp_last_razorpay_sync_summary', $summary );
 
 	return $summary;
+}
+
+/**
+ * Synchronizes all configured Razorpay Payment Pages with their respective batches.
+ *
+ * For each payment found:
+ * - If captured: automatically enrols student and records payment into the matching batch.
+ * - If failed: records the payment attempt into the Interested Students / Leads list.
+ *
+ * @param array $args Optional filters.
+ * @return array|WP_Error
+ */
+function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
+	$credentials = cmp_get_razorpay_credentials();
+
+	if ( empty( $credentials['key_id'] ) || empty( $credentials['secret'] ) ) {
+		return new WP_Error(
+			'cmp_razorpay_missing_credentials',
+			__( 'Razorpay API credentials (Key ID and Secret) are missing or invalid.', 'class-manager-pro' )
+		);
+	}
+
+	global $wpdb;
+
+	$batches = $wpdb->get_results(
+		'SELECT b.*, c.name AS class_name, c.total_fee AS class_total_fee,
+		        COALESCE(NULLIF(b.batch_fee, 0), c.total_fee, 0) AS effective_fee
+		FROM ' . cmp_table( 'batches' ) . ' b
+		LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+		WHERE ( b.razorpay_page_id IS NOT NULL AND b.razorpay_page_id <> "" )
+		   OR ( b.razorpay_link IS NOT NULL AND b.razorpay_link <> "" )
+		ORDER BY b.id ASC'
+	);
+
+	if ( empty( $batches ) ) {
+		return array(
+			'success'            => true,
+			'batches_checked'    => 0,
+			'payments_inspected' => 0,
+			'captured_count'     => 0,
+			'failed_leads_count' => 0,
+			'duplicates_count'   => 0,
+			'batch_stats'        => array(),
+			'message'            => __( 'No batches currently have a Razorpay Payment Page ID configured. Please edit a batch and enter its Payment Page ID first.', 'class-manager-pro' ),
+		);
+	}
+
+	// Index batches by all their reference candidates and page reference tokens
+	$batch_map     = array();
+	$page_to_batch = array();
+
+	foreach ( $batches as $batch ) {
+		$refs = array();
+
+		if ( ! empty( $batch->razorpay_page_id ) ) {
+			$refs[] = $batch->razorpay_page_id;
+			$norm   = cmp_normalize_razorpay_page_reference( $batch->razorpay_page_id );
+
+			if ( ! empty( $norm['tokens'] ) ) {
+				$refs = array_merge( $refs, $norm['tokens'] );
+			}
+		}
+
+		if ( ! empty( $batch->razorpay_link ) ) {
+			$refs[] = $batch->razorpay_link;
+			$norm   = cmp_normalize_razorpay_page_reference( $batch->razorpay_link );
+
+			if ( ! empty( $norm['tokens'] ) ) {
+				$refs = array_merge( $refs, $norm['tokens'] );
+			}
+		}
+
+		$all_candidates = array();
+
+		foreach ( $refs as $ref ) {
+			$all_candidates = array_merge( $all_candidates, cmp_razorpay_reference_candidates( $ref ) );
+		}
+
+		$all_candidates = array_values( array_unique( array_filter( $all_candidates ) ) );
+
+		foreach ( $all_candidates as $candidate ) {
+			if ( ! isset( $batch_map[ $candidate ] ) ) {
+				$batch_map[ $candidate ] = $batch;
+			}
+		}
+
+		$page_to_batch[ (int) $batch->id ] = array(
+			'batch_id'   => (int) $batch->id,
+			'batch_name' => $batch->batch_name,
+			'page_id'    => ! empty( $batch->razorpay_page_id ) ? $batch->razorpay_page_id : $batch->razorpay_link,
+			'captured'   => 0,
+			'failed'     => 0,
+			'duplicates' => 0,
+		);
+	}
+
+	// Fetch payments from Razorpay API
+	$all_payments          = array();
+	$processed_payment_ids = array();
+	$skip                  = 0;
+	$count                 = 100;
+	$max_pages             = 3; // Up to 300 payments for performance
+	$page_num              = 0;
+
+	do {
+		$response = cmp_razorpay_api_get(
+			'payments',
+			array(
+				'count' => $count,
+				'skip'  => $skip,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			if ( empty( $all_payments ) ) {
+				return $response;
+			}
+			break;
+		}
+
+		$items = isset( $response['items'] ) && is_array( $response['items'] ) ? $response['items'] : array();
+
+		foreach ( $items as $item ) {
+			if ( is_array( $item ) && ! empty( $item['id'] ) ) {
+				$item_id = sanitize_text_field( $item['id'] );
+				if ( ! isset( $processed_payment_ids[ $item_id ] ) ) {
+					$all_payments[]                    = $item;
+					$processed_payment_ids[ $item_id ] = true;
+				}
+			}
+		}
+
+		$skip += count( $items );
+		++$page_num;
+	} while ( count( $items ) === $count && $page_num < $max_pages );
+
+	// Also check direct payment links for batches whose payment page ID was not seen
+	$link_resolve_cache = array();
+
+	foreach ( $batches as $batch ) {
+		if ( empty( $batch->razorpay_page_id ) ) {
+			continue;
+		}
+
+		$direct_payments = cmp_get_direct_razorpay_link_payments( $batch->razorpay_page_id );
+
+		foreach ( $direct_payments as $d_payment ) {
+			if ( is_array( $d_payment ) && ! empty( $d_payment['id'] ) ) {
+				$d_id = sanitize_text_field( $d_payment['id'] );
+				if ( ! isset( $processed_payment_ids[ $d_id ] ) ) {
+					$all_payments[]                  = $d_payment;
+					$processed_payment_ids[ $d_id ]  = true;
+				}
+			}
+		}
+	}
+
+	$captured_count     = 0;
+	$failed_leads_count = 0;
+	$duplicates_count   = 0;
+
+	foreach ( $all_payments as $payment ) {
+		if ( ! is_array( $payment ) ) {
+			continue;
+		}
+
+		$payment_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
+
+		// Resolve which batch this payment belongs to
+		$matched_batch = null;
+		$payment_refs  = cmp_extract_all_razorpay_references( $payment );
+
+		foreach ( $payment_refs as $ref ) {
+			$norm_tokens = cmp_razorpay_reference_candidates( $ref );
+			foreach ( $norm_tokens as $token ) {
+				if ( isset( $batch_map[ $token ] ) ) {
+					$matched_batch = $batch_map[ $token ];
+					break 2;
+				}
+			}
+		}
+
+		if ( ! $matched_batch ) {
+			$matched_batch = cmp_get_batch_by_razorpay_reference( $payment_refs );
+		}
+
+		// If still not matched, check if payment has payment_link_id and resolve it
+		if ( ! $matched_batch && ! empty( $payment['payment_link_id'] ) ) {
+			$plink_id = sanitize_text_field( $payment['payment_link_id'] );
+
+			if ( ! isset( $link_resolve_cache[ $plink_id ] ) ) {
+				$link_resolve_cache[ $plink_id ] = cmp_get_razorpay_payment_link( $plink_id );
+			}
+
+			$resolved_link = $link_resolve_cache[ $plink_id ];
+
+			if ( ! is_wp_error( $resolved_link ) && is_array( $resolved_link ) ) {
+				$link_refs = cmp_extract_all_razorpay_references( array(), $resolved_link );
+
+				foreach ( $link_refs as $lref ) {
+					$norm_tokens = cmp_razorpay_reference_candidates( $lref );
+					foreach ( $norm_tokens as $token ) {
+						if ( isset( $batch_map[ $token ] ) ) {
+							$matched_batch = $batch_map[ $token ];
+							break 2;
+						}
+					}
+				}
+
+				if ( ! $matched_batch ) {
+					$matched_batch = cmp_get_batch_by_razorpay_reference( $link_refs );
+				}
+			}
+		}
+
+		if ( ! $matched_batch ) {
+			continue; // Payment does not belong to any configured batch
+		}
+
+		$batch_key = (int) $matched_batch->id;
+
+		// 1. Successful / captured payment
+		if ( cmp_is_successful_razorpay_payment( $payment ) ) {
+			if ( cmp_payment_exists( $payment_id ) ) {
+				++$duplicates_count;
+				if ( isset( $page_to_batch[ $batch_key ] ) ) {
+					++$page_to_batch[ $batch_key ]['duplicates'];
+				}
+				continue;
+			}
+
+			$import_result = cmp_import_razorpay_payment_into_batch( $payment, $matched_batch );
+
+			if ( ! empty( $import_result['status'] ) && 'imported' === $import_result['status'] ) {
+				++$captured_count;
+
+				if ( isset( $page_to_batch[ $batch_key ] ) ) {
+					++$page_to_batch[ $batch_key ]['captured'];
+				}
+
+				$p_phone = isset( $payment['contact'] ) ? $payment['contact'] : '';
+				$p_email = isset( $payment['email'] ) ? $payment['email'] : '';
+				cmp_remove_interested_students_by_contact( $p_phone, $p_email, $matched_batch->id, $matched_batch->class_id );
+
+				if ( ! empty( $import_result['student_id'] ) ) {
+					cmp_sync_student_tutor_enrollment( (int) $import_result['student_id'] );
+				}
+			} elseif ( ! empty( $import_result['status'] ) && 'duplicate' === $import_result['status'] ) {
+				++$duplicates_count;
+
+				if ( isset( $page_to_batch[ $batch_key ] ) ) {
+					++$page_to_batch[ $batch_key ]['duplicates'];
+				}
+			}
+		}
+		// 2. Failed payment attempt -> route to Leads (Interested Students)
+		elseif ( cmp_is_failed_razorpay_payment( $payment ) ) {
+			$meta      = cmp_razorpay_entity_meta( $payment );
+			$name      = cmp_first_scalar_value( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+			$email     = sanitize_email( cmp_first_scalar_value( array( $meta['email'] ?? '', $meta['student_email'] ?? '', $payment['email'] ?? '' ) ) );
+			$phone     = sanitize_text_field( cmp_first_scalar_value( array( $meta['phone'] ?? '', $meta['mobile'] ?? '', $meta['contact'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '' ) ) );
+			$amount    = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
+			$note_desc = ! empty( $payment['error_description'] ) ? $payment['error_description'] : ( ! empty( $payment['error_code'] ) ? $payment['error_code'] : __( 'Captured from Razorpay failed payment sync.', 'class-manager-pro' ) );
+
+			if ( '' === $name ) {
+				$name = '' !== $email ? $email : ( '' !== $phone ? $phone : $payment_id );
+			}
+
+			if ( '' === $phone && '' === $email ) {
+				continue;
+			}
+
+			// Don't add as a lead if the student is already actively enrolled in this batch
+			$already_enrolled = cmp_find_student_in_batch_by_contact( $matched_batch->id, $phone, $email );
+
+			if ( $already_enrolled ) {
+				continue;
+			}
+
+			$lead_result = cmp_record_failed_payment_interest(
+				array(
+					'name'           => $name,
+					'phone'          => $phone,
+					'email'          => $email,
+					'class_id'       => (int) $matched_batch->class_id,
+					'batch_id'       => (int) $matched_batch->id,
+					'payment_status' => ! empty( $payment['status'] ) ? $payment['status'] : 'failed',
+					'payment_source' => 'razorpay_sync',
+					'attempt_amount' => $amount,
+					'transaction_id' => $payment_id,
+					'notes'          => sanitize_text_field( $note_desc ),
+					'payment_meta'   => $payment,
+				)
+			);
+
+			if ( ! is_wp_error( $lead_result ) ) {
+				++$failed_leads_count;
+
+				if ( isset( $page_to_batch[ $batch_key ] ) ) {
+					++$page_to_batch[ $batch_key ]['failed'];
+				}
+			}
+		}
+	}
+
+	$active_stats = array_values(
+		array_filter(
+			$page_to_batch,
+			function( $stat ) {
+				return $stat['captured'] > 0 || $stat['failed'] > 0 || $stat['duplicates'] > 0;
+			}
+		)
+	);
+
+	$summary = array(
+		'batches_checked'    => count( $batches ),
+		'payments_inspected' => count( $all_payments ),
+		'captured_count'     => $captured_count,
+		'failed_leads_count' => $failed_leads_count,
+		'duplicates_count'   => $duplicates_count,
+		'batch_stats'        => ! empty( $active_stats ) ? $active_stats : array_values( $page_to_batch ),
+	);
+
+	update_option( 'cmp_last_razorpay_sync_at', cmp_current_datetime() );
+	update_option( 'cmp_last_razorpay_sync_summary', $summary );
+
+	$message = sprintf(
+		__( 'Sync complete! %1$d successful payment(s) enrolled into batches, %2$d failed payment(s) added to leads, and %3$d existing payment(s) skipped across %4$d configured batch(es).', 'class-manager-pro' ),
+		$captured_count,
+		$failed_leads_count,
+		$duplicates_count,
+		count( $batches )
+	);
+
+	$summary['success'] = true;
+	$summary['message'] = $message;
+
+	return $summary;
+}
+
+/**
+ * AJAX handler for syncing all Razorpay payment pages.
+ */
+function cmp_ajax_sync_all_payment_pages() {
+	cmp_require_manage_options_ajax();
+	check_ajax_referer( 'cmp_sync_all_payment_pages' );
+
+	$result = cmp_sync_all_razorpay_payment_pages();
+
+	if ( is_wp_error( $result ) ) {
+		wp_send_json_error(
+			array(
+				'message' => $result->get_error_message(),
+			),
+			400
+		);
+	}
+
+	wp_send_json_success( $result );
 }
 
 /**

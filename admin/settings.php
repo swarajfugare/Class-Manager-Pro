@@ -138,13 +138,36 @@ function cmp_render_settings_page() {
 								<input type="url" id="cmp-webhook-url" class="large-text code" value="<?php echo esc_url( $webhook_url ); ?>" readonly>
 								<button type="button" class="button" data-cmp-copy-target="#cmp-webhook-url"><?php esc_html_e( 'Copy', 'class-manager-pro' ); ?></button>
 							</div>
-							<p class="description"><?php esc_html_e( 'Enable payment.captured and payment_link.paid for this URL. Failed, cancelled, expired, and authorized-only events are ignored.', 'class-manager-pro' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Configure this Webhook URL in your Razorpay Dashboard with your secret. Enable payment.captured, payment.failed, and payment_link.paid events. Captured payments are automatically enrolled into their matching batch; failed attempts are captured as leads in Interested Students.', 'class-manager-pro' ); ?></p>
 						</td>
 					</tr>
 				</table>
 
 				<?php submit_button( __( 'Save Razorpay Settings', 'class-manager-pro' ) ); ?>
 			</form>
+
+			<div class="cmp-callout cmp-space-top">
+				<h3><?php esc_html_e( 'Auto-Sync All Razorpay Payment Pages', 'class-manager-pro' ); ?></h3>
+				<p><?php esc_html_e( 'Scan all batches with an entered Razorpay Payment Page ID, fetch live payment details from Razorpay, automatically enroll captured payments into their matching batches, and route failed payment attempts into the Leads / Interested Students list.', 'class-manager-pro' ); ?></p>
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-inline-form-stack" data-cmp-ajax-import="razorpay-sync-all" data-cmp-feedback="#cmp-razorpay-sync-all-feedback" data-cmp-busy-label="<?php esc_attr_e( 'Syncing all payment pages with Razorpay...', 'class-manager-pro' ); ?>">
+					<input type="hidden" name="action" value="cmp_sync_all_payment_pages">
+					<?php wp_nonce_field( 'cmp_sync_all_payment_pages' ); ?>
+					<?php submit_button( __( 'Sync All Razorpay Payment Pages Now', 'class-manager-pro' ), 'primary', 'submit', false, array( 'id' => 'cmp-btn-sync-all-pages' ) ); ?>
+				</form>
+				<div class="cmp-muted cmp-space-top" id="cmp-razorpay-sync-all-feedback">
+					<?php if ( ! empty( $last_sync_at ) ) : ?>
+						<p>
+							<strong><?php esc_html_e( 'Last synced:', 'class-manager-pro' ); ?></strong>
+							<?php echo esc_html( $last_sync_at ); ?>
+							<?php if ( ! empty( $last_sync_summary['captured_count'] ) || ! empty( $last_sync_summary['failed_leads_count'] ) ) : ?>
+								&mdash; <?php echo esc_html( sprintf( __( '%d payment(s) enrolled, %d lead(s) captured, %d duplicate(s) skipped.', 'class-manager-pro' ), (int) ( $last_sync_summary['captured_count'] ?? 0 ), (int) ( $last_sync_summary['failed_leads_count'] ?? 0 ), (int) ( $last_sync_summary['duplicates_count'] ?? 0 ) ) ); ?>
+							<?php endif; ?>
+						</p>
+					<?php else : ?>
+						<p><?php esc_html_e( 'Click the button above to sync all payment pages across batches.', 'class-manager-pro' ); ?></p>
+					<?php endif; ?>
+				</div>
+			</div>
 
 			<div class="cmp-callout cmp-space-top">
 				<h3><?php esc_html_e( 'Connection Test', 'class-manager-pro' ); ?></h3>

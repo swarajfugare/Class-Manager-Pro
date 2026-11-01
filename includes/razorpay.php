@@ -71,7 +71,7 @@ class CMP_Razorpay_Webhook {
 			return rest_ensure_response(
 				array(
 					'success' => true,
-					'message' => 'Webhook ignored because the payment is not completed.',
+					'message' => 'Webhook received: non-captured event processed (leads checked).',
 				)
 			);
 		}
@@ -125,19 +125,18 @@ class CMP_Razorpay_Webhook {
 		}
 
 		if ( ! $batch_id ) {
-			$batch = cmp_get_batch_by_razorpay_reference(
-				array(
-					$meta['razorpay_link'] ?? '',
-					$meta['payment_link'] ?? '',
-					$meta['payment_link_id'] ?? '',
-					$payment['payment_link_id'] ?? '',
-					$payment['payment_link_reference_id'] ?? '',
-					$payment_link['id'] ?? '',
-					$payment_link['short_url'] ?? '',
-					$payment_link['reference_id'] ?? '',
-				)
-			);
-			$batch_id = $batch ? (int) $batch->id : 0;
+			$all_references = cmp_extract_all_razorpay_references( $payment, $payment_link, $payload );
+			$batch          = cmp_get_batch_by_razorpay_reference( $all_references );
+			$batch_id       = $batch ? (int) $batch->id : 0;
+		}
+
+		if ( ! $batch_id && ! empty( $payment['payment_link_id'] ) ) {
+			$resolved_link = cmp_get_razorpay_payment_link( $payment['payment_link_id'] );
+			if ( ! is_wp_error( $resolved_link ) ) {
+				$more_refs = cmp_extract_all_razorpay_references( array(), $resolved_link );
+				$batch     = cmp_get_batch_by_razorpay_reference( $more_refs );
+				$batch_id  = $batch ? (int) $batch->id : 0;
+			}
 		}
 
 		if ( $batch_id && ! $batch ) {
@@ -268,6 +267,10 @@ class CMP_Razorpay_Webhook {
 
 		cmp_sync_student_tutor_enrollment( $student_id );
 
+		if ( $student_id && $batch_id ) {
+			cmp_remove_interested_students_by_contact( $phone, $email, $batch_id, $class_id );
+		}
+
 		return rest_ensure_response(
 			array(
 				'success'    => true,
@@ -357,7 +360,7 @@ class CMP_Razorpay_Webhook {
 				return false;
 			}
 
-			return in_array( $event, array( 'payment.captured', 'payment_link.paid' ), true );
+			return in_array( $event, array( 'payment.captured', 'payment_link.paid', 'order.paid' ), true );
 		}
 
 		if ( ! empty( $payment_link ) ) {
@@ -408,19 +411,18 @@ class CMP_Razorpay_Webhook {
 		}
 
 		if ( ! $batch_id ) {
-			$batch = cmp_get_batch_by_razorpay_reference(
-				array(
-					$meta['razorpay_link'] ?? '',
-					$meta['payment_link'] ?? '',
-					$meta['payment_link_id'] ?? '',
-					$payment['payment_link_id'] ?? '',
-					$payment['payment_link_reference_id'] ?? '',
-					$payment_link['id'] ?? '',
-					$payment_link['short_url'] ?? '',
-					$payment_link['reference_id'] ?? '',
-				)
-			);
-			$batch_id = $batch ? (int) $batch->id : 0;
+			$all_references = cmp_extract_all_razorpay_references( $payment, $payment_link, $payload );
+			$batch          = cmp_get_batch_by_razorpay_reference( $all_references );
+			$batch_id       = $batch ? (int) $batch->id : 0;
+		}
+
+		if ( ! $batch_id && ! empty( $payment['payment_link_id'] ) ) {
+			$resolved_link = cmp_get_razorpay_payment_link( $payment['payment_link_id'] );
+			if ( ! is_wp_error( $resolved_link ) ) {
+				$more_refs = cmp_extract_all_razorpay_references( array(), $resolved_link );
+				$batch     = cmp_get_batch_by_razorpay_reference( $more_refs );
+				$batch_id  = $batch ? (int) $batch->id : 0;
+			}
 		}
 
 		if ( $batch_id && ! $batch ) {
@@ -437,6 +439,13 @@ class CMP_Razorpay_Webhook {
 
 		if ( '' === $phone && '' === $email ) {
 			return;
+		}
+
+		if ( $batch_id && ( '' !== $phone || '' !== $email ) ) {
+			$enrolled_student = cmp_find_student_in_batch_by_contact( $batch_id, $phone, $email );
+			if ( $enrolled_student ) {
+				return;
+			}
 		}
 
 		cmp_record_failed_payment_interest(

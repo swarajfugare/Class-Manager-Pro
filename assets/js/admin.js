@@ -3,7 +3,6 @@
 
 	const palette = ['#2271b1', '#00a32a', '#dba617', '#d63638', '#8c5fbf', '#008a8a', '#c94f7c'];
 	const ajaxEndpoint = window.ajaxurl || CMPAdmin.ajaxUrl;
-	var cmpOperationsCalendarInstance = null;
 
 	function updateBatchOptions($classSelect) {
 		const selectedClass = String($classSelect.val() || '0');
@@ -1058,10 +1057,6 @@
 			return refreshInterestedStudentsResults();
 		}
 
-		if (action === 'cmp_filter_operations_section') {
-			return refreshOperationsSection(refresh.section || 'dashboard', target || '.cmp-operations-shell');
-		}
-
 		if (refresh && refresh.html && target) {
 			injectAjaxHtml(target, refresh.html);
 		}
@@ -1207,10 +1202,6 @@
 		});
 	}
 
-	function isOperationsShellHtml(html) {
-		return /^\s*<div\b[^>]*class=(['"])[^'"]*\bcmp-operations-shell\b/i.test(String(html || ''));
-	}
-
 	function injectAjaxHtml(target, html) {
 		const content = String(html || '');
 		const $target = $(target);
@@ -1219,12 +1210,11 @@
 			return;
 		}
 
-		if (isOperationsShellHtml(content) || ($target.is('section') && /^\s*<section\b/i.test(content))) {
+		if ($target.is('section') && /^\s*<section\b/i.test(content)) {
 			$target.replaceWith(content);
 			window.setTimeout(function () {
 				refreshSearchableSelects($('.cmp-wrap'));
 				enhanceResponsiveTables($('.cmp-wrap'));
-				initOperationsCalendar();
 			}, 0);
 			return;
 		}
@@ -1233,348 +1223,12 @@
 		window.setTimeout(function () {
 			refreshSearchableSelects($target.closest('.cmp-wrap').length ? $target.closest('.cmp-wrap') : $('.cmp-wrap'));
 			enhanceResponsiveTables($target.closest('.cmp-wrap').length ? $target.closest('.cmp-wrap') : $('.cmp-wrap'));
-			initOperationsCalendar();
 		}, 0);
-	}
-
-	function serializeFormObject($form) {
-		const payload = {};
-
-		$form.serializeArray().forEach(function (item) {
-			payload[item.name] = item.value;
-		});
-
-		return payload;
-	}
-
-	function padOperationsNumber(value) {
-		return ('0' + String(value)).slice(-2);
-	}
-
-	function formatOperationsDateTimeLocal(value, allDay) {
-		let date = value instanceof Date ? new Date(value.getTime()) : new Date(String(value || '').replace(' ', 'T'));
-
-		if (!date || Number.isNaN(date.getTime())) {
-			return '';
-		}
-
-		if (allDay) {
-			return [
-				date.getFullYear(),
-				padOperationsNumber(date.getMonth() + 1),
-				padOperationsNumber(date.getDate())
-			].join('-') + 'T00:00';
-		}
-
-		return [
-			date.getFullYear(),
-			padOperationsNumber(date.getMonth() + 1),
-			padOperationsNumber(date.getDate())
-		].join('-') + 'T' + padOperationsNumber(date.getHours()) + ':' + padOperationsNumber(date.getMinutes());
-	}
-
-	function parseOperationsRecurrenceRule(rule) {
-		const defaults = {
-			recurrence_freq: 'none',
-			recurrence_interval: 1,
-			recurrence_until: '',
-			recurrence_count: 0
-		};
-		let parsed;
-
-		if (!rule) {
-			return defaults;
-		}
-
-		try {
-			parsed = JSON.parse(String(rule));
-		} catch (error) {
-			return defaults;
-		}
-
-		if (!parsed || typeof parsed !== 'object') {
-			return defaults;
-		}
-
-		return {
-			recurrence_freq: String(parsed.freq || 'none'),
-			recurrence_interval: String(parsed.interval || 1),
-			recurrence_until: String(parsed.until || ''),
-			recurrence_count: String(parsed.count || 0)
-		};
-	}
-
-	function getOperationsCalendarFilters() {
-		const $form = $('.cmp-operations-calendar-filters').first();
-
-		return $form.length ? serializeFormObject($form) : {};
-	}
-
-	function getOperationsSectionForm(section) {
-		const sectionName = String(section || '');
-		let $form = $();
-
-		if (sectionName === 'calendar') {
-			$form = $('.cmp-operations-calendar-filters').first();
-		}
-
-		if (!$form.length) {
-			$form = $('.cmp-filter-form').filter(function () {
-				const $current = $(this);
-				const currentSection = String($current.find('[name="section"]').val() || '');
-
-				return currentSection === sectionName && String($current.data('cmp-action') || '') === 'cmp_filter_operations_section';
-			}).first();
-		}
-
-		return $form;
-	}
-
-	function refreshOperationsSection(section, targetSelector) {
-		const $form = getOperationsSectionForm(section);
-		const data = $form.length ? $form.serializeArray() : [];
-
-		data.push({ name: 'action', value: 'cmp_filter_operations_section' });
-		data.push({ name: 'nonce', value: getAjaxNonce() });
-		data.push({ name: 'section', value: String(section || 'dashboard') });
-
-		return $.post(ajaxEndpoint, data).done(function (response) {
-			if (response && response.success && response.data && response.data.html) {
-				injectAjaxHtml(targetSelector || '.cmp-operations-shell', response.data.html);
-			}
-		});
-	}
-
-	function refreshOperationsCalendar() {
-		if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.refetchEvents === 'function') {
-			cmpOperationsCalendarInstance.refetchEvents();
-		}
-	}
-
-	function syncOperationsEventForm(payload) {
-		const $form = $('.cmp-operations-event-form').first();
-
-		if (!$form.length) {
-			return;
-		}
-
-		Object.keys(payload).forEach(function (key) {
-			const $field = $form.find('[name="' + key + '"]').first();
-
-			if (!$field.length) {
-				return;
-			}
-
-			if ($field.is(':checkbox')) {
-				$field.prop('checked', String(payload[key]) === '1' || payload[key] === 1 || payload[key] === true);
-				return;
-			}
-
-			$field.val(payload[key]);
-		});
-
-		refreshSearchableSelects($form.closest('.cmp-wrap'));
-	}
-
-	function fillOperationsEventForm(event) {
-		const $form = $('.cmp-operations-event-form').first();
-		const props = event && event.extendedProps ? event.extendedProps : {};
-		const recurrence = parseOperationsRecurrenceRule(props.recurrenceRule || '');
-		const payload = {
-			id: event && event.id ? event.id : 0,
-			title: event && event.title ? event.title : '',
-			event_type: props.eventType || 'other',
-			status: props.status || 'planned',
-			priority: props.priority || 'normal',
-			batch_id: props.batchId || 0,
-			class_id: props.classId || 0,
-			teacher_user_id: props.teacherUserId || 0,
-			assigned_user_id: props.assignedUserId || 0,
-			start_at: event && event.start ? formatOperationsDateTimeLocal(event.start, !!event.allDay) : '',
-			end_at: event && (event.end || event.start) ? formatOperationsDateTimeLocal(event.end || event.start, !!event.allDay) : '',
-			all_day: event && event.allDay ? 1 : 0,
-			location: props.location || '',
-			notes: props.notes || '',
-			reminder_at: props.reminderAt ? formatOperationsDateTimeLocal(props.reminderAt, false) : '',
-			reminder_channel: props.reminderChannel || 'email',
-			recurrence_freq: recurrence.recurrence_freq,
-			recurrence_interval: recurrence.recurrence_interval,
-			recurrence_until: recurrence.recurrence_until,
-			recurrence_count: recurrence.recurrence_count
-		};
-
-		if (!$form.length) {
-			return;
-		}
-
-		syncOperationsEventForm(payload);
-
-		window.setTimeout(function () {
-			$form.find('[name="title"]').first().trigger('focus');
-		}, 0);
-	}
-
-	function buildOperationsEventPayloadFromCalendar(event) {
-		const props = event && event.extendedProps ? event.extendedProps : {};
-		const recurrence = parseOperationsRecurrenceRule(props.recurrenceRule || '');
-
-		return {
-			id: event && event.id ? event.id : 0,
-			title: event && event.title ? event.title : '',
-			event_type: props.eventType || 'other',
-			status: props.status || 'planned',
-			priority: props.priority || 'normal',
-			source_type: 'manual',
-			source_id: 0,
-			class_id: props.classId || 0,
-			batch_id: props.batchId || 0,
-			teacher_user_id: props.teacherUserId || 0,
-			assigned_user_id: props.assignedUserId || 0,
-			start_at: event && event.start ? formatOperationsDateTimeLocal(event.start, !!event.allDay) : '',
-			end_at: event && (event.end || event.start) ? formatOperationsDateTimeLocal(event.end || event.start, !!event.allDay) : '',
-			all_day: event && event.allDay ? 1 : 0,
-			location: props.location || '',
-			notes: props.notes || '',
-			color: props.backgroundColor || '',
-			reminder_at: props.reminderAt || '',
-			reminder_channel: props.reminderChannel || 'email',
-			recurrence_freq: recurrence.recurrence_freq,
-			recurrence_interval: recurrence.recurrence_interval,
-			recurrence_until: recurrence.recurrence_until,
-			recurrence_count: recurrence.recurrence_count
-		};
-	}
-
-	function saveOperationsCalendarEvent(info) {
-		const payload = buildOperationsEventPayloadFromCalendar(info.event);
-		const $feedback = $('.cmp-operations-event-form [data-cmp-feedback]').first();
-
-		payload.action = 'cmp_save_operations_event_ajax';
-		payload.nonce = getAjaxNonce();
-		payload.operations_section = 'calendar';
-
-		if ($feedback.length) {
-			updateFeedback($feedback, 'Saving event...', false);
-		}
-
-		return $.post(ajaxEndpoint, payload).done(function (response) {
-			if (!response || !response.success || !response.data) {
-				if (typeof info.revert === 'function') {
-					info.revert();
-				}
-				showAdminNotice('Event could not be saved.', 'error');
-				if ($feedback.length) {
-					updateFeedback($feedback, 'Event could not be saved.', true);
-				}
-				return;
-			}
-
-			showAdminNotice(response.data.message || 'Saved successfully.', 'success');
-
-			if (response.data.refresh) {
-				handleSectionRefresh(response.data.refresh);
-			} else {
-				refreshOperationsCalendar();
-			}
-
-			if ($feedback.length) {
-				updateFeedback($feedback, response.data.message || 'Saved successfully.', false);
-			}
-		}).fail(function (xhr) {
-			if (typeof info.revert === 'function') {
-				info.revert();
-			}
-			handleEntityActionFailure(xhr, $feedback);
-		});
-	}
-
-	function initOperationsCalendar() {
-		const $calendar = $('#cmp-operations-calendar').first();
-
-		if (!$calendar.length || typeof FullCalendar === 'undefined') {
-			return;
-		}
-
-		if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.destroy === 'function') {
-			cmpOperationsCalendarInstance.destroy();
-			cmpOperationsCalendarInstance = null;
-		}
-
-		cmpOperationsCalendarInstance = new FullCalendar.Calendar($calendar[0], {
-			initialView: String($calendar.data('cmp-default-view') || (window.CMPOperations && CMPOperations.calendarView) || 'dayGridMonth'),
-			height: 'auto',
-			editable: true,
-			selectable: true,
-			navLinks: true,
-			nowIndicator: true,
-			dayMaxEvents: true,
-			headerToolbar: {
-				left: 'prev,next today',
-				center: 'title',
-				right: 'dayGridMonth,timeGridWeek,timeGridDay,listWeek'
-			},
-			events: function (fetchInfo, successCallback, failureCallback) {
-				const filters = getOperationsCalendarFilters();
-				const payload = $.extend({}, filters, {
-					action: 'cmp_get_operations_calendar_events',
-					nonce: getAjaxNonce(),
-					start: fetchInfo.startStr,
-					end: fetchInfo.endStr
-				});
-
-				$.post(ajaxEndpoint, payload).done(function (response) {
-					if (response && response.success && response.data && Array.isArray(response.data.events)) {
-						successCallback(response.data.events);
-						return;
-					}
-
-					failureCallback(new Error('Could not load calendar events.'));
-				}).fail(function (xhr) {
-					failureCallback(xhr);
-				});
-			},
-			loading: function (isLoading) {
-				$calendar.closest('.cmp-panel').toggleClass('is-loading', !!isLoading);
-			},
-			dateClick: function (info) {
-				fillOperationsEventForm({
-					id: 0,
-					title: '',
-					allDay: info.allDay,
-					start: info.date,
-					end: info.allDay ? info.date : new Date(info.date.getTime() + (60 * 60 * 1000)),
-					extendedProps: {}
-				});
-			},
-			eventClick: function (info) {
-				info.jsEvent.preventDefault();
-				fillOperationsEventForm(info.event);
-				window.setTimeout(function () {
-					const $form = $('.cmp-operations-event-form').first();
-					if ($form.length) {
-						window.scrollTo({ top: Math.max(0, $form.offset().top - 120), behavior: 'smooth' });
-					}
-				}, 0);
-			},
-			eventDrop: function (info) {
-				saveOperationsCalendarEvent(info);
-			},
-			eventResize: function (info) {
-				saveOperationsCalendarEvent(info);
-			}
-		});
-
-		$calendar.data('cmp-calendar-ready', true);
-		$calendar[0]._cmpCalendar = cmpOperationsCalendarInstance;
-		cmpOperationsCalendarInstance.render();
 	}
 
 	$(function () {
 		const delayedFilter = debounce(function () {
 			runAjaxFilter($(this).closest('.cmp-filter-form'));
-		}, 400);
-		const delayedOperationsCalendarRefresh = debounce(function () {
-			refreshOperationsCalendar();
 		}, 400);
 
 		refreshSearchableSelects($('.cmp-wrap'));
@@ -1718,57 +1372,6 @@
 
 			event.preventDefault();
 			runAjaxFilter($(this));
-		});
-
-		$(document).on('submit', '.cmp-operations-search-form', function (event) {
-			event.preventDefault();
-			runAjaxFilter($(this));
-		});
-
-		$(document).on('submit', '.cmp-operations-calendar-filters', function (event) {
-			event.preventDefault();
-			refreshOperationsCalendar();
-		});
-
-		$(document).on('change', '.cmp-operations-calendar-filters [name="view"]', function () {
-			const viewName = String($(this).val() || 'dayGridMonth');
-
-			if (cmpOperationsCalendarInstance && typeof cmpOperationsCalendarInstance.changeView === 'function') {
-				cmpOperationsCalendarInstance.changeView(viewName);
-			}
-
-			refreshOperationsCalendar();
-		});
-
-		$(document).on('change', '.cmp-operations-calendar-filters select, .cmp-operations-calendar-filters input', function (event) {
-			if ($(this).is('[name="view"]')) {
-				return;
-			}
-
-			if ($(this).is('[type="search"]')) {
-				return;
-			}
-
-			event.preventDefault();
-			refreshOperationsCalendar();
-		});
-
-		$(document).on('input', '.cmp-operations-calendar-filters input[type="search"]', function () {
-			delayedOperationsCalendarRefresh();
-		});
-
-		$(document).on('click', '[data-cmp-calendar-refresh]', function (event) {
-			event.preventDefault();
-			refreshOperationsCalendar();
-		});
-
-		$(document).on('click', '.cmp-operations-event-form [type="reset"]', function () {
-			window.setTimeout(function () {
-				const $form = $('.cmp-operations-event-form').first();
-				if ($form.length) {
-					$form.find('[name="id"]').val('0');
-				}
-			}, 0);
 		});
 
 		$(document).on('submit', 'form[data-cmp-ajax-form]', function (event) {
@@ -2317,6 +1920,5 @@
 		});
 
 		renderCharts();
-		initOperationsCalendar();
 	});
 })(jQuery);

@@ -1267,11 +1267,6 @@ form.cmp-loading::after {
 	overflow-x: clip;
 }
 
-.cmp-operations-shell,
-.cmp-communication-shell {
-	overflow-x: clip;
-}
-
 .cmp-panel,
 .cmp-card,
 .cmp-action-board,
@@ -1458,59 +1453,6 @@ form.cmp-loading::after {
 	width: 100%;
 }
 
-.cmp-operations-calendar {
-	max-width: 100%;
-	overflow: hidden;
-}
-
-.cmp-operations-hero {
-	background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-	border: 1px solid #d2e2f1;
-	margin-top: 16px;
-	padding: 18px;
-}
-
-.cmp-operations-hero .cmp-inline-tools {
-	margin-top: 10px;
-}
-
-.cmp-operations-hero .cmp-inline-badge {
-	background: rgba(255, 255, 255, 0.8);
-	border: 1px solid rgba(34, 113, 177, 0.15);
-}
-
-.cmp-operations-search-hero {
-	margin-bottom: 0;
-}
-
-.cmp-operations-calendar .fc {
-	font-size: 13px;
-}
-
-.cmp-operations-calendar .fc .fc-toolbar {
-	align-items: center;
-	display: flex;
-	flex-wrap: wrap;
-	gap: 8px;
-	justify-content: space-between;
-}
-
-.cmp-operations-calendar .fc .fc-toolbar-title {
-	font-size: clamp(18px, 2vw, 26px);
-	line-height: 1.25;
-}
-
-.cmp-operations-calendar .fc .fc-button-group {
-	display: inline-flex;
-	flex-wrap: wrap;
-	gap: 4px;
-}
-
-.cmp-operations-calendar .fc .fc-button {
-	height: auto;
-	padding: 0.4rem 0.7rem;
-}
-
 @media (max-width: 1100px) {
 	.cmp-cards,
 	.cmp-action-grid,
@@ -1622,26 +1564,6 @@ form.cmp-loading::after {
 	.cmp-wrap table.widefat td:empty::before,
 	.cmp-wrap table.widefat td[data-cmp-label=""]::before {
 		content: none;
-	}
-
-	.cmp-operations-calendar .fc .fc-toolbar {
-		align-items: stretch;
-		flex-direction: column;
-	}
-
-	.cmp-operations-calendar .fc .fc-toolbar-chunk {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		justify-content: flex-start;
-	}
-
-	.cmp-operations-calendar .fc .fc-button-group {
-		width: 100%;
-	}
-
-	.cmp-operations-calendar .fc .fc-button {
-		flex: 1 1 auto;
 	}
 
 	.cmp-page-intro {

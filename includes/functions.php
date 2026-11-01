@@ -228,15 +228,6 @@ function cmp_render_admin_workflow_nav( $active = '' ) {
 		'cmp-razorpay-import'     => 'finance',
 		'cmp-analytics'           => 'reports',
 		'cmp-teacher-console'     => 'teachers',
-		'cmp-communication-center' => 'communication',
-		'cmp-communication-center-email' => 'communication',
-		'cmp-communication-center-whatsapp' => 'communication',
-		'cmp-communication-center-campaigns' => 'communication',
-		'cmp-communication-center-templates' => 'communication',
-		'cmp-communication-center-automation' => 'communication',
-		'cmp-communication-center-history' => 'communication',
-		'cmp-communication-center-statistics' => 'communication',
-		'cmp-communication-center-settings' => 'communication',
 		'cmp-settings'            => 'settings',
 		'cmp-all-data'            => 'settings',
 	);
@@ -248,7 +239,6 @@ function cmp_render_admin_workflow_nav( $active = '' ) {
 		array( 'key' => 'finance', 'label' => __( 'Finance', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-payments' ) ),
 		array( 'key' => 'reports', 'label' => __( 'Reports', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-analytics' ) ),
 		array( 'key' => 'teachers', 'label' => __( 'Teachers', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-teacher-console' ) ),
-		array( 'key' => 'communication', 'label' => __( 'Communication', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-communication-center' ) ),
 		array( 'key' => 'settings', 'label' => __( 'Settings', 'class-manager-pro' ), 'url' => cmp_admin_url( 'cmp-settings' ) ),
 	);
 
@@ -3165,10 +3155,6 @@ function cmp_delete_batch( $id ) {
 			$batch && ! empty( $batch->batch_name ) ? $batch->batch_name : __( 'Unknown', 'class-manager-pro' )
 		)
 	);
-
-	if ( function_exists( 'cmp_sync_operations_batch_event' ) ) {
-		cmp_sync_operations_batch_event( $id, 'delete' );
-	}
 
 	return true;
 }
@@ -8750,10 +8736,6 @@ function cmp_save_batch_record( $data ) {
 	$batch_id = $id ? $id : (int) $result;
 
 	cmp_sync_batch_students_tutor_enrollment( $batch_id );
-
-	if ( function_exists( 'cmp_sync_operations_batch_event' ) ) {
-		cmp_sync_operations_batch_event( $batch_id, 'save' );
-	}
 
 	return array(
 		'id'      => $batch_id,

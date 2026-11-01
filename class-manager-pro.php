@@ -61,6 +61,9 @@ function cmp_activate_plugin() {
 	if ( function_exists( 'cmp_schedule_communication_campaign_runner' ) ) {
 		cmp_schedule_communication_campaign_runner();
 	}
+	if ( function_exists( 'cmp_schedule_daily_institute_digest' ) ) {
+		cmp_schedule_daily_institute_digest();
+	}
 }
 
 /**
@@ -72,11 +75,13 @@ function cmp_deactivate_plugin() {
 		cmp_clear_scheduled_hook( cmp_operations_reminder_hook() );
 	}
 	cmp_clear_scheduled_hook( 'cmp_communication_campaign_runner' );
+	cmp_clear_scheduled_hook( 'cmp_daily_institute_digest_cron' );
 }
 
 add_action( 'admin_menu', 'cmp_register_admin_menu' );
 add_action( 'admin_enqueue_scripts', 'cmp_enqueue_admin_assets' );
 add_action( 'rest_api_init', array( 'CMP_Razorpay_Webhook', 'register_routes' ) );
+add_action( 'rest_api_init', 'cmp_register_whatsapp_webhook_routes' );
 add_action( 'plugins_loaded', 'cmp_maybe_upgrade' );
 add_action( 'template_redirect', 'cmp_maybe_render_public_batch_page' );
 

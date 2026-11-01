@@ -320,16 +320,48 @@ function cmp_render_settings_page() {
 							<div id="cmp-course-info-preview" class="cmp-template-preview"></div>
 						</td>
 					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Admission Alerts (Anti-Spam)', 'class-manager-pro' ); ?></th>
+						<td>
+							<label style="display:block; margin-bottom: 6px;">
+								<input type="checkbox" name="notify_admin_on_admission" value="1" <?php checked( (bool) get_option( 'cmp_notify_admin_on_admission', 0 ), true ); ?>>
+								<?php esc_html_e( 'Send immediate email to admin on every admission (Keep unchecked to prevent inbox spam)', 'class-manager-pro' ); ?>
+							</label>
+							<label style="display:block; margin-bottom: 6px;">
+								<input type="checkbox" name="notify_teacher_on_admission" value="1" <?php checked( (bool) get_option( 'cmp_notify_teacher_on_admission', 0 ), true ); ?>>
+								<?php esc_html_e( 'Send immediate email to teacher on every admission to their batch', 'class-manager-pro' ); ?>
+							</label>
+							<label style="display:block; margin-bottom: 6px;">
+								<input type="checkbox" name="enable_daily_admission_digest" value="1" <?php checked( (bool) get_option( 'cmp_enable_daily_admission_digest', 1 ), true ); ?>>
+								<strong><?php esc_html_e( 'Enable Daily Admission Digest (Recommended: 1 clean daily report instead of per-student spam)', 'class-manager-pro' ); ?></strong>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-digest-recipient"><?php esc_html_e( 'Digest Recipient Email', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<input type="email" id="cmp-digest-recipient" name="digest_recipient_email" class="regular-text" value="<?php echo esc_attr( get_option( 'cmp_digest_recipient_email', get_option( 'admin_email' ) ) ); ?>">
+							<p class="description"><?php esc_html_e( 'Where the consolidated daily institute report will be delivered.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
 				</table>
 
 				<?php submit_button( __( 'Save Reminder Settings', 'class-manager-pro' ) ); ?>
 			</form>
 
-			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form cmp-space-top">
-				<input type="hidden" name="action" value="cmp_send_fee_reminders">
-				<?php wp_nonce_field( 'cmp_send_fee_reminders' ); ?>
-				<?php submit_button( __( 'Send Due Reminders Now', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
-			</form>
+			<div style="display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap;">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+					<input type="hidden" name="action" value="cmp_send_fee_reminders">
+					<?php wp_nonce_field( 'cmp_send_fee_reminders' ); ?>
+					<?php submit_button( __( 'Send Due Reminders Now', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+				</form>
+
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form">
+					<input type="hidden" name="action" value="cmp_send_daily_digest_now">
+					<?php wp_nonce_field( 'cmp_send_daily_digest_now' ); ?>
+					<?php submit_button( __( 'Send Daily Institute Digest Now', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+				</form>
+			</div>
 		</section>
 
 		<section class="cmp-panel">

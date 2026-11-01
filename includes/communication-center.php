@@ -86,13 +86,23 @@ function cmp_communication_settings_option() {
  */
 function cmp_communication_default_settings() {
 	return array(
-		'sender_name'         => get_bloginfo( 'name' ),
-		'reply_to_email'      => sanitize_email( get_bloginfo( 'admin_email' ) ),
-		'support_contact'     => sanitize_email( get_bloginfo( 'admin_email' ) ),
-		'email_signature'     => __( 'Warm regards,', 'class-manager-pro' ),
-		'whatsapp_footer'     => __( 'Reply to this message if you need help.', 'class-manager-pro' ),
-		'campaign_auto_run'   => '1',
-		'campaign_time_limit' => '60',
+		'sender_name'                 => get_bloginfo( 'name' ),
+		'reply_to_email'              => sanitize_email( get_bloginfo( 'admin_email' ) ),
+		'support_contact'             => sanitize_email( get_bloginfo( 'admin_email' ) ),
+		'email_signature'             => __( 'Warm regards,', 'class-manager-pro' ),
+		'whatsapp_footer'             => __( 'Reply to this message if you need help.', 'class-manager-pro' ),
+		'campaign_auto_run'           => '1',
+		'campaign_time_limit'         => '60',
+		'whatsapp_gateway_type'       => 'wa_link', // 'wa_link', 'custom_webhook', 'meta_cloud'
+		'whatsapp_api_url'            => '',
+		'whatsapp_api_token'          => '',
+		'whatsapp_phone_number_id'    => '',
+		'whatsapp_webhook_secret'     => wp_generate_password( 24, false ),
+		'whatsapp_auto_welcome'       => '0',
+		'whatsapp_auto_fee_reminder'  => '0',
+		'notify_admin_on_admission'   => '0',
+		'notify_teacher_on_admission' => '0',
+		'enable_daily_admission_digest'=> '1',
 	);
 }
 
@@ -116,13 +126,28 @@ function cmp_get_communication_center_settings() {
 function cmp_update_communication_center_settings( $data ) {
 	$settings = cmp_get_communication_center_settings();
 
-	$settings['sender_name']         = sanitize_text_field( cmp_field( $data, 'sender_name', $settings['sender_name'] ) );
-	$settings['reply_to_email']      = sanitize_email( cmp_field( $data, 'reply_to_email', $settings['reply_to_email'] ) );
-	$settings['support_contact']     = sanitize_email( cmp_field( $data, 'support_contact', $settings['support_contact'] ) );
-	$settings['email_signature']     = sanitize_textarea_field( cmp_field( $data, 'email_signature', $settings['email_signature'] ) );
-	$settings['whatsapp_footer']     = sanitize_textarea_field( cmp_field( $data, 'whatsapp_footer', $settings['whatsapp_footer'] ) );
-	$settings['campaign_auto_run']   = ! empty( $data['campaign_auto_run'] ) ? '1' : '0';
-	$settings['campaign_time_limit'] = max( 1, absint( cmp_field( $data, 'campaign_time_limit', $settings['campaign_time_limit'] ) ) );
+	$settings['sender_name']                 = sanitize_text_field( cmp_field( $data, 'sender_name', $settings['sender_name'] ) );
+	$settings['reply_to_email']              = sanitize_email( cmp_field( $data, 'reply_to_email', $settings['reply_to_email'] ) );
+	$settings['support_contact']             = sanitize_email( cmp_field( $data, 'support_contact', $settings['support_contact'] ) );
+	$settings['email_signature']             = sanitize_textarea_field( cmp_field( $data, 'email_signature', $settings['email_signature'] ) );
+	$settings['whatsapp_footer']             = sanitize_textarea_field( cmp_field( $data, 'whatsapp_footer', $settings['whatsapp_footer'] ) );
+	$settings['campaign_auto_run']           = ! empty( $data['campaign_auto_run'] ) ? '1' : '0';
+	$settings['campaign_time_limit']         = max( 1, absint( cmp_field( $data, 'campaign_time_limit', $settings['campaign_time_limit'] ) ) );
+	$settings['whatsapp_gateway_type']       = sanitize_key( cmp_field( $data, 'whatsapp_gateway_type', $settings['whatsapp_gateway_type'] ) );
+	$settings['whatsapp_api_url']            = esc_url_raw( cmp_field( $data, 'whatsapp_api_url', $settings['whatsapp_api_url'] ) );
+	$settings['whatsapp_api_token']          = sanitize_text_field( cmp_field( $data, 'whatsapp_api_token', $settings['whatsapp_api_token'] ) );
+	$settings['whatsapp_phone_number_id']    = sanitize_text_field( cmp_field( $data, 'whatsapp_phone_number_id', $settings['whatsapp_phone_number_id'] ) );
+	$settings['whatsapp_webhook_secret']     = sanitize_text_field( cmp_field( $data, 'whatsapp_webhook_secret', $settings['whatsapp_webhook_secret'] ) );
+	$settings['whatsapp_auto_welcome']       = ! empty( $data['whatsapp_auto_welcome'] ) ? '1' : '0';
+	$settings['whatsapp_auto_fee_reminder']  = ! empty( $data['whatsapp_auto_fee_reminder'] ) ? '1' : '0';
+	$settings['notify_admin_on_admission']   = ! empty( $data['notify_admin_on_admission'] ) ? '1' : '0';
+	$settings['notify_teacher_on_admission'] = ! empty( $data['notify_teacher_on_admission'] ) ? '1' : '0';
+	$settings['enable_daily_admission_digest']= ! empty( $data['enable_daily_admission_digest'] ) ? '1' : '0';
+
+	// Sync options with core settings
+	update_option( 'cmp_notify_admin_on_admission', $settings['notify_admin_on_admission'] );
+	update_option( 'cmp_notify_teacher_on_admission', $settings['notify_teacher_on_admission'] );
+	update_option( 'cmp_enable_daily_admission_digest', $settings['enable_daily_admission_digest'] );
 
 	$updated = update_option( cmp_communication_settings_option(), $settings );
 
@@ -1296,9 +1321,28 @@ function cmp_communication_dispatch_message( $recipient, $channel, $subject, $me
 	}
 
 	if ( 'whatsapp' === $channel ) {
+		$rendered_body = cmp_render_communication_template( $message, $context );
+		$phone = isset( $recipient->phone ) ? $recipient->phone : '';
+		$action_url = cmp_communication_build_whatsapp_url( $phone, $rendered_body );
+		$settings = cmp_get_communication_center_settings();
+		$gateway_type = isset( $settings['whatsapp_gateway_type'] ) ? $settings['whatsapp_gateway_type'] : 'wa_link';
+
+		$direct_api_success = false;
 		$status = 'sent';
 		$response = __( 'WhatsApp message prepared.', 'class-manager-pro' );
-		$action_url = cmp_communication_build_whatsapp_url( isset( $recipient->phone ) ? $recipient->phone : '', cmp_render_communication_template( $message, $context ) );
+
+		// If direct API is configured (Meta Cloud API or Custom Webhook Gateway)
+		if ( in_array( $gateway_type, array( 'custom_webhook', 'meta_cloud' ), true ) && ! empty( $phone ) ) {
+			$api_result = cmp_send_direct_whatsapp_message( $phone, $rendered_body, $context );
+			if ( ! empty( $api_result['success'] ) ) {
+				$direct_api_success = true;
+				$status = 'sent';
+				$response = ! empty( $api_result['response'] ) ? (string) $api_result['response'] : __( 'Dispatched via WhatsApp API Gateway.', 'class-manager-pro' );
+			} else {
+				$status = 'failed';
+				$response = ! empty( $api_result['error'] ) ? (string) $api_result['error'] : __( 'WhatsApp API call failed.', 'class-manager-pro' );
+			}
+		}
 
 		cmp_log_communication_message(
 			array_merge(
@@ -1309,9 +1353,9 @@ function cmp_communication_dispatch_message( $recipient, $channel, $subject, $me
 					'recipient_type'   => isset( $recipient->recipient_type ) ? $recipient->recipient_type : 'student',
 					'recipient_name'   => isset( $recipient->name ) ? $recipient->name : '',
 					'recipient_email'  => isset( $recipient->email ) ? $recipient->email : '',
-					'recipient_phone'  => isset( $recipient->phone ) ? $recipient->phone : '',
+					'recipient_phone'  => $phone,
 					'subject'          => $subject,
-					'body'             => cmp_render_communication_template( $message, $context ),
+					'body'             => $rendered_body,
 					'status'           => $status,
 					'delivery_status'  => $status,
 					'priority'         => cmp_field( $context, 'priority', 'normal' ),
@@ -1323,9 +1367,10 @@ function cmp_communication_dispatch_message( $recipient, $channel, $subject, $me
 		);
 
 		return array(
-			'success' => true,
-			'message' => $response,
+			'success'    => 'failed' !== $status,
+			'message'    => $response,
 			'action_url' => $action_url,
+			'direct_api' => $direct_api_success,
 		);
 	}
 
@@ -1464,7 +1509,29 @@ function cmp_communication_handle_student_registered( $student, $batch, $options
 		);
 	}
 
-	if ( $teacher ) {
+	// Direct WhatsApp Welcome message via API if enabled
+	$comm_settings = cmp_get_communication_center_settings();
+	if ( ! empty( $comm_settings['whatsapp_auto_welcome'] ) && $student && ! empty( $student->phone ) ) {
+		$wa_template = cmp_get_communication_templates( array( 'type' => 'welcome', 'channel' => 'whatsapp', 'limit' => 1 ) );
+		$wa_body = ! empty( $wa_template ) ? $wa_template[0]->body : __( "Hello {{name}},\nWelcome to {{batch_name}}!\nWe are excited to have you on board.", 'class-manager-pro' );
+		cmp_communication_dispatch_message(
+			cmp_communication_student_recipient( $student ),
+			'whatsapp',
+			__( 'Welcome to Class', 'class-manager-pro' ),
+			$wa_body,
+			array(
+				'student'      => $student,
+				'batch'        => $batch,
+				'class'        => cmp_get_class( (int) $batch->class_id ),
+				'teacher'      => $teacher,
+				'message_type' => 'welcome',
+			)
+		);
+	}
+
+	// Only send teacher notification if opted in (prevents email spam)
+	$notify_teacher = (bool) get_option( 'cmp_notify_teacher_on_admission', 0 );
+	if ( $notify_teacher && $teacher ) {
 		cmp_communication_dispatch_message(
 			(object) array(
 				'recipient_type' => 'teacher',
@@ -1797,4 +1864,304 @@ function cmp_communication_section_tabs() {
  */
 function cmp_communication_empty_state() {
 	return __( 'Nothing has been sent yet. Create a template, send a campaign, or trigger an automation to populate the history.', 'class-manager-pro' );
+}
+
+/**
+ * Sends a direct WhatsApp message through Meta Cloud API or Custom Gateway Webhook.
+ *
+ * @param string $phone Student or recipient phone.
+ * @param string $message Message content.
+ * @param array  $context Extra context.
+ * @return array
+ */
+function cmp_send_direct_whatsapp_message( $phone, $message, $context = array() ) {
+	$settings     = cmp_get_communication_center_settings();
+	$gateway_type = isset( $settings['whatsapp_gateway_type'] ) ? $settings['whatsapp_gateway_type'] : 'wa_link';
+
+	// Clean phone number: digits only
+	$clean_phone = preg_replace( '/[^0-9]/', '', (string) $phone );
+	if ( empty( $clean_phone ) ) {
+		return array(
+			'success' => false,
+			'error'   => __( 'Invalid or missing phone number.', 'class-manager-pro' ),
+		);
+	}
+
+	// Prepend default 91 country code if 10 digits
+	if ( 10 === strlen( $clean_phone ) ) {
+		$clean_phone = '91' . $clean_phone;
+	}
+
+	$message_text = trim( (string) $message );
+	if ( '' === $message_text ) {
+		return array(
+			'success' => false,
+			'error'   => __( 'Message text cannot be empty.', 'class-manager-pro' ),
+		);
+	}
+
+	if ( 'wa_link' === $gateway_type ) {
+		$action_url = cmp_communication_build_whatsapp_url( $clean_phone, $message_text );
+		return array(
+			'success'    => true,
+			'mode'       => 'link',
+			'action_url' => $action_url,
+			'message'    => __( 'Click-to-chat WhatsApp link prepared.', 'class-manager-pro' ),
+		);
+	}
+
+	if ( 'meta_cloud' === $gateway_type ) {
+		$phone_id = isset( $settings['whatsapp_phone_number_id'] ) ? trim( $settings['whatsapp_phone_number_id'] ) : '';
+		$token    = isset( $settings['whatsapp_api_token'] ) ? trim( $settings['whatsapp_api_token'] ) : '';
+		$api_url  = ! empty( $settings['whatsapp_api_url'] ) ? $settings['whatsapp_api_url'] : "https://graph.facebook.com/v19.0/{$phone_id}/messages";
+
+		if ( empty( $phone_id ) || empty( $token ) ) {
+			return array(
+				'success' => false,
+				'error'   => __( 'Meta Cloud API Phone Number ID or Token missing.', 'class-manager-pro' ),
+			);
+		}
+
+		$payload = array(
+			'messaging_product' => 'whatsapp',
+			'recipient_type'    => 'individual',
+			'to'                => $clean_phone,
+			'type'              => 'text',
+			'text'              => array(
+				'preview_url' => false,
+				'body'        => $message_text,
+			),
+		);
+
+		$response = wp_remote_post(
+			$api_url,
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $token,
+					'Content-Type'  => 'application/json',
+				),
+				'body'    => wp_json_encode( $payload ),
+				'timeout' => 20,
+			)
+		);
+	} else {
+		// Generic / Custom Webhook Gateway (Wati, UltraMsg, AiSensy, custom endpoint)
+		$api_url = isset( $settings['whatsapp_api_url'] ) ? trim( $settings['whatsapp_api_url'] ) : '';
+		$token   = isset( $settings['whatsapp_api_token'] ) ? trim( $settings['whatsapp_api_token'] ) : '';
+
+		if ( empty( $api_url ) ) {
+			return array(
+				'success' => false,
+				'error'   => __( 'Custom WhatsApp Gateway Webhook URL is missing.', 'class-manager-pro' ),
+			);
+		}
+
+		$payload = array(
+			'phone'        => $clean_phone,
+			'message'      => $message_text,
+			'student_name' => isset( $context['student']->name ) ? $context['student']->name : '',
+			'batch_name'   => isset( $context['batch']->batch_name ) ? $context['batch']->batch_name : '',
+			'event'        => isset( $context['message_type'] ) ? $context['message_type'] : 'direct_message',
+			'timestamp'    => current_time( 'mysql' ),
+		);
+
+		$headers = array(
+			'Content-Type' => 'application/json',
+		);
+
+		if ( ! empty( $token ) ) {
+			$headers['Authorization'] = 'Bearer ' . $token;
+			$headers['X-Api-Key']     = $token;
+		}
+
+		$response = wp_remote_post(
+			$api_url,
+			array(
+				'headers' => $headers,
+				'body'    => wp_json_encode( $payload ),
+				'timeout' => 20,
+			)
+		);
+	}
+
+	if ( is_wp_error( $response ) ) {
+		return array(
+			'success' => false,
+			'error'   => $response->get_error_message(),
+		);
+	}
+
+	$code = wp_remote_retrieve_response_code( $response );
+	$body = wp_remote_retrieve_body( $response );
+
+	if ( $code >= 200 && $code < 300 ) {
+		return array(
+			'success'  => true,
+			'mode'     => 'api',
+			'response' => $body,
+		);
+	}
+
+	return array(
+		'success' => false,
+		'error'   => sprintf( __( 'WhatsApp API returned HTTP %1$d: %2$s', 'class-manager-pro' ), $code, substr( $body, 0, 160 ) ),
+	);
+}
+
+/**
+ * Maybe sends direct WhatsApp welcome message on student registration.
+ *
+ * @param object $student Student.
+ * @param object $batch Batch.
+ * @return array|false
+ */
+function cmp_maybe_send_direct_whatsapp_welcome( $student, $batch ) {
+	$settings = cmp_get_communication_center_settings();
+	if ( empty( $settings['whatsapp_auto_welcome'] ) ) {
+		return false;
+	}
+
+	$phone = isset( $student->phone ) ? $student->phone : '';
+	if ( empty( $phone ) ) {
+		return false;
+	}
+
+	$templates = cmp_get_communication_templates( array( 'type' => 'welcome', 'channel' => 'whatsapp', 'limit' => 1 ) );
+	$msg_body  = ! empty( $templates ) ? $templates[0]->body : __( "Hello {{name}},\nWelcome to {{batch_name}}!\nWe are excited to have you on board.", 'class-manager-pro' );
+
+	$context = array(
+		'student'      => $student,
+		'batch'        => $batch,
+		'message_type' => 'welcome',
+	);
+
+	$rendered = cmp_render_communication_template( $msg_body, $context );
+	return cmp_send_direct_whatsapp_message( $phone, $rendered, $context );
+}
+
+/**
+ * Registers REST API webhook routes for WhatsApp API integrations.
+ */
+function cmp_register_whatsapp_webhook_routes() {
+	register_rest_route(
+		'cmp/v1',
+		'/whatsapp-webhook',
+		array(
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'cmp_handle_whatsapp_webhook_verification',
+				'permission_callback' => '__return_true',
+			),
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => 'cmp_handle_whatsapp_webhook_event',
+				'permission_callback' => '__return_true',
+			),
+		)
+	);
+}
+
+/**
+ * Handles incoming verification handshake for WhatsApp API (Meta Cloud Webhook challenge).
+ *
+ * @param WP_REST_Request $request REST request.
+ * @return WP_REST_Response
+ */
+function cmp_handle_whatsapp_webhook_verification( WP_REST_Request $request ) {
+	$settings     = cmp_get_communication_center_settings();
+	$saved_secret = ! empty( $settings['whatsapp_webhook_secret'] ) ? $settings['whatsapp_webhook_secret'] : '';
+
+	$mode      = $request->get_param( 'hub_mode' ) ?: $request->get_param( 'hub.mode' );
+	$token     = $request->get_param( 'hub_verify_token' ) ?: $request->get_param( 'hub.verify_token' );
+	$challenge = $request->get_param( 'hub_challenge' ) ?: $request->get_param( 'hub.challenge' );
+
+	if ( 'subscribe' === $mode && ! empty( $token ) && ( $token === $saved_secret || empty( $saved_secret ) ) ) {
+		header( 'Content-Type: text/plain' );
+		echo esc_html( $challenge );
+		exit;
+	}
+
+	return new WP_REST_Response(
+		array(
+			'status'  => 'active',
+			'service' => 'Class Manager Pro WhatsApp Webhook Gateway',
+			'gateway' => $settings['whatsapp_gateway_type'],
+		),
+		200
+	);
+}
+
+/**
+ * Handles incoming WhatsApp webhook events (delivery reports and incoming student messages).
+ *
+ * @param WP_REST_Request $request REST request.
+ * @return WP_REST_Response
+ */
+function cmp_handle_whatsapp_webhook_event( WP_REST_Request $request ) {
+	$data = $request->get_json_params();
+	if ( empty( $data ) ) {
+		$data = $request->get_params();
+	}
+
+	global $wpdb;
+
+	// 1. Handle Meta Cloud API webhook events
+	if ( ! empty( $data['entry'][0]['changes'][0]['value']['statuses'][0] ) ) {
+		$status_obj   = $data['entry'][0]['changes'][0]['value']['statuses'][0];
+		$raw_status   = sanitize_key( isset( $status_obj['status'] ) ? $status_obj['status'] : '' );
+		$recipient_id = sanitize_text_field( isset( $status_obj['recipient_id'] ) ? $status_obj['recipient_id'] : '' );
+
+		$normalized_status = in_array( $raw_status, array( 'delivered', 'read', 'failed', 'sent' ), true ) ? $raw_status : 'sent';
+
+		if ( ! empty( $recipient_id ) ) {
+			$clean_phone = substr( preg_replace( '/[^0-9]/', '', $recipient_id ), -10 );
+			$wpdb->query(
+				$wpdb->prepare(
+					'UPDATE ' . cmp_communication_table( 'messages' ) . '
+					SET delivery_status = %s, read_at = %s
+					WHERE channel = "whatsapp" AND recipient_phone LIKE %s
+					ORDER BY id DESC LIMIT 1',
+					$normalized_status,
+					'read' === $normalized_status ? cmp_current_datetime() : null,
+					'%' . $wpdb->esc_like( $clean_phone )
+				)
+			);
+		}
+	}
+
+	// 2. Handle generic webhook format: { "phone": "...", "status": "delivered", "message": "..." }
+	if ( ! empty( $data['phone'] ) ) {
+		$clean_phone  = substr( preg_replace( '/[^0-9]/', '', (string) $data['phone'] ), -10 );
+		$status       = sanitize_key( cmp_field( $data, 'status', 'delivered' ) );
+		$incoming_msg = sanitize_textarea_field( cmp_field( $data, 'message', '' ) );
+
+		if ( ! empty( $incoming_msg ) ) {
+			$student = $wpdb->get_row(
+				$wpdb->prepare(
+					'SELECT id, name, email, phone FROM ' . cmp_table( 'students' ) . ' WHERE phone LIKE %s ORDER BY id DESC LIMIT 1',
+					'%' . $wpdb->esc_like( $clean_phone )
+				)
+			);
+
+			cmp_log_communication_message(
+				array(
+					'channel'          => 'whatsapp',
+					'message_type'     => 'incoming',
+					'recipient_type'   => 'student',
+					'recipient_name'   => $student ? $student->name : __( 'Student', 'class-manager-pro' ),
+					'recipient_email'  => $student ? $student->email : '',
+					'recipient_phone'  => $clean_phone,
+					'subject'          => __( 'Incoming WhatsApp Reply', 'class-manager-pro' ),
+					'body'             => $incoming_msg,
+					'status'           => 'received',
+					'delivery_status'  => 'delivered',
+					'priority'         => 'normal',
+					'sent_at'          => cmp_current_datetime(),
+					'read_at'          => cmp_current_datetime(),
+				)
+			);
+		}
+	}
+
+	return new WP_REST_Response( array( 'success' => true ), 200 );
 }

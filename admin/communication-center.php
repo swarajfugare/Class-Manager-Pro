@@ -763,23 +763,162 @@ function cmp_render_communication_settings_page() {
 	cmp_require_communication_center_access();
 
 	$settings = cmp_get_communication_center_settings();
+	$webhook_url = rest_url( 'cmp/v1/whatsapp-webhook' );
 	ob_start();
 	?>
 	<section class="cmp-panel">
-		<h2><?php esc_html_e( 'Communication Settings', 'class-manager-pro' ); ?></h2>
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Communication & Notification Settings', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Configure email settings, anti-spam admission reporting, and WhatsApp API integration.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" data-cmp-ajax-form="cmp_save_communication_settings_ajax">
 			<input type="hidden" name="action" value="cmp_save_communication_settings">
 			<?php wp_nonce_field( 'cmp_save_communication_settings' ); ?>
+
+			<h3 class="cmp-section-heading"><?php esc_html_e( 'General Email Settings', 'class-manager-pro' ); ?></h3>
 			<table class="form-table" role="presentation">
-				<tr><th scope="row"><label for="cmp-communication-sender"><?php esc_html_e( 'Sender Name', 'class-manager-pro' ); ?></label></th><td><input type="text" id="cmp-communication-sender" name="sender_name" class="regular-text" value="<?php echo esc_attr( $settings['sender_name'] ); ?>"></td></tr>
-				<tr><th scope="row"><label for="cmp-communication-reply"><?php esc_html_e( 'Reply-To Email', 'class-manager-pro' ); ?></label></th><td><input type="email" id="cmp-communication-reply" name="reply_to_email" class="regular-text" value="<?php echo esc_attr( $settings['reply_to_email'] ); ?>"></td></tr>
-				<tr><th scope="row"><label for="cmp-communication-support"><?php esc_html_e( 'Support Contact', 'class-manager-pro' ); ?></label></th><td><input type="email" id="cmp-communication-support" name="support_contact" class="regular-text" value="<?php echo esc_attr( $settings['support_contact'] ); ?>"></td></tr>
-				<tr><th scope="row"><label for="cmp-communication-signature"><?php esc_html_e( 'Email Signature', 'class-manager-pro' ); ?></label></th><td><textarea id="cmp-communication-signature" name="email_signature" rows="4" class="large-text"><?php echo esc_textarea( $settings['email_signature'] ); ?></textarea></td></tr>
-				<tr><th scope="row"><label for="cmp-communication-footer"><?php esc_html_e( 'WhatsApp Footer', 'class-manager-pro' ); ?></label></th><td><textarea id="cmp-communication-footer" name="whatsapp_footer" rows="4" class="large-text"><?php echo esc_textarea( $settings['whatsapp_footer'] ); ?></textarea></td></tr>
-				<tr><th scope="row"><label for="cmp-communication-auto-run"><?php esc_html_e( 'Auto Run Scheduled Campaigns', 'class-manager-pro' ); ?></label></th><td><label><input type="checkbox" id="cmp-communication-auto-run" name="campaign_auto_run" value="1" <?php checked( $settings['campaign_auto_run'], '1' ); ?>> <?php esc_html_e( 'Allow the hourly runner to process due campaigns.', 'class-manager-pro' ); ?></label></td></tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-sender"><?php esc_html_e( 'Sender Name', 'class-manager-pro' ); ?></label></th>
+					<td><input type="text" id="cmp-communication-sender" name="sender_name" class="regular-text" value="<?php echo esc_attr( $settings['sender_name'] ); ?>"></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-reply"><?php esc_html_e( 'Reply-To Email', 'class-manager-pro' ); ?></label></th>
+					<td><input type="email" id="cmp-communication-reply" name="reply_to_email" class="regular-text" value="<?php echo esc_attr( $settings['reply_to_email'] ); ?>"></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-support"><?php esc_html_e( 'Support Contact Email', 'class-manager-pro' ); ?></label></th>
+					<td><input type="email" id="cmp-communication-support" name="support_contact" class="regular-text" value="<?php echo esc_attr( $settings['support_contact'] ); ?>"></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-signature"><?php esc_html_e( 'Email Signature', 'class-manager-pro' ); ?></label></th>
+					<td><textarea id="cmp-communication-signature" name="email_signature" rows="3" class="large-text"><?php echo esc_textarea( $settings['email_signature'] ); ?></textarea></td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-auto-run"><?php esc_html_e( 'Campaign Auto-Runner', 'class-manager-pro' ); ?></label></th>
+					<td><label><input type="checkbox" id="cmp-communication-auto-run" name="campaign_auto_run" value="1" <?php checked( $settings['campaign_auto_run'], '1' ); ?>> <?php esc_html_e( 'Allow scheduled campaign runner to process due campaigns automatically.', 'class-manager-pro' ); ?></label></td>
+				</tr>
 			</table>
-			<?php submit_button( __( 'Save Settings', 'class-manager-pro' ) ); ?>
+
+			<h3 class="cmp-section-heading"><?php esc_html_e( 'Admission Email Alerts & Daily Digest (Anti-Spam)', 'class-manager-pro' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'Avoid inbox spam by using the Daily Digest Summary instead of receiving individual emails on every single student admission.', 'class-manager-pro' ); ?></p>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Daily Institute Digest', 'class-manager-pro' ); ?></th>
+					<td>
+						<label>
+							<input type="checkbox" name="enable_daily_admission_digest" value="1" <?php checked( ! empty( $settings['enable_daily_admission_digest'] ), true ); ?>>
+							<strong><?php esc_html_e( 'Enable Daily Admission & Institute Summary Digest (Recommended)', 'class-manager-pro' ); ?></strong>
+						</label>
+						<p class="description"><?php esc_html_e( 'Sends 1 comprehensive daily digest with all new admissions, revenue, and batch highlights instead of separate emails.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Per-Admission Alerts', 'class-manager-pro' ); ?></th>
+					<td>
+						<fieldset>
+							<label style="display:block; margin-bottom: 6px;">
+								<input type="checkbox" name="notify_admin_on_admission" value="1" <?php checked( ! empty( $settings['notify_admin_on_admission'] ), true ); ?>>
+								<?php esc_html_e( 'Send immediate email to admin on every admission (Caution: high volume may flood your inbox)', 'class-manager-pro' ); ?>
+							</label>
+							<label style="display:block;">
+								<input type="checkbox" name="notify_teacher_on_admission" value="1" <?php checked( ! empty( $settings['notify_teacher_on_admission'] ), true ); ?>>
+								<?php esc_html_e( 'Send immediate email to teacher on every admission to their batch', 'class-manager-pro' ); ?>
+							</label>
+						</fieldset>
+						<p class="description"><?php esc_html_e( 'All admission activity is always available in the Class Manager Pro Dashboard and Operations Center even when individual emails are turned off.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+			</table>
+
+			<h3 class="cmp-section-heading"><?php esc_html_e( 'Direct WhatsApp API & Webhook Integration', 'class-manager-pro' ); ?></h3>
+			<p class="description"><?php esc_html_e( 'Send automated WhatsApp messages directly to students via API and receive incoming message status callbacks.', 'class-manager-pro' ); ?></p>
+			<table class="form-table" role="presentation">
+				<tr>
+					<th scope="row"><label for="cmp-whatsapp-gateway-type"><?php esc_html_e( 'WhatsApp Gateway Type', 'class-manager-pro' ); ?></label></th>
+					<td>
+						<select id="cmp-whatsapp-gateway-type" name="whatsapp_gateway_type">
+							<option value="wa_link" <?php selected( $settings['whatsapp_gateway_type'], 'wa_link' ); ?>><?php esc_html_e( 'Click-to-chat links only (No API setup needed)', 'class-manager-pro' ); ?></option>
+							<option value="custom_webhook" <?php selected( $settings['whatsapp_gateway_type'], 'custom_webhook' ); ?>><?php esc_html_e( 'Custom Gateway Webhook (Wati, UltraMsg, AiSensy, Twilio, or Custom Gateway)', 'class-manager-pro' ); ?></option>
+							<option value="meta_cloud" <?php selected( $settings['whatsapp_gateway_type'], 'meta_cloud' ); ?>><?php esc_html_e( 'Official Meta WhatsApp Cloud API', 'class-manager-pro' ); ?></option>
+						</select>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-whatsapp-api-url"><?php esc_html_e( 'API Endpoint / Webhook URL', 'class-manager-pro' ); ?></label></th>
+					<td>
+						<input type="url" id="cmp-whatsapp-api-url" name="whatsapp_api_url" class="large-text" value="<?php echo esc_attr( $settings['whatsapp_api_url'] ); ?>" placeholder="https://api.yourgateway.com/send or https://graph.facebook.com/v19.0/{phone_number_id}/messages">
+						<p class="description"><?php esc_html_e( 'The outgoing endpoint URL where your WhatsApp gateway or Meta API accepts POST messages.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-whatsapp-api-token"><?php esc_html_e( 'API Key / Access Token', 'class-manager-pro' ); ?></label></th>
+					<td>
+						<input type="text" id="cmp-whatsapp-api-token" name="whatsapp_api_token" class="regular-text" value="<?php echo esc_attr( $settings['whatsapp_api_token'] ); ?>" autocomplete="off">
+						<p class="description"><?php esc_html_e( 'Bearer token or API Key sent in the Authorization header.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-whatsapp-phone-id"><?php esc_html_e( 'Phone Number ID (Meta API)', 'class-manager-pro' ); ?></label></th>
+					<td>
+						<input type="text" id="cmp-whatsapp-phone-id" name="whatsapp_phone_number_id" class="regular-text" value="<?php echo esc_attr( $settings['whatsapp_phone_number_id'] ); ?>">
+						<p class="description"><?php esc_html_e( 'Required only when using the Meta WhatsApp Cloud API.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-whatsapp-webhook-secret"><?php esc_html_e( 'Webhook Verify Secret', 'class-manager-pro' ); ?></label></th>
+					<td>
+						<input type="text" id="cmp-whatsapp-webhook-secret" name="whatsapp_webhook_secret" class="regular-text" value="<?php echo esc_attr( $settings['whatsapp_webhook_secret'] ); ?>">
+						<p class="description"><?php esc_html_e( 'Token used to verify incoming Webhook handshakes from Meta or your WhatsApp gateway.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Incoming Webhook Endpoint', 'class-manager-pro' ); ?></th>
+					<td>
+						<input type="text" readonly class="large-text code" value="<?php echo esc_attr( $webhook_url ); ?>" onclick="this.select();">
+						<p class="description"><?php esc_html_e( 'Configure this URL in Meta Developer Portal or your WhatsApp Gateway webhook settings for delivery reports and student incoming replies.', 'class-manager-pro' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><?php esc_html_e( 'Automated Triggers', 'class-manager-pro' ); ?></th>
+					<td>
+						<label style="display:block; margin-bottom: 6px;">
+							<input type="checkbox" name="whatsapp_auto_welcome" value="1" <?php checked( ! empty( $settings['whatsapp_auto_welcome'] ), true ); ?>>
+							<?php esc_html_e( 'Send automatic WhatsApp welcome message to student upon admission via API', 'class-manager-pro' ); ?>
+						</label>
+						<label style="display:block;">
+							<input type="checkbox" name="whatsapp_auto_fee_reminder" value="1" <?php checked( ! empty( $settings['whatsapp_auto_fee_reminder'] ), true ); ?>>
+							<?php esc_html_e( 'Send automatic WhatsApp payment reminders via API on due dates', 'class-manager-pro' ); ?>
+						</label>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="cmp-communication-footer"><?php esc_html_e( 'Default WhatsApp Footer', 'class-manager-pro' ); ?></label></th>
+					<td><textarea id="cmp-communication-footer" name="whatsapp_footer" rows="2" class="large-text"><?php echo esc_textarea( $settings['whatsapp_footer'] ); ?></textarea></td>
+				</tr>
+			</table>
+
+			<?php submit_button( __( 'Save All Settings', 'class-manager-pro' ) ); ?>
 		</form>
+
+		<hr style="margin: 28px 0; border: 0; border-top: 1px solid #e2e8f0;">
+
+		<div class="cmp-panel-header">
+			<div>
+				<h3><?php esc_html_e( 'Manual Actions & Test Tools', 'class-manager-pro' ); ?></h3>
+				<p class="cmp-muted"><?php esc_html_e( 'Trigger on-demand reports and tests directly.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+
+		<div style="display: flex; gap: 14px; flex-wrap: wrap;">
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="cmp_send_daily_digest_now">
+				<?php wp_nonce_field( 'cmp_send_daily_digest_now' ); ?>
+				<?php submit_button( __( 'Send Daily Institute Digest Now', 'class-manager-pro' ), 'secondary', 'submit', false ); ?>
+			</form>
+		</div>
 	</section>
 	<?php
 	echo cmp_communication_shell_markup( 'settings', ob_get_clean() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped

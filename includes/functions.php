@@ -41,7 +41,10 @@ add_action( 'admin_post_cmp_enroll_student_next_course', 'cmp_handle_enroll_stud
 add_action( 'admin_init', 'cmp_handle_csv_export' );
 add_action( 'init', 'cmp_schedule_daily_fee_reminders' );
 add_action( 'init', 'cmp_disable_razorpay_payment_sync_automation' );
+add_action( 'init', 'cmp_schedule_daily_institute_digest' );
 add_action( 'cmp_daily_fee_reminders', 'cmp_run_scheduled_fee_reminders' );
+add_action( 'cmp_daily_institute_digest_cron', 'cmp_run_scheduled_daily_digest' );
+add_action( 'admin_post_cmp_send_daily_digest_now', 'cmp_handle_send_daily_digest_now' );
 add_action( 'cmp_smartcertify_class_saved', 'cmp_flush_dashboard_cache' );
 add_action( 'cmp_smartcertify_batch_saved', 'cmp_flush_dashboard_cache' );
 add_action( 'cmp_smartcertify_student_saved', 'cmp_flush_dashboard_cache' );
@@ -4289,9 +4292,26 @@ function cmp_send_registration_notifications( $student, $batch, $context = array
 		$summary['student'] = ! empty( $result['success'] );
 	}
 
-	$admin_email = sanitize_email( (string) get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) );
+	$notify_admin = (bool) get_option( 'cmp_notify_admin_on_admission', 0 );
+	$admin_email  = sanitize_email( (string) get_option( 'cmp_digest_recipient_email', get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) ) );
 
-	if ( '' !== $admin_email ) {
+	// Always record in-app activity so the site provides full info on the dashboard without inbox spam
+	cmp_log_admin_activity(
+		'student_admission',
+		sprintf( __( 'New admission: %1$s in %2$s (%3$s)', 'class-manager-pro' ), $student->name, $batch->batch_name, $batch->class_name ),
+		array(
+			'student_id' => (int) $student->id,
+			'batch_id'   => (int) $batch->id,
+			'class_id'   => (int) $batch->class_id,
+		)
+	);
+
+	// Direct WhatsApp Welcome message via API if configured
+	if ( function_exists( 'cmp_maybe_send_direct_whatsapp_welcome' ) ) {
+		cmp_maybe_send_direct_whatsapp_welcome( $student, $batch );
+	}
+
+	if ( $notify_admin && '' !== $admin_email ) {
 		$admin_recipient = (object) array(
 			'email'      => $admin_email,
 			'name'       => get_bloginfo( 'name' ),
@@ -4322,7 +4342,9 @@ function cmp_send_registration_notifications( $student, $batch, $context = array
 		$summary['admin'] = ! empty( $result['success'] );
 	}
 
-	if ( ! empty( $batch->teacher_user_id ) ) {
+	$notify_teacher = (bool) get_option( 'cmp_notify_teacher_on_admission', 0 );
+
+	if ( $notify_teacher && ! empty( $batch->teacher_user_id ) ) {
 		$teacher = get_user_by( 'id', (int) $batch->teacher_user_id );
 
 		if ( $teacher && ! empty( $teacher->user_email ) ) {
@@ -14295,6 +14317,10 @@ function cmp_handle_save_sms_settings() {
 	update_option( 'cmp_message_template_payment_reminder', sanitize_textarea_field( cmp_field( $_POST, 'message_template_payment_reminder' ) ) );
 	update_option( 'cmp_message_template_welcome', sanitize_textarea_field( cmp_field( $_POST, 'message_template_welcome' ) ) );
 	update_option( 'cmp_message_template_course_info', sanitize_textarea_field( cmp_field( $_POST, 'message_template_course_info' ) ) );
+	update_option( 'cmp_notify_admin_on_admission', ! empty( $_POST['notify_admin_on_admission'] ) ? '1' : '0' );
+	update_option( 'cmp_notify_teacher_on_admission', ! empty( $_POST['notify_teacher_on_admission'] ) ? '1' : '0' );
+	update_option( 'cmp_enable_daily_admission_digest', ! empty( $_POST['enable_daily_admission_digest'] ) ? '1' : '0' );
+	update_option( 'cmp_digest_recipient_email', sanitize_email( cmp_field( $_POST, 'digest_recipient_email' ) ) );
 
 	cmp_redirect( 'cmp-settings', __( 'Reminder settings saved successfully.', 'class-manager-pro' ) );
 }
@@ -15229,4 +15255,263 @@ function cmp_handle_send_fee_reminders() {
 			(int) $counts['skipped']
 		)
 	);
+}
+
+/**
+ * Schedules the daily institute admission digest report.
+ */
+function cmp_schedule_daily_institute_digest() {
+	if ( ! is_admin() && ! wp_doing_cron() ) {
+		return;
+	}
+
+	if ( ! wp_next_scheduled( 'cmp_daily_institute_digest_cron' ) ) {
+		wp_schedule_event( time() + HOUR_IN_SECONDS * 2, 'daily', 'cmp_daily_institute_digest_cron' );
+	}
+}
+
+/**
+ * Runs the daily institute digest on cron trigger.
+ */
+function cmp_run_scheduled_daily_digest() {
+	cmp_send_daily_institute_digest();
+}
+
+/**
+ * Handles manual trigger to send the daily digest report immediately.
+ */
+function cmp_handle_send_daily_digest_now() {
+	cmp_require_manage_options();
+	check_admin_referer( 'cmp_send_daily_digest_now' );
+
+	$sent = cmp_send_daily_institute_digest( true );
+
+	if ( $sent ) {
+		cmp_redirect( 'cmp-settings', __( 'Daily Institute Summary & Admission Report sent successfully.', 'class-manager-pro' ) );
+	} else {
+		cmp_redirect( 'cmp-settings', __( 'Could not send Daily Digest report. Please verify recipient email in settings.', 'class-manager-pro' ), 'error' );
+	}
+}
+
+/**
+ * Compiles and sends the Daily Institute Summary & Admission Report.
+ * Replaces spamming individual emails on every admission with a clean, unified report.
+ *
+ * @param bool $force Force send regardless of digest toggle.
+ * @return bool
+ */
+function cmp_send_daily_institute_digest( $force = false ) {
+	$enabled = (bool) get_option( 'cmp_enable_daily_admission_digest', 1 );
+	if ( ! $enabled && ! $force ) {
+		return false;
+	}
+
+	$recipient = sanitize_email( (string) get_option( 'cmp_digest_recipient_email', get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) ) );
+	if ( empty( $recipient ) ) {
+		return false;
+	}
+
+	global $wpdb;
+	$since = gmdate( 'Y-m-d H:i:s', strtotime( '-24 hours' ) );
+
+	$new_students = $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT s.*, c.name AS class_name, b.batch_name, (s.total_fee - s.paid_fee) AS remaining_fee
+			FROM ' . cmp_table( 'students' ) . ' s
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = s.class_id
+			LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = s.batch_id
+			WHERE s.created_at >= %s
+			ORDER BY s.id DESC',
+			$since
+		)
+	);
+
+	$today_start = current_time( 'Y-m-d 00:00:00' );
+	$today_revenue = (float) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'payments' ) . '), 0)
+			FROM ' . cmp_table( 'payments' ) . ' payments
+			WHERE is_deleted = 0 AND payment_date >= %s',
+			$today_start
+		)
+	);
+
+	$total_active = (int) $wpdb->get_var(
+		$wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) . ' WHERE status = %s', 'active' )
+	);
+
+	$total_batches = (int) $wpdb->get_var(
+		$wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'batches' ) . ' WHERE status = %s', 'active' )
+	);
+
+	$site_name = get_bloginfo( 'name' );
+	$date_label = current_time( 'M j, Y' );
+	$subject = sprintf( __( '[%1$s] Daily Institute Summary & Admission Report - %2$s', 'class-manager-pro' ), $site_name, $date_label );
+
+	ob_start();
+	?>
+	<!DOCTYPE html>
+	<html>
+	<head>
+		<meta charset="UTF-8">
+		<title><?php echo esc_html( $subject ); ?></title>
+		<style>
+			body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #f0f4f8; margin: 0; padding: 24px; color: #1e293b; }
+			.cmp-digest-container { max-width: 680px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
+			.cmp-digest-header { background: linear-gradient(135deg, #1e3a8a, #0284c7); padding: 28px; color: #ffffff; }
+			.cmp-digest-header h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+			.cmp-digest-header p { margin: 0; opacity: 0.9; font-size: 14px; }
+			.cmp-digest-body { padding: 24px 28px; }
+			.cmp-stat-grid { display: flex; gap: 12px; margin-bottom: 24px; }
+			.cmp-stat-box { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; text-align: center; }
+			.cmp-stat-val { font-size: 22px; font-weight: 700; color: #0f172a; display: block; }
+			.cmp-stat-lbl { font-size: 12px; color: #64748b; text-transform: uppercase; font-weight: 600; margin-top: 4px; display: block; }
+			.cmp-section-title { font-size: 16px; font-weight: 700; margin: 24px 0 12px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+			table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px; }
+			th { background: #f1f5f9; text-align: left; padding: 10px; font-weight: 600; color: #475569; }
+			td { padding: 10px; border-bottom: 1px solid #f1f5f9; }
+			.cmp-badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+			.cmp-badge-paid { background: #dcfce7; color: #166534; }
+			.cmp-badge-pending { background: #fef3c7; color: #92400e; }
+			.cmp-digest-footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px 28px; font-size: 12px; color: #64748b; text-align: center; }
+		</style>
+	</head>
+	<body>
+		<div class="cmp-digest-container">
+			<div class="cmp-digest-header">
+				<h1><?php echo esc_html( $site_name ); ?> &bull; Daily Institute Report</h1>
+				<p><?php echo esc_html( sprintf( __( 'Summary for %s', 'class-manager-pro' ), $date_label ) ); ?></p>
+			</div>
+			<div class="cmp-digest-body">
+				<div class="cmp-stat-grid">
+					<div class="cmp-stat-box">
+						<span class="cmp-stat-val"><?php echo esc_html( count( $new_students ) ); ?></span>
+						<span class="cmp-stat-lbl"><?php esc_html_e( 'New Admissions', 'class-manager-pro' ); ?></span>
+					</div>
+					<div class="cmp-stat-box">
+						<span class="cmp-stat-val"><?php echo esc_html( cmp_format_money( $today_revenue ) ); ?></span>
+						<span class="cmp-stat-lbl"><?php esc_html_e( 'Today Revenue', 'class-manager-pro' ); ?></span>
+					</div>
+					<div class="cmp-stat-box">
+						<span class="cmp-stat-val"><?php echo esc_html( $total_active ); ?></span>
+						<span class="cmp-stat-lbl"><?php esc_html_e( 'Active Students', 'class-manager-pro' ); ?></span>
+					</div>
+					<div class="cmp-stat-box">
+						<span class="cmp-stat-val"><?php echo esc_html( $total_batches ); ?></span>
+						<span class="cmp-stat-lbl"><?php esc_html_e( 'Active Batches', 'class-manager-pro' ); ?></span>
+					</div>
+				</div>
+
+				<div class="cmp-section-title"><?php esc_html_e( 'New Admissions (Past 24 Hours)', 'class-manager-pro' ); ?></div>
+				<?php if ( ! empty( $new_students ) ) : ?>
+					<table>
+						<thead>
+							<tr>
+								<th><?php esc_html_e( 'Student Name', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Class / Batch', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Fee Status', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+							</tr>
+						</thead>
+						<tbody>
+							<?php foreach ( $new_students as $student ) : ?>
+								<tr>
+									<td><strong><?php echo esc_html( $student->name ); ?></strong></td>
+									<td><?php echo esc_html( $student->class_name ); ?><br><small><?php echo esc_html( $student->batch_name ); ?></small></td>
+									<td>
+										<?php if ( (float) $student->remaining_fee <= 0 ) : ?>
+											<span class="cmp-badge cmp-badge-paid"><?php esc_html_e( 'Paid', 'class-manager-pro' ); ?></span>
+										<?php else : ?>
+											<span class="cmp-badge cmp-badge-pending"><?php echo esc_html( sprintf( __( 'Due %s', 'class-manager-pro' ), cmp_format_money( $student->remaining_fee ) ) ); ?></span>
+										<?php endif; ?>
+									</td>
+									<td><?php echo esc_html( $student->phone ); ?></td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				<?php else : ?>
+					<p style="color: #64748b; font-size: 13px;"><?php esc_html_e( 'No new admissions recorded in the past 24 hours.', 'class-manager-pro' ); ?></p>
+				<?php endif; ?>
+
+				<div style="text-align: center; margin-top: 24px;">
+					<a href="<?php echo esc_url( admin_url( 'admin.php?page=cmp-dashboard' ) ); ?>" style="display: inline-block; background: #0284c7; color: #ffffff; text-decoration: none; font-weight: 600; padding: 10px 20px; border-radius: 6px; font-size: 13px;">
+						<?php esc_html_e( 'Open Class Manager Dashboard', 'class-manager-pro' ); ?> &rarr;
+					</a>
+				</div>
+			</div>
+			<div class="cmp-digest-footer">
+				<p><?php esc_html_e( 'This daily summary consolidates admissions and institute metrics to keep your inbox clean without missing updates.', 'class-manager-pro' ); ?></p>
+				<p><?php esc_html_e( 'You can manage email notifications anytime in Class Manager Pro > Settings.', 'class-manager-pro' ); ?></p>
+			</div>
+		</div>
+	</body>
+	</html>
+	<?php
+	$body = ob_get_clean();
+
+	$sent = wp_mail(
+		$recipient,
+		$subject,
+		$body,
+		array( 'Content-Type: text/html; charset=UTF-8' )
+	);
+
+	// Also send digest to teachers for their specific assigned batches
+	$teachers = get_users( array( 'role__in' => array( 'administrator', 'editor', 'author' ) ) );
+	foreach ( $teachers as $teacher ) {
+		$teacher_batches = cmp_get_teacher_batches( (int) $teacher->ID );
+		if ( empty( $teacher_batches ) ) {
+			continue;
+		}
+
+		$batch_ids = wp_list_pluck( $teacher_batches, 'id' );
+		$teacher_new_students = array_filter(
+			$new_students,
+			static function ( $st ) use ( $batch_ids ) {
+				return in_array( (int) $st->batch_id, $batch_ids, true );
+			}
+		);
+
+		if ( empty( $teacher_new_students ) ) {
+			continue;
+		}
+
+		$teacher_subject = sprintf( __( '[%1$s] Your Batch Admission Summary - %2$s', 'class-manager-pro' ), $site_name, $date_label );
+		ob_start();
+		?>
+		<!DOCTYPE html>
+		<html>
+		<body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f8fafc; padding: 20px; color: #1e293b;">
+			<div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; padding: 24px; border: 1px solid #e2e8f0;">
+				<h2 style="margin-top: 0; color: #0f172a;"><?php echo esc_html( sprintf( __( 'Hello %s,', 'class-manager-pro' ), $teacher->display_name ) ); ?></h2>
+				<p><?php echo esc_html( sprintf( __( 'Here is your batch admission summary for %s:', 'class-manager-pro' ), $date_label ) ); ?></p>
+				<table style="width: 100%; border-collapse: collapse; margin-top: 14px;">
+					<thead>
+						<tr style="background: #f1f5f9; text-align: left;">
+							<th style="padding: 8px;"><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></th>
+							<th style="padding: 8px;"><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></th>
+							<th style="padding: 8px;"><?php esc_html_e( 'Phone', 'class-manager-pro' ); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $teacher_new_students as $st ) : ?>
+							<tr>
+								<td style="padding: 8px; border-bottom: 1px solid #f1f5f9; font-weight: 600;"><?php echo esc_html( $st->name ); ?></td>
+								<td style="padding: 8px; border-bottom: 1px solid #f1f5f9;"><?php echo esc_html( $st->batch_name ); ?></td>
+								<td style="padding: 8px; border-bottom: 1px solid #f1f5f9;"><?php echo esc_html( $st->phone ); ?></td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+				<p style="margin-top: 20px; font-size: 12px; color: #64748b;"><?php esc_html_e( 'View your batches and mark attendance anytime in My Classes on the site.', 'class-manager-pro' ); ?></p>
+			</div>
+		</body>
+		</html>
+		<?php
+		$teacher_body = ob_get_clean();
+		wp_mail( $teacher->user_email, $teacher_subject, $teacher_body, array( 'Content-Type: text/html; charset=UTF-8' ) );
+	}
+
+	return (bool) $sent;
 }

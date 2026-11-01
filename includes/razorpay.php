@@ -347,7 +347,7 @@ class CMP_Razorpay_Webhook {
 			return false;
 		}
 
-		if ( in_array( $payment_status, array( 'failed', 'created', 'authorized', 'refunded', 'refund_pending' ), true ) ) {
+		if ( in_array( $payment_status, array( 'failed', 'created', 'refunded', 'refund_pending' ), true ) ) {
 			return false;
 		}
 
@@ -356,15 +356,16 @@ class CMP_Razorpay_Webhook {
 		}
 
 		if ( ! empty( $payment ) ) {
-			if ( 'captured' !== $payment_status || ! $captured || ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
+			$is_success_state = in_array( $payment_status, array( 'captured', 'paid', 'authorized' ), true ) || $captured;
+			if ( ! $is_success_state ) {
 				return false;
 			}
 
-			return in_array( $event, array( 'payment.captured', 'payment_link.paid', 'order.paid' ), true );
+			return in_array( $event, array( 'payment.captured', 'payment_link.paid', 'order.paid' ), true ) || $is_success_state;
 		}
 
 		if ( ! empty( $payment_link ) ) {
-			return 'payment_link.paid' === $event && 'paid' === $link_status && $amount_paid > 0;
+			return ( 'payment_link.paid' === $event || 'paid' === $link_status ) && $amount_paid > 0;
 		}
 
 		return false;
@@ -382,7 +383,14 @@ class CMP_Razorpay_Webhook {
 		$event          = isset( $payload['event'] ) && is_scalar( $payload['event'] ) ? strtolower( (string) $payload['event'] ) : '';
 		$payment_status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
 		$link_status    = isset( $payment_link['status'] ) && is_scalar( $payment_link['status'] ) ? strtolower( (string) $payment_link['status'] ) : '';
-		$is_failed      = false !== strpos( $event, 'failed' ) || false !== strpos( $event, 'cancelled' ) || false !== strpos( $event, 'expired' ) || 'failed' === $payment_status || in_array( $link_status, array( 'cancelled', 'expired' ), true ) || ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] );
+		$captured       = isset( $payment['captured'] ) && true === filter_var( $payment['captured'], FILTER_VALIDATE_BOOLEAN );
+
+		// If this is a captured or paid transaction, it must not be routed to failed leads
+		if ( in_array( $payment_status, array( 'captured', 'paid', 'authorized' ), true ) || $captured || 'paid' === $link_status ) {
+			return;
+		}
+
+		$is_failed = false !== strpos( $event, 'failed' ) || false !== strpos( $event, 'cancelled' ) || false !== strpos( $event, 'expired' ) || 'failed' === $payment_status || in_array( $link_status, array( 'cancelled', 'expired' ), true );
 
 		if ( ! $is_failed ) {
 			return;

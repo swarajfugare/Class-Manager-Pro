@@ -10311,25 +10311,30 @@ function cmp_import_razorpay_payment_page( $page_id, $page_name = '' ) {
  * @return bool
  */
 function cmp_is_successful_razorpay_payment( $payment ) {
-	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
-
-	if ( 'captured' !== $status ) {
+	if ( ! is_array( $payment ) ) {
 		return false;
 	}
 
-	if ( isset( $payment['captured'] ) && true !== filter_var( $payment['captured'], FILTER_VALIDATE_BOOLEAN ) ) {
+	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( trim( (string) $payment['status'] ) ) : '';
+
+	// Explicit failure statuses
+	if ( 'failed' === $status ) {
 		return false;
 	}
 
-	if ( ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
-		return false;
+	// Recognized successful statuses in Razorpay across payments, orders, payment pages, and links
+	$successful_statuses = array( 'captured', 'authorized', 'paid', 'success', 'completed' );
+
+	$is_successful_status = in_array( $status, $successful_statuses, true );
+	$is_captured          = isset( $payment['captured'] ) && true === filter_var( $payment['captured'], FILTER_VALIDATE_BOOLEAN );
+	$amount               = isset( $payment['amount'] ) ? cmp_razorpay_minor_to_major( $payment['amount'] ) : 0;
+
+	// If marked as captured, authorized, paid, or captured=true, with a positive amount
+	if ( ( $is_successful_status || $is_captured ) && $amount > 0 ) {
+		return true;
 	}
 
-	if ( empty( $payment['amount'] ) || cmp_razorpay_minor_to_major( $payment['amount'] ) <= 0 ) {
-		return false;
-	}
-
-	return true;
+	return false;
 }
 
 /**
@@ -10343,13 +10348,21 @@ function cmp_is_failed_razorpay_payment( $payment ) {
 		return false;
 	}
 
-	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( (string) $payment['status'] ) : '';
+	// If already identified as a successful payment, it is definitely not failed
+	if ( cmp_is_successful_razorpay_payment( $payment ) ) {
+		return false;
+	}
+
+	$status = isset( $payment['status'] ) && is_scalar( $payment['status'] ) ? strtolower( trim( (string) $payment['status'] ) ) : '';
 
 	if ( 'failed' === $status ) {
 		return true;
 	}
 
-	if ( ! empty( $payment['error_code'] ) || ! empty( $payment['error_description'] ) ) {
+	$error_code = ! empty( $payment['error_code'] ) && is_scalar( $payment['error_code'] ) ? strtolower( trim( (string) $payment['error_code'] ) ) : '';
+	$error_desc = ! empty( $payment['error_description'] ) && is_scalar( $payment['error_description'] ) ? strtolower( trim( (string) $payment['error_description'] ) ) : '';
+
+	if ( ( '' !== $error_code && 'null' !== $error_code ) || ( '' !== $error_desc && 'null' !== $error_desc ) ) {
 		return true;
 	}
 
@@ -10738,7 +10751,13 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 	}
 
 	if ( ! cmp_registration_email_is_valid( $email ) ) {
-		return new WP_Error( 'cmp_import_student_email_required', __( 'A valid email address is required for imported payments.', 'class-manager-pro' ) );
+		$clean_phone = preg_replace( '/\D+/', '', (string) $phone );
+		if ( '' !== $clean_phone ) {
+			$email = $clean_phone . '@noemail.local';
+		} else {
+			$clean_pay_id = preg_replace( '/[^A-Za-z0-9_]/', '', isset( $payment['id'] ) ? (string) $payment['id'] : '' );
+			$email        = 'student_' . ( '' !== $clean_pay_id ? $clean_pay_id : wp_generate_password( 8, false ) ) . '@noemail.local';
+		}
 	}
 
 	if ( $total_fee <= 0 ) {
@@ -12709,6 +12728,9 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 				if ( isset( $page_to_batch[ $batch_key ] ) ) {
 					++$page_to_batch[ $batch_key ]['duplicates'];
 				}
+				if ( '' !== $payment_id ) {
+					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
+				}
 				continue;
 			}
 
@@ -12724,6 +12746,9 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 				$p_phone = isset( $payment['contact'] ) ? $payment['contact'] : '';
 				$p_email = isset( $payment['email'] ) ? $payment['email'] : '';
 				cmp_remove_interested_students_by_contact( $p_phone, $p_email, $matched_batch->id, $matched_batch->class_id );
+				if ( '' !== $payment_id ) {
+					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
+				}
 
 				if ( ! empty( $import_result['student_id'] ) ) {
 					cmp_sync_student_tutor_enrollment( (int) $import_result['student_id'] );
@@ -12734,6 +12759,19 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 				if ( isset( $page_to_batch[ $batch_key ] ) ) {
 					++$page_to_batch[ $batch_key ]['duplicates'];
 				}
+				if ( '' !== $payment_id ) {
+					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
+				}
+			} elseif ( ! empty( $import_result['status'] ) && 'error' === $import_result['status'] ) {
+				cmp_log_event(
+					'error',
+					'Failed to import Razorpay payment into batch',
+					array(
+						'payment_id' => $payment_id,
+						'batch_id'   => $matched_batch->id,
+						'error'      => $import_result['message'] ?? '',
+					)
+				);
 			}
 		}
 		// 2. Failed payment attempt -> route to Leads (Interested Students)

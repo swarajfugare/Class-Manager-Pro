@@ -155,6 +155,50 @@ class CMP_Razorpay_Webhook {
 			$class_id = $batch && ! $class_id ? (int) $batch->class_id : $class_id;
 		}
 
+		// Fallback resolution for Payment Page webhooks when references are omitted in payload
+		if ( ! $batch_id ) {
+			global $wpdb;
+			$batches = $wpdb->get_results(
+				'SELECT b.*, c.name as class_name, c.total_fee as class_fee
+				FROM ' . cmp_table( 'batches' ) . ' b
+				LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+				ORDER BY b.id DESC'
+			);
+
+			if ( ! empty( $batches ) ) {
+				$possible_title = self::first_non_empty( array( $payment['description'] ?? '', $meta['form_name'] ?? '', $meta['page_title'] ?? '', $meta['batch_name'] ?? '', $meta['title'] ?? '' ) );
+
+				if ( '' !== $possible_title ) {
+					foreach ( $batches as $b ) {
+						if ( false !== stripos( $b->batch_name, $possible_title ) || false !== stripos( $possible_title, $b->batch_name ) ) {
+							$batch    = $b;
+							$batch_id = (int) $b->id;
+							$class_id = (int) $b->class_id;
+							break;
+						}
+					}
+				}
+
+				if ( ! $batch_id && $amount > 0 ) {
+					foreach ( $batches as $b ) {
+						$b_fee = (float) ( ! empty( $b->batch_fee ) ? $b->batch_fee : $b->class_fee );
+						if ( abs( $b_fee - (float) $amount ) < 0.01 ) {
+							$batch    = $b;
+							$batch_id = (int) $b->id;
+							$class_id = (int) $b->class_id;
+							break;
+						}
+					}
+				}
+
+				if ( ! $batch_id ) {
+					$batch    = $batches[0];
+					$batch_id = (int) $batch->id;
+					$class_id = (int) $batch->class_id;
+				}
+			}
+		}
+
 		if ( '' === $name && '' !== $email ) {
 			$name = $email;
 		}

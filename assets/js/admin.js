@@ -1962,6 +1962,11 @@
 						updateFeedback($feedback, finalData && finalData.message ? finalData.message : 'Import completed.', false);
 						showAdminNotice(finalData && finalData.message ? finalData.message : 'Import completed.', 'success');
 						restoreButton();
+						if (window.location.search.indexOf('cmp-batches') !== -1 && window.location.search.indexOf('action=view') !== -1) {
+							window.setTimeout(function () {
+								window.location.reload();
+							}, 1200);
+						}
 					});
 
 					return;
@@ -1984,6 +1989,11 @@
 					$feedback.html(feedbackHtml);
 					showAdminNotice(syncData.message || 'Sync completed successfully.', 'success');
 					restoreButton();
+					if (window.location.search.indexOf('cmp-batches') !== -1 && (syncData.captured_count > 0 || syncData.duplicates_count > 0)) {
+						window.setTimeout(function () {
+							window.location.reload();
+						}, 1800);
+					}
 					return;
 				}
 
@@ -1992,6 +2002,12 @@
 
 				$form.find('input[type="file"]').val('');
 				restoreButton();
+
+				if (importType === 'razorpay-page' && window.location.search.indexOf('cmp-batches') !== -1 && window.location.search.indexOf('action=view') !== -1) {
+					window.setTimeout(function () {
+						window.location.reload();
+					}, 1200);
+				}
 			}).fail(function (xhr) {
 				handleEntityActionFailure(xhr, $feedback);
 				restoreButton();

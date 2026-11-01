@@ -210,19 +210,19 @@ function cmp_render_batch_import_tools( $batch, $return_page = 'cmp-batches', $r
 			</div>
 		<?php else : ?>
 			<div class="cmp-toolbar">
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form" data-cmp-ajax-import="razorpay-page" data-cmp-feedback="#cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form" data-cmp-ajax-import="razorpay-page" data-cmp-feedback="#cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>" data-cmp-busy-label="<?php esc_attr_e( 'Syncing payments from Razorpay...', 'class-manager-pro' ); ?>">
 					<input type="hidden" name="action" value="cmp_import_razorpay_page_to_batch">
 					<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
 					<input type="hidden" name="razorpay_page_id" value="<?php echo esc_attr( $batch->razorpay_page_id ); ?>">
 					<input type="hidden" name="return_page" value="<?php echo esc_attr( $return_page ); ?>">
 					<input type="hidden" name="return_action" value="<?php echo esc_attr( $return_action ); ?>">
 					<?php wp_nonce_field( 'cmp_import_razorpay_page_to_batch' ); ?>
-					<?php submit_button( __( 'Import Students', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
+					<?php submit_button( __( 'Import Students from Razorpay', 'class-manager-pro' ), 'primary', 'submit', false ); ?>
 				</form>
 				<a class="button" href="<?php echo esc_url( $import_workspace_url ); ?>"><?php esc_html_e( 'Preview Payments', 'class-manager-pro' ); ?></a>
 				<a class="button" href="<?php echo esc_url( $import_workspace_url . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import CSV / Excel', 'class-manager-pro' ); ?></a>
 			</div>
-			<p class="cmp-muted" id="cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Imports run without leaving this batch workspace.', 'class-manager-pro' ); ?></p>
+			<p class="cmp-muted" id="cmp-batch-import-feedback-<?php echo esc_attr( (int) $batch->id ); ?>"><?php esc_html_e( 'Click "Import Students from Razorpay" to directly sync payments for this batch without leaving this page.', 'class-manager-pro' ); ?></p>
 		<?php endif; ?>
 	</section>
 	<?php
@@ -1312,9 +1312,19 @@ function cmp_render_batches_page() {
 				</div>
 				<div class="cmp-toolbar">
 					<a class="button button-primary" href="<?php echo esc_url( $add_url ); ?>"><?php esc_html_e( 'Add Batch', 'class-manager-pro' ); ?></a>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-inline-form" data-cmp-ajax-import="razorpay-sync-all" data-cmp-feedback="#cmp-batch-sync-feedback" style="display:inline-block;margin:0;">
+						<input type="hidden" name="action" value="cmp_sync_all_payment_pages">
+						<?php wp_nonce_field( 'cmp_sync_all_payment_pages' ); ?>
+						<button type="submit" class="button" data-cmp-busy-label="<?php esc_attr_e( 'Syncing Razorpay...', 'class-manager-pro' ); ?>">
+							<span class="dashicons dashicons-update" style="vertical-align:middle;margin-top:-2px;margin-right:4px;"></span>
+							<?php esc_html_e( 'Sync Razorpay Payments', 'class-manager-pro' ); ?>
+						</button>
+					</form>
 					<a class="button" href="<?php echo esc_url( $import_url ); ?>"><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></a>
 				</div>
 			</div>
+
+			<div id="cmp-batch-sync-feedback" style="margin-bottom:12px;"></div>
 
 			<div class="cmp-toolbar cmp-bulk-toolbar">
 				<?php wp_nonce_field( 'cmp_admin_nonce', 'cmp_admin_ajax_nonce' ); ?>

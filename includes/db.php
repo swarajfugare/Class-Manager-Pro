@@ -379,8 +379,8 @@ function cmp_maybe_upgrade() {
 		return;
 	}
 
-	// Never run deep schema inspection queries on public frontend visitor requests.
-	if ( ! is_admin() ) {
+	// Never run deep schema inspection queries on public frontend requests, REST webhooks, or AJAX calls.
+	if ( ! is_admin() || wp_doing_ajax() || ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ! current_user_can( 'manage_options' ) ) {
 		return;
 	}
 

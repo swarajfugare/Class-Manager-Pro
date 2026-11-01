@@ -26,6 +26,7 @@ require_once CMP_PLUGIN_DIR . 'includes/tutor.php';
 require_once CMP_PLUGIN_DIR . 'includes/razorpay.php';
 require_once CMP_PLUGIN_DIR . 'includes/public.php';
 require_once CMP_PLUGIN_DIR . 'includes/smartcertify-integration.php';
+require_once CMP_PLUGIN_DIR . 'includes/whatsapp.php';
 
 if ( is_admin() || ( defined( 'DOING_CRON' ) && DOING_CRON ) || ( defined( 'WP_CLI' ) && WP_CLI ) ) {
 	require_once CMP_PLUGIN_DIR . 'admin/dashboard.php';

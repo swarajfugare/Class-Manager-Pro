@@ -43,6 +43,18 @@ function cmp_render_settings_page() {
 	$automation_sync_batch_id  = (int) get_option( 'cmp_automation_sync_batch_id', 0 );
 	$last_sync_at              = (string) get_option( 'cmp_last_razorpay_sync_at', '' );
 	$last_sync_summary         = get_option( 'cmp_last_razorpay_sync_summary', array() );
+	$wa_settings               = function_exists( 'cmp_get_whatsapp_settings' ) ? cmp_get_whatsapp_settings() : array(
+		'enabled'              => false,
+		'auto_welcome'         => true,
+		'gateway_type'         => 'meta_cloud',
+		'api_url'              => '',
+		'api_token'            => '',
+		'phone_number_id'      => '',
+		'sender'               => get_bloginfo( 'name' ),
+		'webhook_verify_token' => '',
+		'welcome_template'     => '',
+	);
+	$wa_webhook_url            = rest_url( 'cmp/v1/whatsapp-webhook' );
 	$wp_razorpay_keys          = cmp_detect_wordpress_razorpay();
 	$credentials               = cmp_get_razorpay_credentials();
 	$has_api_credentials       = '' !== $credentials['key_id'] && '' !== $credentials['secret'];
@@ -215,6 +227,104 @@ function cmp_render_settings_page() {
 					<p><a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) ); ?>"><?php esc_html_e( 'Open Import Page', 'class-manager-pro' ); ?></a></p>
 				</div>
 			<?php endif; ?>
+		</section>
+
+		<section class="cmp-panel" id="cmp-whatsapp-settings">
+			<div class="cmp-panel-header">
+				<div>
+					<h2><?php esc_html_e( 'WhatsApp API & Webhook Integration', 'class-manager-pro' ); ?></h2>
+					<p class="cmp-muted"><?php esc_html_e( 'Deliver instant WhatsApp admission confirmations directly to students and handle incoming webhook receipts.', 'class-manager-pro' ); ?></p>
+				</div>
+			</div>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form">
+				<input type="hidden" name="action" value="cmp_save_whatsapp_settings">
+				<?php wp_nonce_field( 'cmp_save_whatsapp_settings' ); ?>
+
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Direct Messaging Status', 'class-manager-pro' ); ?></th>
+						<td>
+							<label style="display:block; margin-bottom: 6px;">
+								<input type="checkbox" name="whatsapp_enabled" value="1" <?php checked( $wa_settings['enabled'], true ); ?>>
+								<strong><?php esc_html_e( 'Enable WhatsApp API Delivery', 'class-manager-pro' ); ?></strong>
+							</label>
+							<label style="display:block;">
+								<input type="checkbox" name="whatsapp_auto_welcome" value="1" <?php checked( $wa_settings['auto_welcome'], true ); ?>>
+								<?php esc_html_e( 'Automatically send WhatsApp Welcome message to student upon new admission', 'class-manager-pro' ); ?>
+							</label>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-gateway"><?php esc_html_e( 'Gateway Provider', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<select id="cmp-wa-gateway" name="whatsapp_gateway_type">
+								<option value="meta_cloud" <?php selected( $wa_settings['gateway_type'], 'meta_cloud' ); ?>><?php esc_html_e( 'WhatsApp Cloud API (Meta Official)', 'class-manager-pro' ); ?></option>
+								<option value="custom_webhook" <?php selected( $wa_settings['gateway_type'], 'custom_webhook' ); ?>><?php esc_html_e( 'Custom Gateway Webhook (Wati / AiSensy / UltraMsg / WA-Sender)', 'class-manager-pro' ); ?></option>
+								<option value="wa_link" <?php selected( $wa_settings['gateway_type'], 'wa_link' ); ?>><?php esc_html_e( 'Direct Chat Link (wa.me fallback without API)', 'class-manager-pro' ); ?></option>
+							</select>
+							<p class="description"><?php esc_html_e( 'Choose Meta Cloud API for official automated delivery, or Custom Gateway Webhook for third-party platforms.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-phone-id"><?php esc_html_e( 'Phone Number ID', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<input type="text" id="cmp-wa-phone-id" name="whatsapp_phone_number_id" class="regular-text" value="<?php echo esc_attr( $wa_settings['phone_number_id'] ); ?>" placeholder="e.g. 104829104859201">
+							<p class="description"><?php esc_html_e( 'Required for Meta WhatsApp Cloud API (found in Meta App Dashboard > WhatsApp > API Setup).', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-token"><?php esc_html_e( 'API Token / Bearer Key', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<input type="password" id="cmp-wa-token" name="whatsapp_api_token" class="regular-text" value="<?php echo esc_attr( $wa_settings['api_token'] ); ?>" autocomplete="new-password">
+							<p class="description"><?php esc_html_e( 'Meta System User Permanent Token or third-party WhatsApp Gateway Bearer/API Key.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-api-url"><?php esc_html_e( 'Custom Gateway URL', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<input type="url" id="cmp-wa-api-url" name="whatsapp_api_url" class="large-text code" value="<?php echo esc_url( $wa_settings['api_url'] ); ?>" placeholder="https://api.yourwhatsappgateway.com/send">
+							<p class="description"><?php esc_html_e( 'Endpoint URL for Custom Webhook Gateway. Leave blank if using Meta Cloud API default endpoint.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-webhook-url"><?php esc_html_e( 'WhatsApp Webhook URL', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<div class="cmp-inline-tools">
+								<input type="url" id="cmp-wa-webhook-url" class="large-text code" value="<?php echo esc_url( $wa_webhook_url ); ?>" readonly>
+								<button type="button" class="button" data-cmp-copy-target="#cmp-wa-webhook-url"><?php esc_html_e( 'Copy Webhook URL', 'class-manager-pro' ); ?></button>
+							</div>
+							<p class="description"><?php esc_html_e( 'Paste this Webhook Callback URL into Meta Developer Dashboard or your WhatsApp Gateway to receive delivery receipts and student replies.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-verify-token"><?php esc_html_e( 'Webhook Verify Token', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<input type="text" id="cmp-wa-verify-token" name="whatsapp_webhook_verify_token" class="regular-text" value="<?php echo esc_attr( $wa_settings['webhook_verify_token'] ); ?>" placeholder="e.g. my_secure_wa_token_2026">
+							<p class="description"><?php esc_html_e( 'Matches the Hub Verify Token you enter in Meta Webhook configuration challenge.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="cmp-wa-template"><?php esc_html_e( 'Student Welcome Template', 'class-manager-pro' ); ?></label></th>
+						<td>
+							<textarea id="cmp-wa-template" name="whatsapp_welcome_template" rows="5" class="large-text"><?php echo esc_textarea( $wa_settings['welcome_template'] ); ?></textarea>
+							<p class="description"><?php esc_html_e( 'Variables: {{name}}, {{class_name}}, {{batch_name}}, {{fee_status}}, {{login_url}}, {{due_date}}, {{site_name}}.', 'class-manager-pro' ); ?></p>
+						</td>
+					</tr>
+				</table>
+
+				<?php submit_button( __( 'Save WhatsApp Settings', 'class-manager-pro' ) ); ?>
+			</form>
+
+			<div class="cmp-callout" style="margin-top: 18px;">
+				<h3><?php esc_html_e( 'Test WhatsApp Connection', 'class-manager-pro' ); ?></h3>
+				<p class="cmp-muted"><?php esc_html_e( 'Send a live test message to verify that your credentials, gateway, or webhook are communicating properly.', 'class-manager-pro' ); ?></p>
+				<div class="cmp-toolbar">
+					<input type="tel" id="cmp-wa-test-phone" placeholder="<?php esc_attr_e( '10-digit mobile number', 'class-manager-pro' ); ?>" class="regular-text">
+					<button type="button" class="button button-secondary" id="cmp-wa-test-btn"><?php esc_html_e( 'Send Test Message', 'class-manager-pro' ); ?></button>
+					<span id="cmp-wa-test-feedback" class="cmp-muted"></span>
+				</div>
+			</div>
 		</section>
 
 		<section class="cmp-panel">

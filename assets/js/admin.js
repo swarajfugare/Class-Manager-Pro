@@ -1229,12 +1229,25 @@
 	$(function () {
 		const delayedFilter = debounce(function () {
 			runAjaxFilter($(this).closest('.cmp-filter-form'));
-		}, 400);
+		}, 500);
 
 		refreshSearchableSelects($('.cmp-wrap'));
 		enhanceResponsiveTables($('.cmp-wrap'));
-		updateRegistrationCountdowns();
-		window.setInterval(updateRegistrationCountdowns, 1000);
+
+		// Run registration countdown timers efficiently only when elements exist on page
+		if ($('[data-cmp-countdown], .cmp-countdown-target').length > 0) {
+			updateRegistrationCountdowns();
+			const countdownTimer = window.setInterval(function () {
+				if (document.hidden) {
+					return;
+				}
+				if (!$('[data-cmp-countdown], .cmp-countdown-target').length) {
+					clearInterval(countdownTimer);
+					return;
+				}
+				updateRegistrationCountdowns();
+			}, 1000);
+		}
 
 		$('[data-cmp-class-select]').each(function () {
 			const $select = $(this);
@@ -1396,8 +1409,17 @@
 				return;
 			}
 
-			if (!$(this).closest('.cmp-filter-form').data('cmp-action')) {
+			const $form = $(this).closest('.cmp-filter-form');
+			if (!$form.data('cmp-action')) {
 				return;
+			}
+
+			// Reduce server requests: for text/search inputs, debounce and only query if >= 2 characters or cleared
+			if ($(this).is('input[type="search"], input[type="text"]')) {
+				const queryVal = String($(this).val() || '').trim();
+				if (queryVal.length > 0 && queryVal.length < 2) {
+					return;
+				}
 			}
 
 			delayedFilter.call(this);
@@ -1916,6 +1938,43 @@
 			}).fail(function (xhr) {
 				handleEntityActionFailure(xhr, $feedback);
 				restoreButton();
+			});
+		});
+
+		$(document).on('click', '#cmp-wa-test-btn', function (event) {
+			event.preventDefault();
+			const $button = $(this);
+			const $phoneInput = $('#cmp-wa-test-phone');
+			const $feedback = $('#cmp-wa-test-feedback');
+			const phoneVal = String($phoneInput.val() || '').trim();
+
+			if (!phoneVal) {
+				updateFeedback($feedback, 'Please enter a test mobile number.', true);
+				return;
+			}
+
+			$button.prop('disabled', true).text('Sending...');
+			updateFeedback($feedback, 'Dispatching test message...', false);
+
+			$.post(ajaxEndpoint, {
+				action: 'cmp_test_whatsapp_connection',
+				_ajax_nonce: String($('input[name="cmp_admin_ajax_nonce"]').first().val() || CMPAdmin.nonce || ''),
+				phone: phoneVal
+			}).done(function (res) {
+				$button.prop('disabled', false).text('Send Test Message');
+				if (res && res.success) {
+					if (res.data && res.data.mode === 'link' && res.data.action_url) {
+						updateFeedback($feedback, res.data.message || 'Direct link ready.', false);
+						window.open(res.data.action_url, '_blank');
+					} else {
+						updateFeedback($feedback, res.data && res.data.message ? res.data.message : 'Message sent successfully!', false);
+					}
+				} else {
+					updateFeedback($feedback, res && res.data && res.data.message ? res.data.message : 'Delivery failed.', true);
+				}
+			}).fail(function (xhr) {
+				$button.prop('disabled', false).text('Send Test Message');
+				updateFeedback($feedback, 'Connection or server error during WhatsApp test.', true);
 			});
 		});
 

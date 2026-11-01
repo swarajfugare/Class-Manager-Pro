@@ -2679,13 +2679,18 @@ function cmp_get_batch_by_razorpay_reference( $references ) {
  * @return array
  */
 function cmp_get_batch_overview_metrics() {
+	$cached = get_transient( 'cmp_batch_overview_metrics' );
+	if ( false !== $cached && is_array( $cached ) ) {
+		return $cached;
+	}
+
 	global $wpdb;
 
 	$payment_revenue = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(' . cmp_payment_reporting_amount_sql( 'payments' ) . '), 0) FROM ' . cmp_table( 'payments' ) . ' payments WHERE is_deleted = 0' );
 	$manual_income   = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(manual_income), 0) FROM ' . cmp_table( 'batches' ) );
 	$total_expense   = (float) $wpdb->get_var( 'SELECT COALESCE(SUM(amount), 0) FROM ' . cmp_table( 'expenses' ) );
 
-	return array(
+	$metrics = array(
 		'total_batches'  => (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'batches' ) ),
 		'active_batches' => (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM ' . cmp_table( 'batches' ) . ' WHERE status = %s', 'active' ) ),
 		'total_students' => (int) $wpdb->get_var( 'SELECT COUNT(*) FROM ' . cmp_table( 'students' ) ),
@@ -2693,6 +2698,10 @@ function cmp_get_batch_overview_metrics() {
 		'total_expense'  => $total_expense,
 		'net_income'     => $payment_revenue + $manual_income - $total_expense,
 	);
+
+	set_transient( 'cmp_batch_overview_metrics', $metrics, 3 * MINUTE_IN_SECONDS );
+
+	return $metrics;
 }
 
 /**
@@ -2701,9 +2710,14 @@ function cmp_get_batch_overview_metrics() {
  * @return array
  */
 function cmp_get_batches_with_metrics() {
+	$cached = get_transient( 'cmp_batches_with_metrics' );
+	if ( false !== $cached && is_array( $cached ) ) {
+		return $cached;
+	}
+
 	global $wpdb;
 
-	return $wpdb->get_results(
+	$results = $wpdb->get_results(
 		'SELECT
 			b.*,
 			c.name AS class_name,
@@ -2749,6 +2763,10 @@ function cmp_get_batches_with_metrics() {
 		) exp ON exp.batch_id = b.id
 		ORDER BY b.created_at DESC, b.id DESC'
 	);
+
+	set_transient( 'cmp_batches_with_metrics', $results, 3 * MINUTE_IN_SECONDS );
+
+	return $results;
 }
 
 /**
@@ -4078,6 +4096,12 @@ function cmp_flush_dashboard_cache() {
 	}
 	delete_transient( 'cmp_analytics_report_v33' );
 	wp_cache_delete( 'cmp_analytics_report_v33', 'class-manager-pro' );
+	delete_transient( 'cmp_student_overview_metrics' );
+	wp_cache_delete( 'cmp_student_overview_metrics', 'class-manager-pro' );
+	delete_transient( 'cmp_batches_with_metrics' );
+	wp_cache_delete( 'cmp_batches_with_metrics', 'class-manager-pro' );
+	delete_transient( 'cmp_batch_overview_metrics' );
+	wp_cache_delete( 'cmp_batch_overview_metrics', 'class-manager-pro' );
 }
 
 /**
@@ -4251,7 +4275,7 @@ function cmp_send_registration_notifications( $student, $batch, $context = array
 		'teacher' => false,
 	);
 
-	if ( ! $student || ! $batch || ! cmp_is_whatsapp_delivery_enabled() ) {
+	if ( ! $student || ! $batch ) {
 		return $summary;
 	}
 
@@ -6711,6 +6735,11 @@ function cmp_get_dashboard_snapshot( $range = 'month' ) {
  * @return array
  */
 function cmp_get_student_overview_metrics() {
+	$cached = get_transient( 'cmp_student_overview_metrics' );
+	if ( false !== $cached && is_array( $cached ) ) {
+		return $cached;
+	}
+
 	global $wpdb;
 
 	$row = $wpdb->get_row(
@@ -6722,12 +6751,16 @@ function cmp_get_student_overview_metrics() {
 		FROM ' . cmp_table( 'students' )
 	);
 
-	return array(
+	$metrics = array(
 		'total_students'     => $row ? (int) $row->total_students : 0,
 		'active_students'    => $row ? (int) $row->active_students : 0,
 		'completed_students' => $row ? (int) $row->completed_students : 0,
 		'pending_fee'        => $row ? (float) $row->pending_fee : 0.0,
 	);
+
+	set_transient( 'cmp_student_overview_metrics', $metrics, 5 * MINUTE_IN_SECONDS );
+
+	return $metrics;
 }
 
 /**

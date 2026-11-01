@@ -1,6 +1,25 @@
 # Changelog
 
-## 3.6.0 - Communication Center & Enterprise Messaging Suite
+## 3.6.1 - Server Load Reduction, WhatsApp API & Webhook Suite, Email Anti-Spam & UI/UX Optimization
+
+- **Server Load Optimization**:
+  - Gated continuous 1000ms countdown timers so they only execute when countdown elements actually exist in DOM and pause when tab is inactive.
+  - Implemented 500ms debouncing and minimum query length checks on live search filters to prevent excessive `admin-ajax.php` requests.
+  - Added transient caching with memory layers for heavy database queries (batch overview metrics, student overview metrics, dashboard revenue summaries) with automatic invalidation on updates.
+  - Prevented redundant `SHOW COLUMNS` schema inspection queries during public requests, REST requests, and AJAX operations.
+- **Email Spam Prevention & Daily Digest**:
+  - Replaced per-admission instant email spam with an automated consolidated Daily Institute Digest Report for admin and teachers.
+  - Added configurable anti-spam toggles in Settings to keep teacher and admin inboxes clean while maintaining a real-time live audit trail in the dashboard.
+- **Direct WhatsApp API & Webhook Suite**:
+  - Added `includes/whatsapp.php` supporting Meta WhatsApp Cloud API (Graph API) and Custom WhatsApp Gateway Webhooks (AiSensy, Wati, UltraMsg, WA-Sender).
+  - Added incoming Webhook endpoint (`/wp-json/cmp/v1/whatsapp-webhook`) with verification handshake support (hub.challenge) and receipt logging.
+  - Automated direct WhatsApp welcome messaging to students upon admission with customizable dynamic tags.
+  - Added a live "Send Test Message" diagnostic utility in Settings.
+- **UI/UX & Frontend Touch-Up**:
+  - Eliminated mobile table breaking and row-collapse overlaps by providing clean, horizontal responsive scrolling with sticky headers.
+  - Fixed action buttons in table rows into compact, modern pills to prevent column width explosions.
+  - Redesigned public student intake form progress indicator into a sleek, responsive step bar that never wraps jaggedly or overlaps.
+  - Prevented toolbar and filter form controls from stretching vertically into infinite columns on smaller screens.
 
 - Added a new Communication Center with Email Center, WhatsApp Center, Campaign Manager, Templates, Automation, History, Statistics, and Settings pages.
 - Added reusable communication tables for templates, campaigns, messages, and automation rules without removing any existing features or data tables.

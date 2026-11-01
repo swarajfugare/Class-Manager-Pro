@@ -5615,7 +5615,7 @@ function cmp_get_payment_by_transaction_id( $transaction_id, $exclude_payment_id
 
 	return $wpdb->get_row(
 		$wpdb->prepare(
-			'SELECT id, student_id, transaction_id, is_deleted
+			'SELECT *
 			FROM ' . cmp_table( 'payments' ) . '
 			WHERE ' . implode( ' AND ', $where ) . '
 			ORDER BY id DESC
@@ -10481,9 +10481,9 @@ function cmp_payment_matches_reference_or_title( $payment, $target_reference = '
 	} elseif ( false !== strpos( $target_reference, 'pages.razorpay.com/' ) || false !== strpos( $target_reference, 'rzp.io/' ) ) {
 		$parts = wp_parse_url( $target_reference );
 		$path  = isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
-		$segs  = explode( '/', $path );
+		$segs  = array_values( array_filter( explode( '/', $path ) ) );
 		if ( ! empty( $segs ) ) {
-			$clean_target_id = $segs[0];
+			$clean_target_id = end( $segs );
 		}
 	}
 
@@ -10517,8 +10517,11 @@ function cmp_payment_matches_reference_or_title( $payment, $target_reference = '
 				}
 			}
 
-			if ( '' !== $target_title && strlen( $val_str ) >= 3 && strlen( $target_title ) >= 3 && ( false !== stripos( $val_str, $target_title ) || false !== stripos( $target_title, $val_str ) ) ) {
-				return true;
+			if ( '' !== $target_title && strlen( $target_title ) >= 4 ) {
+				$is_title_key = in_array( strtolower( (string) $note_key ), array( 'form_name', 'page_name', 'payment_page_name', 'class_name', 'batch_name', 'title', 'course' ), true );
+				if ( ( $is_title_key || strlen( $val_str ) >= 8 ) && ( false !== stripos( $val_str, $target_title ) || false !== stripos( $target_title, $val_str ) ) ) {
+					return true;
+				}
 			}
 		}
 
@@ -10543,7 +10546,7 @@ function cmp_payment_matches_reference_or_title( $payment, $target_reference = '
 			}
 		}
 
-		if ( '' !== $target_title && ( false !== stripos( $desc, $target_title ) || false !== stripos( $target_title, $desc ) ) ) {
+		if ( '' !== $target_title && strlen( $target_title ) >= 4 && ( false !== stripos( $desc, $target_title ) || ( strlen( $desc ) >= 6 && false !== stripos( $target_title, $desc ) ) ) ) {
 			return true;
 		}
 	}
@@ -10893,6 +10896,128 @@ function cmp_import_razorpay_payment( $payment, $link_map = array() ) {
 }
 
 /**
+ * Realigns misplaced payments and purges foreign payments from a batch.
+ *
+ * Ensures that a batch only contains payments that legitimately belong to it.
+ * Any payments belonging to another batch are reassigned to their rightful batch;
+ * if no rightful batch is found, they are decoupled (batch_id = 0) so the batch
+ * count remains completely accurate to Razorpay.
+ *
+ * @param int   $batch_id Batch ID.
+ * @param array $valid_payment_ids List of valid Razorpay payment IDs (pay_...).
+ * @return int Number of realigned payments.
+ */
+function cmp_clean_and_realign_batch_payments( $batch_id, $valid_payment_ids = array() ) {
+	global $wpdb;
+
+	$batch_id = absint( $batch_id );
+	if ( $batch_id <= 0 || empty( $valid_payment_ids ) || ! is_array( $valid_payment_ids ) ) {
+		return 0;
+	}
+
+	$valid_map = array_fill_keys( array_map( 'sanitize_text_field', $valid_payment_ids ), true );
+
+	// Fetch all current payments for this batch
+	$current_payments = $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT id, student_id, transaction_id, payment_mode FROM ' . cmp_table( 'payments' ) . ' WHERE batch_id = %d AND is_deleted = 0',
+			$batch_id
+		)
+	);
+
+	if ( empty( $current_payments ) ) {
+		return 0;
+	}
+
+	// Fetch other batches to locate rightful owners if foreign payments exist
+	$all_batches = $wpdb->get_results(
+		'SELECT id, class_id, batch_name, razorpay_page_id, razorpay_link FROM ' . cmp_table( 'batches' )
+	);
+
+	$realigned_count = 0;
+
+	foreach ( $current_payments as $pmt ) {
+		$tx_id = trim( (string) $pmt->transaction_id );
+
+		// Only check Razorpay gateway payments (starts with pay_)
+		if ( '' === $tx_id || 0 !== stripos( $tx_id, 'pay_' ) ) {
+			continue;
+		}
+
+		// Valid payment for this batch
+		if ( isset( $valid_map[ $tx_id ] ) ) {
+			continue;
+		}
+
+		// Misplaced payment! Find its rightful batch
+		$target_batch = null;
+		$rzp_pmt      = cmp_razorpay_api_get( 'payments/' . rawurlencode( $tx_id ) );
+
+		if ( ! is_wp_error( $rzp_pmt ) && is_array( $rzp_pmt ) ) {
+			foreach ( $all_batches as $candidate_batch ) {
+				if ( (int) $candidate_batch->id === $batch_id ) {
+					continue;
+				}
+				if ( ! empty( $candidate_batch->razorpay_page_id ) && cmp_payment_matches_reference_or_title( $rzp_pmt, $candidate_batch->razorpay_page_id, $candidate_batch->batch_name ) ) {
+					$target_batch = $candidate_batch;
+					break;
+				}
+			}
+		}
+
+		if ( $target_batch ) {
+			$wpdb->update(
+				cmp_table( 'payments' ),
+				array(
+					'batch_id' => (int) $target_batch->id,
+					'class_id' => (int) $target_batch->class_id,
+				),
+				array( 'id' => (int) $pmt->id ),
+				array( '%d', '%d' ),
+				array( '%d' )
+			);
+
+			if ( ! empty( $pmt->student_id ) ) {
+				$wpdb->update(
+					cmp_table( 'students' ),
+					array(
+						'batch_id' => (int) $target_batch->id,
+						'class_id' => (int) $target_batch->class_id,
+					),
+					array( 'id' => (int) $pmt->student_id ),
+					array( '%d', '%d' ),
+					array( '%d' )
+				);
+				cmp_sync_student_tutor_enrollment( (int) $pmt->student_id );
+			}
+		} else {
+			// Decouple from this batch to restore batch count integrity
+			$wpdb->update(
+				cmp_table( 'payments' ),
+				array( 'batch_id' => 0 ),
+				array( 'id' => (int) $pmt->id ),
+				array( '%d' ),
+				array( '%d' )
+			);
+
+			if ( ! empty( $pmt->student_id ) ) {
+				$wpdb->update(
+					cmp_table( 'students' ),
+					array( 'batch_id' => 0 ),
+					array( 'id' => (int) $pmt->student_id ),
+					array( '%d' ),
+					array( '%d' )
+				);
+			}
+		}
+
+		++$realigned_count;
+	}
+
+	return $realigned_count;
+}
+
+/**
  * Imports a captured Razorpay payment into a specific batch.
  *
  * @param array  $payment Razorpay payment.
@@ -10912,8 +11037,51 @@ function cmp_import_razorpay_payment_into_batch( $payment, $batch ) {
 
 	$transaction_id = isset( $payment['id'] ) ? sanitize_text_field( $payment['id'] ) : '';
 
-	if ( '' !== $transaction_id && cmp_payment_exists( $transaction_id ) ) {
-		return array( 'status' => 'duplicate' );
+	if ( '' !== $transaction_id ) {
+		$existing_payment = cmp_get_payment_by_transaction_id( $transaction_id );
+
+		if ( $existing_payment ) {
+			// If already in this batch, it is a duplicate
+			if ( (int) $existing_payment->batch_id === (int) $batch->id ) {
+				return array( 'status' => 'duplicate' );
+			}
+
+			// Misplaced in another batch or unassigned: reassign to this rightful batch!
+			global $wpdb;
+
+			$wpdb->update(
+				cmp_table( 'payments' ),
+				array(
+					'batch_id' => (int) $batch->id,
+					'class_id' => (int) $batch->class_id,
+				),
+				array( 'id' => (int) $existing_payment->id ),
+				array( '%d', '%d' ),
+				array( '%d' )
+			);
+
+			$student_id = (int) $existing_payment->student_id;
+			if ( $student_id > 0 ) {
+				$wpdb->update(
+					cmp_table( 'students' ),
+					array(
+						'batch_id' => (int) $batch->id,
+						'class_id' => (int) $batch->class_id,
+					),
+					array( 'id' => $student_id ),
+					array( '%d', '%d' ),
+					array( '%d' )
+				);
+				cmp_sync_student_tutor_enrollment( $student_id );
+			}
+
+			return array(
+				'status'     => 'imported',
+				'student_id' => $student_id,
+				'payment_id' => (int) $existing_payment->id,
+				'realigned'  => true,
+			);
+		}
 	}
 
 	$student_id = cmp_upsert_import_student_from_payment( $payment, $batch );
@@ -11685,9 +11853,33 @@ function cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name = '
 	} elseif ( false !== strpos( $page_id, 'pages.razorpay.com/' ) || false !== strpos( $page_id, 'rzp.io/' ) ) {
 		$parts = wp_parse_url( $page_id );
 		$path  = isset( $parts['path'] ) ? trim( $parts['path'], '/' ) : '';
-		$segs  = explode( '/', $path );
+		$segs  = array_values( array_filter( explode( '/', $path ) ) );
 		if ( ! empty( $segs ) ) {
-			$clean_id = $segs[0];
+			$clean_id = end( $segs );
+		}
+	}
+
+	// If clean_id is not already a pl_ or plink_ ID, try resolving it via payment_pages list
+	if ( 0 !== stripos( $clean_id, 'pl_' ) && 0 !== stripos( $clean_id, 'plink_' ) ) {
+		$rzp_pages_lookup = cmp_razorpay_api_get( 'payment_pages', array( 'count' => 100 ) );
+		if ( ! is_wp_error( $rzp_pages_lookup ) && isset( $rzp_pages_lookup['items'] ) && is_array( $rzp_pages_lookup['items'] ) ) {
+			foreach ( $rzp_pages_lookup['items'] as $lookup_page ) {
+				$lp_slug  = isset( $lookup_page['slug'] ) ? trim( (string) $lookup_page['slug'] ) : '';
+				$lp_title = isset( $lookup_page['title'] ) ? trim( (string) $lookup_page['title'] ) : '';
+				$lp_id    = isset( $lookup_page['id'] ) ? trim( (string) $lookup_page['id'] ) : '';
+
+				if ( '' !== $lp_id && (
+					0 === strcasecmp( $clean_id, $lp_slug ) ||
+					0 === strcasecmp( $clean_id, $lp_title ) ||
+					( '' !== $page_name && 0 === strcasecmp( $page_name, $lp_title ) )
+				) ) {
+					$clean_id = $lp_id;
+					if ( '' === $detected_name && '' !== $lp_title ) {
+						$detected_name = $lp_title;
+					}
+					break;
+				}
+			}
 		}
 	}
 
@@ -11759,6 +11951,17 @@ function cmp_get_razorpay_page_payment_import_metadata( $page_id, $page_name = '
 					}
 
 					if ( ! $has_udf ) {
+						continue;
+					}
+
+					// If the payment notes reference a different payment page ID, skip it
+					$p_page_ref = '';
+					if ( ! empty( $p_notes['payment_page_id'] ) ) {
+						$p_page_ref = sanitize_text_field( $p_notes['payment_page_id'] );
+					} elseif ( ! empty( $p_notes['page_id'] ) ) {
+						$p_page_ref = sanitize_text_field( $p_notes['page_id'] );
+					}
+					if ( '' !== $p_page_ref && 0 !== strcasecmp( $p_page_ref, $clean_id ) ) {
 						continue;
 					}
 
@@ -12258,6 +12461,11 @@ function cmp_process_razorpay_page_import_session_chunk( $session_id, $chunk_siz
 
 	if ( $offset >= $total ) {
 		delete_transient( cmp_get_razorpay_page_import_session_key( $session_id ) );
+
+		// Clean up and realign any foreign payments from this batch
+		if ( ! empty( $payment_ids ) ) {
+			cmp_clean_and_realign_batch_payments( (int) $batch->id, $payment_ids );
+		}
 
 		$message = cmp_get_razorpay_page_import_message( $summary );
 
@@ -12767,15 +12975,6 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 
 				$processed_payment_ids[ $p_id ] = true;
 
-				if ( cmp_payment_exists( $p_id ) ) {
-					++$duplicates_count;
-					if ( isset( $page_to_batch[ $batch_key ] ) ) {
-						++$page_to_batch[ $batch_key ]['duplicates'];
-					}
-					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $p_id ), array( '%s' ) );
-					continue;
-				}
-
 				$import_result = cmp_import_razorpay_payment_into_batch( $payment, $matched_batch );
 
 				if ( ! empty( $import_result['status'] ) && 'imported' === $import_result['status'] ) {
@@ -12799,6 +12998,11 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 					}
 					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $p_id ), array( '%s' ) );
 				}
+			}
+
+			// Clean up and realign any foreign payments from this batch
+			if ( ! empty( $pp_meta['payment_ids'] ) ) {
+				cmp_clean_and_realign_batch_payments( (int) $matched_batch->id, $pp_meta['payment_ids'] );
 			}
 		}
 
@@ -12969,15 +13173,17 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 						break;
 					}
 				}
-				if ( ! $matched_batch && ! empty( $all_batches ) ) {
-					$matched_batch = $all_batches[0];
-				}
 			}
 		}
 
 		// 3. Fallback matching across all batches using reference and title matching (e.g. "Ready Rangoli Class")
 		if ( ! $matched_batch ) {
 			foreach ( $all_batches as $b ) {
+				// Batches configured with direct pl_ pages were already synced in Step 1.
+				// Do not match generic payments into them by title fallback!
+				if ( ! empty( $b->razorpay_page_id ) && 0 === stripos( $b->razorpay_page_id, 'pl_' ) ) {
+					continue;
+				}
 				if ( cmp_payment_matches_reference_or_title( $payment, $b->razorpay_page_id, $b->batch_name ) ) {
 					$matched_batch = $b;
 					break;
@@ -13045,17 +13251,6 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 
 		// 1. Successful / captured payment
 		if ( cmp_is_successful_razorpay_payment( $payment ) ) {
-			if ( cmp_payment_exists( $payment_id ) ) {
-				++$duplicates_count;
-				if ( isset( $page_to_batch[ $batch_key ] ) ) {
-					++$page_to_batch[ $batch_key ]['duplicates'];
-				}
-				if ( '' !== $payment_id ) {
-					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
-				}
-				continue;
-			}
-
 			$import_result = cmp_import_razorpay_payment_into_batch( $payment, $matched_batch );
 
 			if ( ! empty( $import_result['status'] ) && 'imported' === $import_result['status'] ) {
@@ -13068,16 +13263,13 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 				$p_phone = isset( $payment['contact'] ) ? $payment['contact'] : '';
 				$p_email = isset( $payment['email'] ) ? $payment['email'] : '';
 				cmp_remove_interested_students_by_contact( $p_phone, $p_email, $matched_batch->id, $matched_batch->class_id );
-				if ( '' !== $payment_id ) {
-					$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
-				}
+				$wpdb->delete( cmp_table( 'interested_students' ), array( 'transaction_id' => $payment_id ), array( '%s' ) );
 
 				if ( ! empty( $import_result['student_id'] ) ) {
 					cmp_sync_student_tutor_enrollment( (int) $import_result['student_id'] );
 				}
 			} elseif ( ! empty( $import_result['status'] ) && 'duplicate' === $import_result['status'] ) {
 				++$duplicates_count;
-
 				if ( isset( $page_to_batch[ $batch_key ] ) ) {
 					++$page_to_batch[ $batch_key ]['duplicates'];
 				}
@@ -13426,6 +13618,10 @@ function cmp_import_razorpay_page_to_batch( $page_id, $batch_id ) {
 
 	if ( is_wp_error( $result ) ) {
 		return $result;
+	}
+
+	if ( ! empty( $metadata['payment_ids'] ) ) {
+		cmp_clean_and_realign_batch_payments( (int) $batch->id, $metadata['payment_ids'] );
 	}
 
 	return array(

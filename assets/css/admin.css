@@ -13,25 +13,30 @@
 	gap: 16px;
 	margin: 18px 0;
 	width: 100%;
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
+.cmp-cards.cmp-cards-4,
 .cmp-cards-4 {
-	grid-template-columns: repeat(4, minmax(0, 1fr));
+	grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
 	width: 100%;
 }
 
+.cmp-cards.cmp-cards-5,
 .cmp-cards-5 {
-	grid-template-columns: repeat(5, minmax(0, 1fr));
+	grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
 	width: 100%;
 }
 
+.cmp-cards.cmp-cards-6,
 .cmp-cards-6 {
-	grid-template-columns: repeat(6, minmax(0, 1fr));
+	grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
 	width: 100%;
 }
 
+.cmp-cards.cmp-cards-3,
 .cmp-cards-3 {
-	grid-template-columns: repeat(3, minmax(0, 1fr));
+	grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
 	width: 100%;
 }
 
@@ -1317,8 +1322,7 @@ form.cmp-loading::after {
 }
 
 .cmp-cards {
-	gap: 14px;
-	grid-template-columns: repeat(5, minmax(0, 1fr));
+	gap: 16px;
 	margin: 16px 0;
 }
 

@@ -4930,6 +4930,81 @@ function cmp_handle_toggle_batch_status() {
 add_action( 'admin_post_cmp_toggle_batch_status', 'cmp_handle_toggle_batch_status' );
 
 /**
+ * Duplicates / clones an existing batch with 1 click to speed up work.
+ */
+function cmp_handle_clone_batch() {
+	if ( function_exists( 'cmp_require_manage_options' ) ) {
+		cmp_require_manage_options();
+	} elseif ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'Unauthorized user.', 'class-manager-pro' ) );
+	}
+
+	$batch_id = absint( cmp_field( $_GET, 'id', 0 ) );
+	check_admin_referer( 'cmp_clone_batch_' . $batch_id );
+
+	$batch = cmp_get_batch( $batch_id );
+	if ( ! $batch ) {
+		cmp_redirect( 'cmp-batches', __( 'Batch not found.', 'class-manager-pro' ), 'error' );
+	}
+
+	// Smart clone name generation: e.g. "Basic Aari Work Batch 1" -> "Basic Aari Work Batch 2"
+	$base_name = $batch->batch_name;
+	$new_name  = '';
+	if ( preg_match( '/^(.*?)(?:Batch|बॅच)\s*(\d+)$/ui', $base_name, $m ) ) {
+		$next_num = ( (int) $m[2] ) + 1;
+		$new_name = trim( $m[1] ) . ( $m[1] ? ' ' : '' ) . 'Batch ' . $next_num;
+	} else {
+		$new_name = $base_name . ' (Copy)';
+	}
+
+	// Make sure name is unique in this class
+	$dup = cmp_validate_unique_batch_name( $new_name, (int) $batch->class_id );
+	if ( is_wp_error( $dup ) ) {
+		$new_name = $base_name . ' (' . current_time( 'd M' ) . ')';
+	}
+
+	$clone_data = array(
+		'class_id'         => (int) $batch->class_id,
+		'batch_name'       => $new_name,
+		'course_id'        => (int) $batch->course_id,
+		'start_date'       => null,
+		'fee_due_date'     => null,
+		'razorpay_link'    => $batch->razorpay_link,
+		'razorpay_page_id' => $batch->razorpay_page_id,
+		'is_free'          => ! empty( $batch->is_free ) ? 1 : 0,
+		'batch_fee'        => (float) $batch->batch_fee,
+		'teacher_user_id'  => (int) $batch->teacher_user_id,
+		'intake_limit'     => (int) $batch->intake_limit,
+		'class_days'       => $batch->class_days,
+		'status'           => 'upcoming',
+		'manual_income'    => 0,
+	);
+
+	$new_id = cmp_insert_batch( $clone_data );
+	if ( is_wp_error( $new_id ) ) {
+		cmp_redirect( 'cmp-batches', $new_id->get_error_message(), 'error' );
+	}
+
+	cmp_log_admin_action(
+		'clone_batch',
+		'batch',
+		$new_id,
+		sprintf( __( 'Cloned batch "%1$s" into new batch "%2$s" (#%3$d).', 'class-manager-pro' ), $batch->batch_name, $new_name, $new_id )
+	);
+
+	cmp_redirect(
+		'cmp-batches',
+		sprintf( __( 'Batch cloned successfully as "%s"! You can now set its start date or update settings.', 'class-manager-pro' ), $new_name ),
+		'success',
+		array(
+			'action' => 'edit',
+			'id'     => $new_id,
+		)
+	);
+}
+add_action( 'admin_post_cmp_clone_batch', 'cmp_handle_clone_batch' );
+
+/**
  * Action handler to remove/delete a student from a batch directly.
  */
 function cmp_handle_remove_student_from_batch() {
@@ -4976,126 +5051,82 @@ function cmp_handle_remove_student_from_batch() {
 add_action( 'admin_post_cmp_remove_student_from_batch', 'cmp_handle_remove_student_from_batch' );
 
 /**
- * Unbundles any students that were previously merged (e.g. with "/" in their name or having multiple payments in the same batch)
+ * Unbundles any students that were previously merged (e.g. with "/" in their name)
  * so that every collected payment has an enrolled student in the batch.
  */
 function cmp_unbundle_merged_students_from_payments() {
+	if ( get_option( 'cmp_unbundled_merged_v2' ) ) {
+		return;
+	}
+	update_option( 'cmp_unbundled_merged_v2', 1 );
+
 	global $wpdb;
 
-	// 1. Find any student with "/" in their name (e.g. "Name 1 / Name 2") who has payments
+	// Only find students whose name contains " / " (the ones concatenated by old merge logic)
 	$merged_students = $wpdb->get_results(
 		"SELECT * FROM " . cmp_table( 'students' ) . " WHERE name LIKE '% / %' AND batch_id > 0"
 	);
 
-	if ( ! empty( $merged_students ) ) {
-		foreach ( $merged_students as $m_student ) {
-			$names = array_map( 'trim', explode( ' / ', $m_student->name ) );
-			if ( count( $names ) < 2 ) {
-				continue;
-			}
-
-			// Get all payments linked to this student
-			$student_payments = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT * FROM " . cmp_table( 'payments' ) . " WHERE student_id = %d AND batch_id = %d AND is_deleted = 0 ORDER BY id ASC",
-					(int) $m_student->id,
-					(int) $m_student->batch_id
-				)
-			);
-
-			// Rename first student to the first name
-			$wpdb->update(
-				cmp_table( 'students' ),
-				array( 'name' => $names[0] ),
-				array( 'id' => (int) $m_student->id ),
-				array( '%s' ),
-				array( '%d' )
-			);
-
-			// For remaining names, create individual student records and reassign subsequent payments
-			for ( $i = 1; $i < count( $names ); $i++ ) {
-				$new_name = $names[ $i ];
-				$pmt_for_this = isset( $student_payments[ $i ] ) ? $student_payments[ $i ] : null;
-				$paid_fee     = $pmt_for_this ? (float) $pmt_for_this->amount : (float) $m_student->total_fee;
-
-				$new_student_id = cmp_insert_student( array(
-					'name'          => $new_name,
-					'phone'         => $m_student->phone,
-					'email'         => 'student_' . $i . '_' . ( $m_student->email ? $m_student->email : wp_generate_password( 6, false ) . '@noemail.local' ),
-					'class_id'      => (int) $m_student->class_id,
-					'batch_id'      => (int) $m_student->batch_id,
-					'total_fee'     => $paid_fee > 0 ? $paid_fee : (float) $m_student->total_fee,
-					'paid_fee'      => $paid_fee,
-					'status'        => 'active',
-					'city_original' => $m_student->city_original,
-					'city_normalized' => $m_student->city_normalized,
-					'lead_source'   => $m_student->lead_source,
-					'notes'         => 'Admission unbundled from merged payment.',
-				) );
-
-				if ( ! is_wp_error( $new_student_id ) && $pmt_for_this ) {
-					$wpdb->update(
-						cmp_table( 'payments' ),
-						array( 'student_id' => (int) $new_student_id ),
-						array( 'id' => (int) $pmt_for_this->id ),
-						array( '%d' ),
-						array( '%d' )
-					);
-				}
-			}
-
-			// Refresh fees for the first student
-			cmp_update_student_paid_fee( (int) $m_student->id );
-		}
+	if ( empty( $merged_students ) ) {
+		return;
 	}
 
-	// 2. Also check if any student has multiple payments in the same batch where payment amount >= batch fee
-	$multi_pmts = $wpdb->get_results(
-		"SELECT student_id, batch_id, COUNT(id) as pmt_count FROM " . cmp_table( 'payments' ) . "
-		 WHERE is_deleted = 0 AND batch_id > 0 GROUP BY student_id, batch_id HAVING pmt_count > 1"
-	);
+	foreach ( $merged_students as $m_student ) {
+		$names = array_values( array_filter( array_map( 'trim', explode( ' / ', $m_student->name ) ) ) );
+		if ( count( $names ) < 2 ) {
+			continue;
+		}
 
-	if ( ! empty( $multi_pmts ) ) {
-		foreach ( $multi_pmts as $mp ) {
-			$st = cmp_get_student( (int) $mp->student_id );
-			if ( ! $st ) continue;
-			$pmts = $wpdb->get_results( $wpdb->prepare(
+		// Get all payments linked to this student in this batch
+		$student_payments = $wpdb->get_results(
+			$wpdb->prepare(
 				"SELECT * FROM " . cmp_table( 'payments' ) . " WHERE student_id = %d AND batch_id = %d AND is_deleted = 0 ORDER BY id ASC",
-				(int) $mp->student_id,
-				(int) $mp->batch_id
+				(int) $m_student->id,
+				(int) $m_student->batch_id
+			)
+		);
+
+		// Rename first student to the first name
+		$wpdb->update(
+			cmp_table( 'students' ),
+			array( 'name' => $names[0] ),
+			array( 'id' => (int) $m_student->id ),
+			array( '%s' ),
+			array( '%d' )
+		);
+
+		for ( $i = 1; $i < count( $names ); $i++ ) {
+			$new_name     = $names[ $i ];
+			$pmt_for_this = isset( $student_payments[ $i ] ) ? $student_payments[ $i ] : null;
+			$paid_fee     = $pmt_for_this ? (float) $pmt_for_this->amount : (float) $m_student->total_fee;
+
+			$new_student_id = cmp_insert_student( array(
+				'name'            => $new_name,
+				'phone'           => $m_student->phone,
+				'email'           => 'student_' . $i . '_' . ( $m_student->email ? $m_student->email : wp_generate_password( 6, false ) . '@noemail.local' ),
+				'class_id'        => (int) $m_student->class_id,
+				'batch_id'        => (int) $m_student->batch_id,
+				'total_fee'       => $paid_fee > 0 ? $paid_fee : (float) $m_student->total_fee,
+				'paid_fee'        => $paid_fee,
+				'status'          => 'active',
+				'city_original'   => $m_student->city_original,
+				'city_normalized' => $m_student->city_normalized,
+				'lead_source'     => $m_student->lead_source,
+				'notes'           => 'Admission unbundled from merged payment.',
 			) );
 
-			if ( count( $pmts ) > 1 ) {
-				for ( $k = 1; $k < count( $pmts ); $k++ ) {
-					$extra_pmt = $pmts[ $k ];
-					$new_name  = $st->name . ' (' . ( $k + 1 ) . ')';
-					$new_student_id = cmp_insert_student( array(
-						'name'          => $new_name,
-						'phone'         => $st->phone,
-						'email'         => 'seat_' . ( $k + 1 ) . '_' . ( $st->email ? $st->email : wp_generate_password( 6, false ) . '@noemail.local' ),
-						'class_id'      => (int) $st->class_id,
-						'batch_id'      => (int) $st->batch_id,
-						'total_fee'     => (float) $extra_pmt->amount,
-						'paid_fee'      => (float) $extra_pmt->amount,
-						'status'        => 'active',
-						'city_original' => $st->city_original,
-						'city_normalized' => $st->city_normalized,
-						'lead_source'   => $st->lead_source,
-						'notes'         => 'Separate admission created from payment #' . $extra_pmt->id,
-					) );
-					if ( ! is_wp_error( $new_student_id ) ) {
-						$wpdb->update(
-							cmp_table( 'payments' ),
-							array( 'student_id' => (int) $new_student_id ),
-							array( 'id' => (int) $extra_pmt->id ),
-							array( '%d' ),
-							array( '%d' )
-						);
-					}
-				}
-				cmp_update_student_paid_fee( (int) $st->id );
+			if ( ! is_wp_error( $new_student_id ) && $pmt_for_this ) {
+				$wpdb->update(
+					cmp_table( 'payments' ),
+					array( 'student_id' => (int) $new_student_id ),
+					array( 'id' => (int) $pmt_for_this->id ),
+					array( '%d' ),
+					array( '%d' )
+				);
 			}
 		}
+
+		cmp_update_student_paid_fee( (int) $m_student->id );
 	}
 }
 

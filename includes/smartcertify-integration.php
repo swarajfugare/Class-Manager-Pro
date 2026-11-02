@@ -106,7 +106,7 @@ function cmp_smartcertify_get_batch_auto_summary( $batch_id ) {
 	$failed_count    = 0;
 	$queue_status    = __( 'Not queued', 'class-manager-pro' );
 
-	if ( $wpdb->get_var( "SHOW TABLES LIKE '$auto_table'" ) === $auto_table ) {
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $auto_table ) ) ) === $auto_table ) {
 		$generated_count = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM $auto_table WHERE source_system = %s AND source_batch_id = %d",
@@ -116,7 +116,7 @@ function cmp_smartcertify_get_batch_auto_summary( $batch_id ) {
 		);
 	}
 
-	if ( $wpdb->get_var( "SHOW TABLES LIKE '$queue_table'" ) === $queue_table ) {
+	if ( $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $wpdb->esc_like( $queue_table ) ) ) === $queue_table ) {
 		$pending_count = (int) $wpdb->get_var(
 			$wpdb->prepare(
 				"SELECT COUNT(*) FROM $queue_table WHERE source_system = %s AND source_batch_id = %d AND status = %s",

@@ -575,6 +575,7 @@ function cmp_maybe_render_public_batch_page() {
 						<input type="hidden" name="access_type" value="<?php echo esc_attr( $access_type ); ?>">
 						<input type="hidden" name="access_token" value="<?php echo esc_attr( $access_token ); ?>">
 						<input type="hidden" name="notice_token" value="<?php echo esc_attr( $access_token ); ?>">
+						<div style="display:none !important;" aria-hidden="true"><input type="text" name="cmp_hp_check" value="" tabindex="-1" autocomplete="off"></div>
 						<?php wp_nonce_field( 'cmp_public_batch_form_' . $access_token ); ?>
 
 						<div class="cmp-form-field">
@@ -647,6 +648,11 @@ function cmp_handle_public_batch_form_submission() {
 	}
 
 	check_admin_referer( 'cmp_public_batch_form_' . $access_token );
+
+	// Anti-bot honeypot protection
+	if ( ! empty( $_POST['cmp_hp_check'] ) ) {
+		wp_die( esc_html__( 'Spam submission rejected.', 'class-manager-pro' ), 403 );
+	}
 
 	if ( 'active' !== $batch->status ) {
 		wp_safe_redirect(

@@ -392,3 +392,277 @@
 		grid-template-columns: 1fr;
 	}
 }
+
+/* ==========================================================================
+   Modern Simplified Registration Card & Receipt
+   ========================================================================== */
+.cmp-public-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 16px;
+	box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+	margin: 0 auto;
+	max-width: 580px;
+	overflow: hidden;
+}
+
+.cmp-public-header {
+	background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+	color: #ffffff;
+	padding: 28px 24px;
+	text-align: center;
+}
+
+.cmp-public-brand {
+	color: #94a3b8;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.5px;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+}
+
+.cmp-public-title {
+	color: #ffffff;
+	font-size: 24px;
+	font-weight: 700;
+	line-height: 1.3;
+	margin: 0 0 12px;
+}
+
+.cmp-public-meta {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	justify-content: center;
+}
+
+.cmp-public-meta-item {
+	color: #cbd5e1;
+	font-size: 13px;
+}
+
+.cmp-public-meta-pill {
+	background: rgba(34, 197, 94, 0.2);
+	border: 1px solid rgba(34, 197, 94, 0.4);
+	border-radius: 999px;
+	color: #86efac;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 3px 10px;
+}
+
+.cmp-public-body {
+	padding: 28px 24px;
+}
+
+.cmp-public-form-compact {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.cmp-form-field {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	text-align: left;
+}
+
+.cmp-form-field label {
+	color: #334155;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.cmp-field-desc {
+	color: #64748b;
+	display: block;
+	font-size: 11px;
+	font-weight: 400;
+	margin-top: 2px;
+}
+
+.cmp-form-field input[type="text"],
+.cmp-form-field input[type="tel"],
+.cmp-form-field input[type="email"] {
+	background: #f8fafc;
+	border: 1.5px solid #cbd5e1;
+	border-radius: 8px;
+	color: #0f172a;
+	font-size: 15px;
+	padding: 10px 14px;
+	transition: all 0.2s ease;
+	width: 100%;
+}
+
+.cmp-form-field input:focus {
+	background: #ffffff;
+	border-color: #2563eb;
+	box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+	outline: none;
+}
+
+.cmp-public-submit-btn {
+	background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+	border: none;
+	border-radius: 10px;
+	color: #ffffff;
+	cursor: pointer;
+	font-size: 16px;
+	font-weight: 600;
+	margin-top: 8px;
+	padding: 14px 20px;
+	transition: transform 0.15s, box-shadow 0.15s;
+	width: 100%;
+}
+
+.cmp-public-submit-btn:hover {
+	box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+	transform: translateY(-1px);
+}
+
+.cmp-public-submit-btn:active {
+	transform: translateY(0);
+}
+
+/* Receipt Card */
+.cmp-public-receipt-card {
+	background: #ffffff;
+	border-radius: 12px;
+	text-align: center;
+}
+
+.cmp-public-receipt-icon {
+	align-items: center;
+	background: #dcfce7;
+	border-radius: 50%;
+	color: #16a34a;
+	display: inline-flex;
+	font-size: 32px;
+	font-weight: 900;
+	height: 64px;
+	justify-content: center;
+	margin-bottom: 12px;
+	width: 64px;
+}
+
+.cmp-public-receipt-title {
+	color: #0f172a;
+	font-size: 22px;
+	font-weight: 700;
+	margin: 0 0 4px;
+}
+
+.cmp-public-receipt-subtitle {
+	color: #64748b;
+	font-size: 14px;
+	margin: 0 0 20px;
+}
+
+.cmp-public-receipt-details {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-bottom: 20px;
+	padding: 16px;
+	text-align: left;
+}
+
+.cmp-receipt-row {
+	align-items: center;
+	display: flex;
+	justify-content: space-between;
+}
+
+.cmp-receipt-row span {
+	color: #64748b;
+	font-size: 13px;
+}
+
+.cmp-receipt-row strong {
+	color: #0f172a;
+	font-size: 14px;
+	text-align: right;
+}
+
+.cmp-receipt-row-highlight {
+	background: #fef3c7;
+	border-radius: 6px;
+	margin: 2px -6px;
+	padding: 6px 8px;
+}
+
+.cmp-receipt-row-highlight span {
+	color: #92400e;
+	font-weight: 600;
+}
+
+.cmp-receipt-row-highlight strong code {
+	background: #ffffff;
+	border: 1px solid #fde68a;
+	border-radius: 4px;
+	color: #b45309;
+	font-size: 13px;
+	padding: 2px 6px;
+}
+
+.cmp-receipt-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	margin-bottom: 12px;
+}
+
+.cmp-share-btn {
+	align-items: center;
+	border-radius: 8px;
+	cursor: pointer;
+	display: inline-flex;
+	flex: 1 1 140px;
+	font-size: 14px;
+	font-weight: 600;
+	justify-content: center;
+	padding: 12px 16px;
+	transition: all 0.2s ease;
+}
+
+.cmp-btn-primary {
+	background: #2563eb;
+	border: 1px solid #1d4ed8;
+	color: #ffffff;
+}
+
+.cmp-btn-primary:hover {
+	background: #1d4ed8;
+}
+
+.cmp-btn-secondary {
+	background: #f1f5f9;
+	border: 1px solid #cbd5e1;
+	color: #334155;
+}
+
+.cmp-btn-secondary:hover {
+	background: #e2e8f0;
+}
+
+.cmp-receipt-hint {
+	color: #94a3b8;
+	font-size: 12px;
+	line-height: 1.4;
+	margin: 0;
+}
+
+.cmp-public-payment-box {
+	background: #f0fdf4;
+	border: 1px solid #bbf7d0;
+	border-radius: 10px;
+	margin-top: 18px;
+	padding: 16px;
+	text-align: center;
+}

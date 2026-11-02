@@ -195,47 +195,123 @@ function cmp_maybe_render_public_batch_page() {
 		$success_name  = ! empty( $success['student_name'] ) ? $success['student_name'] : '';
 		$success_phone = ! empty( $success['phone'] ) ? $success['phone'] : '';
 		$success_email = ! empty( $success['email'] ) ? $success['email'] : '';
-		$course_title  = ! empty( $batch->course_id ) ? cmp_get_tutor_course_title( (int) $batch->course_id ) : __( 'Not linked', 'class-manager-pro' );
-		$teacher_label = ! empty( $batch->teacher_user_id ) ? cmp_get_teacher_label( (int) $batch->teacher_user_id ) : __( 'Not assigned yet', 'class-manager-pro' );
-		$support_email = sanitize_email( (string) get_option( 'admin_email', get_bloginfo( 'admin_email' ) ) );
+		$success_utr   = ! empty( $success['utr_number'] ) ? $success['utr_number'] : '';
+		$course_title  = ! empty( $batch->course_id ) ? cmp_get_tutor_course_title( (int) $batch->course_id ) : '';
+		$teacher_label = ! empty( $batch->teacher_user_id ) ? cmp_get_teacher_label( (int) $batch->teacher_user_id ) : '';
+		$support_phone = get_option( 'cmp_whatsapp_sender', '' );
+		$now_formatted = wp_date( 'd M Y, h:i A' );
 
 		ob_start();
 		?>
-		<div class="cmp-public-success">
-			<div class="cmp-public-success-badge"><?php echo esc_html__( 'Registration Successful', 'class-manager-pro' ); ?></div>
-			<h2><?php echo esc_html( $batch->batch_name ); ?></h2>
-			<p class="cmp-public-success-intro"><?php esc_html_e( 'Your registration has been saved. Please keep the details below for your records and next steps.', 'class-manager-pro' ); ?></p>
-			<div class="cmp-public-success-grid">
-				<div>
+		<div class="cmp-public-receipt-card" id="cmp-receipt-area">
+			<div class="cmp-public-receipt-icon">✓</div>
+			<h2 class="cmp-public-receipt-title"><?php esc_html_e( 'Registration Successful!', 'class-manager-pro' ); ?></h2>
+			<p class="cmp-public-receipt-subtitle"><?php esc_html_e( 'Your admission details have been recorded successfully.', 'class-manager-pro' ); ?></p>
+
+			<div class="cmp-public-receipt-details">
+				<div class="cmp-receipt-row">
+					<span><?php esc_html_e( 'Class / Course', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( $batch->class_name ); ?></strong>
+				</div>
+				<div class="cmp-receipt-row">
 					<span><?php esc_html_e( 'Batch Name', 'class-manager-pro' ); ?></span>
 					<strong><?php echo esc_html( $batch->batch_name ); ?></strong>
 				</div>
-				<div>
+				<div class="cmp-receipt-row">
 					<span><?php esc_html_e( 'Student Name', 'class-manager-pro' ); ?></span>
-					<strong><?php echo esc_html( $success_name ? $success_name : __( 'Saved successfully', 'class-manager-pro' ) ); ?></strong>
+					<strong><?php echo esc_html( $success_name ? $success_name : __( 'Registered Student', 'class-manager-pro' ) ); ?></strong>
 				</div>
-				<div>
-					<span><?php esc_html_e( 'Course Name', 'class-manager-pro' ); ?></span>
-					<strong><?php echo esc_html( $course_title ); ?></strong>
+				<div class="cmp-receipt-row">
+					<span><?php esc_html_e( 'Phone Number', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( $success_phone ); ?></strong>
 				</div>
-				<div>
-					<span><?php esc_html_e( 'Teacher', 'class-manager-pro' ); ?></span>
-					<strong><?php echo esc_html( $teacher_label ); ?></strong>
-				</div>
-				<div>
-					<span><?php esc_html_e( 'Contact Details', 'class-manager-pro' ); ?></span>
-					<strong><?php echo esc_html( trim( $success_phone . ( $success_email ? ' | ' . $success_email : '' ) ) ); ?></strong>
-				</div>
-				<div>
-					<span><?php esc_html_e( 'Support Contact', 'class-manager-pro' ); ?></span>
-					<strong><?php echo esc_html( $support_email ? $support_email : get_bloginfo( 'name' ) ); ?></strong>
-				</div>
-				<div class="cmp-public-success-grid-span">
-					<span><?php esc_html_e( 'Next Steps', 'class-manager-pro' ); ?></span>
-					<strong><?php esc_html_e( 'Wait for admin follow-up, payment instructions, or the batch welcome message.', 'class-manager-pro' ); ?></strong>
+				<?php if ( $success_email ) : ?>
+					<div class="cmp-receipt-row">
+						<span><?php esc_html_e( 'Email', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( $success_email ); ?></strong>
+					</div>
+				<?php endif; ?>
+				<?php if ( $success_utr ) : ?>
+					<div class="cmp-receipt-row cmp-receipt-row-highlight">
+						<span><?php esc_html_e( 'Payment UTR / Ref', 'class-manager-pro' ); ?></span>
+						<strong><code><?php echo esc_html( $success_utr ); ?></code></strong>
+					</div>
+				<?php endif; ?>
+				<div class="cmp-receipt-row">
+					<span><?php esc_html_e( 'Date & Time', 'class-manager-pro' ); ?></span>
+					<strong><?php echo esc_html( $now_formatted ); ?></strong>
 				</div>
 			</div>
+
+			<div class="cmp-receipt-actions">
+				<button type="button" class="cmp-share-btn cmp-btn-primary" id="cmp-btn-share-receipt">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+					<?php esc_html_e( 'Share Registration Details', 'class-manager-pro' ); ?>
+				</button>
+				<button type="button" class="cmp-share-btn cmp-btn-secondary" id="cmp-btn-copy-receipt">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+					<?php esc_html_e( 'Copy Summary', 'class-manager-pro' ); ?>
+				</button>
+			</div>
+			<p class="cmp-receipt-hint"><?php esc_html_e( 'Tip: Please take a screenshot of this receipt or click Share to send proof to your teacher/admin on WhatsApp.', 'class-manager-pro' ); ?></p>
 		</div>
+
+		<script>
+		(function(){
+			var studentName = <?php echo wp_json_encode( $success_name ); ?>;
+			var className = <?php echo wp_json_encode( $batch->class_name ); ?>;
+			var batchName = <?php echo wp_json_encode( $batch->batch_name ); ?>;
+			var phone = <?php echo wp_json_encode( $success_phone ); ?>;
+			var utr = <?php echo wp_json_encode( $success_utr ); ?>;
+			var date = <?php echo wp_json_encode( $now_formatted ); ?>;
+
+			var shareText = "🎓 *Admission Confirmation*\n\n"
+				+ "*Class:* " + className + "\n"
+				+ "*Batch:* " + batchName + "\n"
+				+ "*Student:* " + studentName + "\n"
+				+ "*Phone:* " + phone + "\n"
+				+ (utr ? ("*Payment UTR:* " + utr + "\n") : "")
+				+ "*Date:* " + date + "\n\n"
+				+ "✅ Registration Completed Successfully!";
+
+			var shareBtn = document.getElementById('cmp-btn-share-receipt');
+			if (shareBtn) {
+				shareBtn.addEventListener('click', function(){
+					if (navigator.share) {
+						navigator.share({
+							title: 'Admission Confirmation - ' + studentName,
+							text: shareText
+						}).catch(function(){
+							window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank');
+						});
+					} else {
+						window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank');
+					}
+				});
+			}
+
+			var copyBtn = document.getElementById('cmp-btn-copy-receipt');
+			if (copyBtn) {
+				copyBtn.addEventListener('click', function(){
+					if (navigator.clipboard) {
+						navigator.clipboard.writeText(shareText).then(function(){
+							copyBtn.innerText = '✓ Copied!';
+							setTimeout(function(){ copyBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Summary'; }, 2000);
+						});
+					} else {
+						var ta = document.createElement('textarea');
+						ta.value = shareText;
+						document.body.appendChild(ta);
+						ta.select();
+						document.execCommand('copy');
+						document.body.removeChild(ta);
+						copyBtn.innerText = '✓ Copied!';
+						setTimeout(function(){ copyBtn.innerText = 'Copy Summary'; }, 2000);
+					}
+				});
+			}
+		})();
+		</script>
 		<?php
 		$form_notice .= ob_get_clean();
 	} elseif ( '' !== $error ) {
@@ -256,92 +332,80 @@ function cmp_maybe_render_public_batch_page() {
 	ob_start();
 	?>
 	<div class="cmp-public-page">
-		<?php cmp_render_public_registration_steps( $status ); ?>
-		<section class="cmp-public-hero">
-			<div>
-			<p class="cmp-public-eyebrow"><?php echo esc_html( $batch->class_name ); ?></p>
-			<h1><?php echo esc_html( $batch->batch_name ); ?></h1>
-			<p class="cmp-public-subtitle">
-				<?php
-				if ( 'permanent' === $access_type ) {
-					esc_html_e( 'This free batch has a permanent registration link enabled. Use it any time until the admin disables it.', 'class-manager-pro' );
-				} else {
-					esc_html_e( 'Fill your details once. The batch and class are already linked for you.', 'class-manager-pro' );
-				}
-				?>
-			</p>
-		</div>
-		<div class="cmp-public-summary">
-			<div><span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->class_name ); ?></strong></div>
-			<div><span><?php esc_html_e( 'Batch', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->batch_name ); ?></strong></div>
-			<div><span><?php esc_html_e( 'Start Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->start_date ? $batch->start_date : __( 'To be announced', 'class-manager-pro' ) ); ?></strong></div>
-				<div><span><?php esc_html_e( 'Batch Fee', 'class-manager-pro' ); ?></span><strong><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free', 'class-manager-pro' ) : esc_html( cmp_format_money( $batch_fee ) ); ?></strong></div>
-				<div><span><?php esc_html_e( 'Fee Due Date', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( $batch->fee_due_date ? $batch->fee_due_date : __( 'Shared by the admin later', 'class-manager-pro' ) ); ?></strong></div>
-			</div>
-		</section>
-
-		<section class="cmp-public-panel">
-			<?php echo $form_notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-
-			<?php if ( 'success' === $status ) : ?>
-				<div class="cmp-public-success-actions">
-					<?php if ( ! empty( $batch->is_free ) ) : ?>
-						<div class="cmp-public-payment">
-							<h2><?php esc_html_e( 'All Set', 'class-manager-pro' ); ?></h2>
-							<p><?php esc_html_e( 'This is a free batch, so no payment is required. Our team may still contact you with next-step details.', 'class-manager-pro' ); ?></p>
-						</div>
-					<?php elseif ( ! empty( $batch->razorpay_link ) ) : ?>
-						<div class="cmp-public-payment">
-							<h2><?php esc_html_e( 'Next Step: Payment', 'class-manager-pro' ); ?></h2>
-							<p><?php esc_html_e( 'If payment is pending, use the payment button below to complete your batch payment in Razorpay.', 'class-manager-pro' ); ?></p>
-							<a class="cmp-public-button cmp-public-button-secondary" href="<?php echo esc_url( $batch->razorpay_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Continue to Razorpay', 'class-manager-pro' ); ?></a>
-						</div>
+		<div class="cmp-public-card">
+			<header class="cmp-public-header">
+				<div class="cmp-public-brand"><?php echo esc_html( get_bloginfo( 'name' ) ); ?></div>
+				<h1 class="cmp-public-title"><?php echo esc_html( $batch->batch_name ); ?></h1>
+				<div class="cmp-public-meta">
+					<span class="cmp-public-meta-item"><?php echo esc_html( $batch->class_name ); ?></span>
+					<span class="cmp-public-meta-pill"><?php echo ! empty( $batch->is_free ) ? esc_html__( 'Free Batch', 'class-manager-pro' ) : esc_html( sprintf( __( 'Fee: %s', 'class-manager-pro' ), cmp_format_money( $batch_fee ) ) ); ?></span>
+					<?php if ( $batch->start_date ) : ?>
+						<span class="cmp-public-meta-item"><?php echo esc_html( sprintf( __( 'Starts: %s', 'class-manager-pro' ), $batch->start_date ) ); ?></span>
 					<?php endif; ?>
 				</div>
-			<?php elseif ( 'active' !== $batch->status ) : ?>
-				<div class="cmp-public-alert cmp-public-alert-error">
-					<p><?php esc_html_e( 'This batch is not accepting new submissions right now.', 'class-manager-pro' ); ?></p>
-				</div>
-		<?php elseif ( 'temp' === $access_type && $token_row && in_array( cmp_get_batch_registration_link_status( $token_row )['key'], array( 'used_successfully', 'expired', 'closed_by_admin' ), true ) ) : ?>
-			<div class="cmp-public-alert cmp-public-alert-error">
-				<p><?php esc_html_e( 'This temporary registration link is no longer active.', 'class-manager-pro' ); ?></p>
-			</div>
-			<?php else : ?>
-				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-public-form">
-					<input type="hidden" name="action" value="cmp_submit_public_batch_form">
-					<input type="hidden" name="access_type" value="<?php echo esc_attr( $access_type ); ?>">
-					<input type="hidden" name="access_token" value="<?php echo esc_attr( $access_token ); ?>">
-					<input type="hidden" name="notice_token" value="<?php echo esc_attr( $access_token ); ?>">
-					<?php wp_nonce_field( 'cmp_public_batch_form_' . $access_token ); ?>
+			</header>
 
-					<div class="cmp-public-grid">
-						<label>
-							<span><?php esc_html_e( 'Student Name', 'class-manager-pro' ); ?></span>
-							<input type="text" name="name" required>
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Phone Number', 'class-manager-pro' ); ?></span>
-							<input type="text" name="phone" required>
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Email Address', 'class-manager-pro' ); ?></span>
-							<input type="email" name="email" required>
-							<small><?php esc_html_e( 'A valid email address is required to complete registration.', 'class-manager-pro' ); ?></small>
-						</label>
-						<label>
-							<span><?php esc_html_e( 'Class', 'class-manager-pro' ); ?></span>
-							<input type="text" value="<?php echo esc_attr( $batch->class_name ); ?>" readonly>
-						</label>
-						<label class="cmp-public-grid-span">
-							<span><?php esc_html_e( 'Notes', 'class-manager-pro' ); ?></span>
-							<textarea name="notes" rows="4" placeholder="<?php esc_attr_e( 'Optional message for the admin', 'class-manager-pro' ); ?>"></textarea>
-						</label>
+			<div class="cmp-public-body">
+				<?php echo $form_notice; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
+
+				<?php if ( 'success' === $status ) : ?>
+					<?php if ( ! empty( $batch->razorpay_link ) && empty( $batch->is_free ) ) : ?>
+						<div class="cmp-public-payment-box">
+							<p><?php esc_html_e( 'If you have not paid yet, please complete your batch payment via Razorpay:', 'class-manager-pro' ); ?></p>
+							<a class="cmp-public-button cmp-public-button-secondary" href="<?php echo esc_url( $batch->razorpay_link ); ?>" target="_blank" rel="noopener"><?php esc_html_e( 'Pay via Razorpay →', 'class-manager-pro' ); ?></a>
+						</div>
+					<?php endif; ?>
+				<?php elseif ( 'active' !== $batch->status ) : ?>
+					<div class="cmp-public-alert cmp-public-alert-error">
+						<p><?php esc_html_e( 'This batch is currently not accepting new registrations.', 'class-manager-pro' ); ?></p>
 					</div>
+				<?php elseif ( 'temp' === $access_type && $token_row && in_array( cmp_get_batch_registration_link_status( $token_row )['key'], array( 'used_successfully', 'expired', 'closed_by_admin' ), true ) ) : ?>
+					<div class="cmp-public-alert cmp-public-alert-error">
+						<p><?php esc_html_e( 'This temporary registration link is expired or already used.', 'class-manager-pro' ); ?></p>
+					</div>
+				<?php else : ?>
+					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-public-form-compact">
+						<input type="hidden" name="action" value="cmp_submit_public_batch_form">
+						<input type="hidden" name="access_type" value="<?php echo esc_attr( $access_type ); ?>">
+						<input type="hidden" name="access_token" value="<?php echo esc_attr( $access_token ); ?>">
+						<input type="hidden" name="notice_token" value="<?php echo esc_attr( $access_token ); ?>">
+						<?php wp_nonce_field( 'cmp_public_batch_form_' . $access_token ); ?>
 
-					<button type="submit" class="cmp-public-button"><?php esc_html_e( 'Submit Registration', 'class-manager-pro' ); ?></button>
-				</form>
-			<?php endif; ?>
-		</section>
+						<div class="cmp-form-field">
+							<label for="cmp_student_name"><?php esc_html_e( 'Full Name *', 'class-manager-pro' ); ?></label>
+							<input type="text" id="cmp_student_name" name="name" required placeholder="<?php esc_attr_e( 'Enter your full name', 'class-manager-pro' ); ?>">
+						</div>
+
+						<div class="cmp-form-field">
+							<label for="cmp_student_phone"><?php esc_html_e( 'WhatsApp / Mobile Number *', 'class-manager-pro' ); ?></label>
+							<input type="tel" id="cmp_student_phone" name="phone" required placeholder="<?php esc_attr_e( '10-digit mobile number', 'class-manager-pro' ); ?>">
+						</div>
+
+						<div class="cmp-form-field">
+							<label for="cmp_student_email"><?php esc_html_e( 'Email Address *', 'class-manager-pro' ); ?></label>
+							<input type="email" id="cmp_student_email" name="email" required placeholder="<?php esc_attr_e( 'name@example.com', 'class-manager-pro' ); ?>">
+						</div>
+
+						<div class="cmp-form-field">
+							<label for="cmp_student_utr">
+								<?php esc_html_e( 'Payment UTR / Transaction No. (Optional)', 'class-manager-pro' ); ?>
+								<span class="cmp-field-desc"><?php esc_html_e( 'If you have paid fees via UPI / QR / Bank, enter 12-digit UTR here', 'class-manager-pro' ); ?></span>
+							</label>
+							<input type="text" id="cmp_student_utr" name="utr_number" placeholder="<?php esc_attr_e( 'e.g. 4123xxxxxxxx or UPI Ref No.', 'class-manager-pro' ); ?>">
+						</div>
+
+						<div class="cmp-form-field">
+							<label for="cmp_student_notes"><?php esc_html_e( 'City / Notes (Optional)', 'class-manager-pro' ); ?></label>
+							<input type="text" id="cmp_student_notes" name="notes" placeholder="<?php esc_attr_e( 'Your city or any remark', 'class-manager-pro' ); ?>">
+						</div>
+
+						<button type="submit" class="cmp-public-submit-btn">
+							<?php esc_html_e( 'Submit Registration →', 'class-manager-pro' ); ?>
+						</button>
+					</form>
+				<?php endif; ?>
+			</div>
+		</div>
 	</div>
 	<?php
 	$content = ob_get_clean();
@@ -423,7 +487,8 @@ function cmp_handle_public_batch_form_submission() {
 		cmp_mark_batch_registration_token_used( $access_token, (int) $result );
 	}
 
-	$student = cmp_get_student( (int) $result );
+	$student    = cmp_get_student( (int) $result );
+	$utr_number = sanitize_text_field( cmp_field( $_POST, 'utr_number', '' ) );
 
 	cmp_store_public_registration_success(
 		$access_token,
@@ -434,6 +499,7 @@ function cmp_handle_public_batch_form_submission() {
 			'email'        => $student && ! empty( $student->email ) ? $student->email : sanitize_email( cmp_field( $_POST, 'email' ) ),
 			'batch_name'   => $batch->batch_name,
 			'class_name'   => $batch->class_name,
+			'utr_number'   => $utr_number,
 		)
 	);
 

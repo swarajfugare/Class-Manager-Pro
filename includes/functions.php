@@ -4494,6 +4494,10 @@ function cmp_process_batch_registration( $batch, $data, $options = array() ) {
 	$city_raw = sanitize_text_field( cmp_field( $data, 'city_original', cmp_field( $data, 'city', '' ) ) );
 	$city_data = cmp_normalize_city_name( $city_raw );
 	$notes = sanitize_textarea_field( cmp_field( $data, 'notes' ) );
+	$utr_number = sanitize_text_field( cmp_field( $data, 'utr_number', cmp_field( $data, 'utr', '' ) ) );
+	if ( '' !== $utr_number ) {
+		$notes = cmp_append_note( $notes, sprintf( __( 'Payment UTR / Transaction No: %s', 'class-manager-pro' ), $utr_number ) );
+	}
 	$source_fallbacks = array(
 		'public_form'    => 'Direct',
 		'admin_form'     => 'Offline',

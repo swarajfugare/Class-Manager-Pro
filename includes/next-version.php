@@ -11,6 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 add_action( 'admin_post_cmp_generate_batch_registration_link', 'cmp_handle_generate_batch_registration_link' );
 add_action( 'admin_post_cmp_close_batch_registration_link', 'cmp_handle_close_batch_registration_link' );
+add_action( 'admin_post_cmp_close_batch_registration_token', 'cmp_handle_close_batch_registration_link' );
 add_action( 'admin_post_cmp_send_batch_announcement', 'cmp_handle_send_batch_announcement' );
 add_action( 'admin_post_cmp_retry_batch_announcement_failed_emails', 'cmp_handle_retry_batch_announcement_failed_emails' );
 add_action( 'admin_post_cmp_send_interested_student_email', 'cmp_handle_send_interested_student_email' );
@@ -1960,6 +1961,15 @@ function cmp_prepare_announcement_email_body( $message, $email_format = 'plain' 
  * @return bool
  */
 function cmp_is_whatsapp_delivery_enabled() {
+	if ( '1' === (string) get_option( 'cmp_whatsapp_enabled', '0' ) ) {
+		return true;
+	}
+	if ( function_exists( 'cmp_get_whatsapp_settings' ) ) {
+		$ws = cmp_get_whatsapp_settings();
+		if ( ! empty( $ws['enabled'] ) || ! empty( $ws['api_token'] ) || ! empty( $ws['phone_number_id'] ) ) {
+			return true;
+		}
+	}
 	return '1' === (string) get_option( 'cmp_notifications_enabled', get_option( 'cmp_sms_enabled', '0' ) );
 }
 
@@ -2210,22 +2220,39 @@ function cmp_send_batch_announcement( $batch_id, $subject, $message, $send_whats
 		}
 
 		if ( $send_whatsapp ) {
-			$whatsapp_result = cmp_send_generic_notification_message(
-				$student,
-				'whatsapp',
-				$subject,
-				$message,
-				array(
-					'action'       => 'batch_announcement',
-					'batch_id'     => $batch_id,
-					'email_format' => $email_format,
-				)
-			);
-
-			if ( ! empty( $whatsapp_result['success'] ) ) {
-				++$summary['whatsapp_sent'];
+			if ( function_exists( 'cmp_send_direct_whatsapp_message' ) && ! empty( $student->phone ) ) {
+				$wa_direct = cmp_send_direct_whatsapp_message(
+					$student->phone,
+					$message,
+					array(
+						'action'   => 'batch_announcement',
+						'batch_id' => $batch_id,
+						'subject'  => $subject,
+					)
+				);
+				if ( ! empty( $wa_direct['success'] ) ) {
+					++$summary['whatsapp_sent'];
+				} else {
+					++$summary['whatsapp_failed'];
+				}
 			} else {
-				++$summary['whatsapp_failed'];
+				$whatsapp_result = cmp_send_generic_notification_message(
+					$student,
+					'whatsapp',
+					$subject,
+					$message,
+					array(
+						'action'       => 'batch_announcement',
+						'batch_id'     => $batch_id,
+						'email_format' => $email_format,
+					)
+				);
+
+				if ( ! empty( $whatsapp_result['success'] ) ) {
+					++$summary['whatsapp_sent'];
+				} else {
+					++$summary['whatsapp_failed'];
+				}
 			}
 		}
 	}
@@ -2307,7 +2334,7 @@ function cmp_handle_send_batch_announcement() {
 		$batch_id,
 		cmp_field( $_POST, 'subject' ),
 		wp_unslash( (string) cmp_field( $_POST, 'message' ) ),
-		! empty( $_POST['send_whatsapp'] ) && cmp_is_whatsapp_delivery_enabled(),
+		! empty( $_POST['send_whatsapp'] ),
 		cmp_field( $_POST, 'email_format', 'plain' )
 	);
 
@@ -2590,6 +2617,77 @@ function cmp_get_batch_registration_token_record( $token, $allow_used = false, $
 }
 
 /**
+ * Returns temporary registration tokens for a batch.
+ *
+ * @param int  $batch_id Batch ID.
+ * @param bool $active_only Whether only active tokens should be returned.
+ * @param int  $limit Max rows.
+ * @return array
+ */
+function cmp_get_batch_registration_tokens_for_batch( $batch_id, $active_only = false, $limit = 5 ) {
+	global $wpdb;
+
+	$batch_id = absint( $batch_id );
+
+	if ( ! $batch_id ) {
+		return array();
+	}
+
+	$where  = array( 't.batch_id = %d' );
+	$params = array( $batch_id );
+
+	if ( $active_only ) {
+		$where[]  = 't.used_at IS NULL';
+		$where[]  = 't.closed_at IS NULL';
+		$where[]  = 't.expires_at >= %s';
+		$params[] = cmp_current_datetime();
+	}
+
+	$params[] = max( 1, min( 20, absint( $limit ) ) );
+
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			'SELECT t.*, b.batch_name, b.class_id, c.name AS class_name
+			FROM ' . cmp_table( 'batch_registration_tokens' ) . ' t
+			LEFT JOIN ' . cmp_table( 'batches' ) . ' b ON b.id = t.batch_id
+			LEFT JOIN ' . cmp_table( 'classes' ) . ' c ON c.id = b.class_id
+			WHERE ' . implode( ' AND ', $where ) . '
+			ORDER BY (t.used_at IS NULL AND t.closed_at IS NULL AND t.expires_at >= ' . $wpdb->prepare( '%s', cmp_current_datetime() ) . ') DESC, t.id DESC
+			LIMIT %d',
+			$params
+		)
+	);
+}
+
+/**
+ * Returns the count of active temporary registration links for a batch.
+ *
+ * @param int $batch_id Batch ID.
+ * @return int
+ */
+function cmp_get_active_batch_registration_tokens_count( $batch_id ) {
+	global $wpdb;
+
+	$batch_id = absint( $batch_id );
+
+	if ( ! $batch_id ) {
+		return 0;
+	}
+
+	return (int) $wpdb->get_var(
+		$wpdb->prepare(
+			'SELECT COUNT(*) FROM ' . cmp_table( 'batch_registration_tokens' ) . '
+			WHERE batch_id = %d
+				AND used_at IS NULL
+				AND closed_at IS NULL
+				AND expires_at >= %s',
+			$batch_id,
+			cmp_current_datetime()
+		)
+	);
+}
+
+/**
  * Creates a new temporary registration link for a batch.
  *
  * @param int $batch_id Batch ID.
@@ -2605,18 +2703,18 @@ function cmp_create_batch_registration_token( $batch_id ) {
 		return new WP_Error( 'cmp_batch_invalid', __( 'Batch not found.', 'class-manager-pro' ) );
 	}
 
-	$wpdb->query(
-		$wpdb->prepare(
-			'UPDATE ' . cmp_table( 'batch_registration_tokens' ) . '
-			SET expires_at = %s
-			WHERE batch_id = %d
-				AND used_at IS NULL
-				AND expires_at > %s',
-			wp_date( 'Y-m-d H:i:s', current_time( 'timestamp' ) - MINUTE_IN_SECONDS ),
-			$batch_id,
-			cmp_current_datetime()
-		)
-	);
+	$active_count = cmp_get_active_batch_registration_tokens_count( $batch_id );
+
+	if ( $active_count >= 5 ) {
+		return new WP_Error(
+			'cmp_max_links_reached',
+			sprintf(
+				/* translators: %d: maximum allowed links */
+				__( 'Maximum %d active temporary registration links are allowed per batch. Please close an existing link first.', 'class-manager-pro' ),
+				5
+			)
+		);
+	}
 
 	$token      = cmp_generate_batch_registration_token();
 	$expires_at = wp_date( 'Y-m-d H:i:s', current_time( 'timestamp' ) + ( 10 * MINUTE_IN_SECONDS ) );
@@ -2641,15 +2739,54 @@ function cmp_create_batch_registration_token( $batch_id ) {
 }
 
 /**
- * Closes any active temporary registration links for a batch.
+ * Closes an individual temporary registration token or all active tokens for a batch.
  *
- * @param int $batch_id Batch ID.
+ * @param int|string $token_or_batch_id Token ID, token string, or batch ID.
+ * @param bool       $is_token_id Whether the first argument is a token ID.
  * @return int|WP_Error
  */
-function cmp_close_batch_registration_link( $batch_id ) {
+function cmp_close_batch_registration_link( $token_or_batch_id, $is_token_id = false ) {
 	global $wpdb;
 
-	$batch_id = absint( $batch_id );
+	if ( $is_token_id ) {
+		$token_id = absint( $token_or_batch_id );
+		$result   = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE ' . cmp_table( 'batch_registration_tokens' ) . '
+				SET expires_at = %s,
+					closed_at = %s
+				WHERE id = %d
+					AND used_at IS NULL
+					AND closed_at IS NULL',
+				wp_date( 'Y-m-d H:i:s', current_time( 'timestamp' ) - MINUTE_IN_SECONDS ),
+				cmp_current_datetime(),
+				$token_id
+			)
+		);
+
+		return false === $result ? new WP_Error( 'cmp_registration_link_close_failed', __( 'The temporary registration link could not be closed.', 'class-manager-pro' ) ) : (int) $result;
+	}
+
+	if ( is_string( $token_or_batch_id ) && ! is_numeric( $token_or_batch_id ) && '' !== trim( $token_or_batch_id ) ) {
+		$token  = sanitize_text_field( $token_or_batch_id );
+		$result = $wpdb->query(
+			$wpdb->prepare(
+				'UPDATE ' . cmp_table( 'batch_registration_tokens' ) . '
+				SET expires_at = %s,
+					closed_at = %s
+				WHERE token = %s
+					AND used_at IS NULL
+					AND closed_at IS NULL',
+				wp_date( 'Y-m-d H:i:s', current_time( 'timestamp' ) - MINUTE_IN_SECONDS ),
+				cmp_current_datetime(),
+				$token
+			)
+		);
+
+		return false === $result ? new WP_Error( 'cmp_registration_link_close_failed', __( 'The temporary registration link could not be closed.', 'class-manager-pro' ) ) : (int) $result;
+	}
+
+	$batch_id = absint( $token_or_batch_id );
 	$batch    = cmp_get_batch( $batch_id );
 
 	if ( ! $batch ) {
@@ -2767,9 +2904,19 @@ function cmp_handle_close_batch_registration_link() {
 	cmp_require_manage_options();
 
 	$batch_id = absint( cmp_field( $_REQUEST, 'batch_id', 0 ) );
-	check_admin_referer( 'cmp_close_batch_registration_link_' . $batch_id );
+	$token_id = absint( cmp_field( $_REQUEST, 'token_id', 0 ) );
+	$token    = sanitize_text_field( cmp_field( $_REQUEST, 'token', '' ) );
 
-	$result = cmp_close_batch_registration_link( $batch_id );
+	if ( $token_id > 0 ) {
+		check_admin_referer( 'cmp_close_batch_registration_token_' . $token_id );
+		$result = cmp_close_batch_registration_link( $token_id, true );
+	} elseif ( '' !== $token ) {
+		check_admin_referer( 'cmp_close_batch_registration_token_' . $token );
+		$result = cmp_close_batch_registration_link( $token, false );
+	} else {
+		check_admin_referer( 'cmp_close_batch_registration_link_' . $batch_id );
+		$result = cmp_close_batch_registration_link( $batch_id, false );
+	}
 
 	if ( is_wp_error( $result ) ) {
 		cmp_redirect(

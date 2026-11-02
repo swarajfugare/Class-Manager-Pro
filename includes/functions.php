@@ -3666,7 +3666,7 @@ function cmp_normalize_lead_source_name( $source ) {
 function cmp_normalize_city_name( $city ) {
 	$original = trim( sanitize_text_field( (string) $city ) );
 
-	if ( '' === $original ) {
+	if ( '' === $original || is_numeric( $original ) || preg_match( '/^0+(\.0+)?$/', $original ) || is_numeric( str_replace( array( ',', '₹', '$', ' ' ), '', $original ) ) ) {
 		return array(
 			'original'   => '',
 			'normalized' => '',
@@ -4496,7 +4496,8 @@ function cmp_process_batch_registration( $batch, $data, $options = array() ) {
 	$notes = sanitize_textarea_field( cmp_field( $data, 'notes' ) );
 	$utr_number = sanitize_text_field( cmp_field( $data, 'utr_number', cmp_field( $data, 'utr', '' ) ) );
 	if ( '' !== $utr_number ) {
-		$notes = cmp_append_note( $notes, sprintf( __( 'Payment UTR / Transaction No: %s', 'class-manager-pro' ), $utr_number ) );
+		$submit_time = current_time( 'mysql' );
+		$notes = cmp_append_note( $notes, '[TEMP_LINK_UTR:' . $utr_number . '] [SUBMIT_TIME:' . $submit_time . '] Payment UTR: ' . $utr_number );
 	}
 	$source_fallbacks = array(
 		'public_form'    => 'Direct',
@@ -4744,6 +4745,117 @@ function cmp_register_public_student_for_batch( $batch, $data ) {
 
 	return $result;
 }
+
+/**
+ * Checks if a student has a pending UTR awaiting admin verification.
+ *
+ * @param object $student Student record.
+ * @return array|null Returns array with 'utr' and 'submitted_at', or null.
+ */
+function cmp_get_student_pending_utr( $student ) {
+	if ( ! $student || empty( $student->notes ) ) {
+		return null;
+	}
+
+	$remaining = max( 0.0, (float) $student->total_fee - (float) $student->paid_fee );
+	if ( $remaining <= 0 ) {
+		return null;
+	}
+
+	if ( preg_match( '/\[TEMP_LINK_UTR:\s*([^\]]+)\]/', $student->notes, $matches ) ) {
+		$utr = trim( $matches[1] );
+		$submitted_at = '';
+		if ( preg_match( '/\[SUBMIT_TIME:\s*([^\]]+)\]/', $student->notes, $t_matches ) ) {
+			$submitted_at = trim( $t_matches[1] );
+		}
+		if ( '' === $submitted_at ) {
+			$submitted_at = ! empty( $student->created_at ) ? $student->created_at : current_time( 'mysql' );
+		}
+		return array(
+			'utr'          => $utr,
+			'submitted_at' => $submitted_at,
+		);
+	}
+
+	if ( preg_match( '/(?:Payment UTR|UTR|Transaction No)[:\s]+([A-Za-z0-9_-]{4,})/i', $student->notes, $matches ) ) {
+		return array(
+			'utr'          => trim( $matches[1] ),
+			'submitted_at' => ! empty( $student->created_at ) ? $student->created_at : current_time( 'mysql' ),
+		);
+	}
+
+	return null;
+}
+
+/**
+ * Handles admin action to approve a student's temporary link UTR admission.
+ */
+function cmp_handle_approve_temp_admission_utr() {
+	if ( function_exists( 'cmp_require_manage_options' ) ) {
+		cmp_require_manage_options();
+	} elseif ( ! current_user_can( 'manage_options' ) ) {
+		wp_die( esc_html__( 'Unauthorized user.', 'class-manager-pro' ) );
+	}
+
+	$student_id = absint( cmp_field( $_POST, 'student_id', 0 ) );
+	$batch_id   = absint( cmp_field( $_POST, 'batch_id', 0 ) );
+	check_admin_referer( 'cmp_approve_utr_' . $student_id );
+
+	$student = cmp_get_student( $student_id );
+	if ( ! $student ) {
+		cmp_redirect( 'cmp-batches', __( 'Student record not found.', 'class-manager-pro' ), 'error', array( 'action' => 'view', 'id' => $batch_id ) );
+	}
+
+	$pending_utr  = cmp_get_student_pending_utr( $student );
+	$utr          = $pending_utr ? $pending_utr['utr'] : sanitize_text_field( cmp_field( $_POST, 'utr_number', '' ) );
+	$payment_date = $pending_utr && ! empty( $pending_utr['submitted_at'] ) ? $pending_utr['submitted_at'] : $student->created_at;
+	$amount       = max( 0.0, (float) $student->total_fee - (float) $student->paid_fee );
+	if ( $amount <= 0 ) {
+		$amount = (float) $student->total_fee;
+	}
+
+	// Insert completed payment record via UPI with transaction_id = UTR and date = form submission time
+	$payment_id = cmp_insert_payment(
+		array(
+			'student_id'     => (int) $student->id,
+			'class_id'       => (int) $student->class_id,
+			'batch_id'       => (int) $student->batch_id,
+			'amount'         => $amount,
+			'payment_mode'   => 'upi',
+			'transaction_id' => $utr,
+			'payment_date'   => $payment_date,
+			'status'         => 'completed',
+			'notes'          => sprintf( __( 'Approved admission from temporary link. UTR: %s', 'class-manager-pro' ), $utr ),
+		)
+	);
+
+	// Update student to fully paid and update notes
+	$new_notes = str_replace( '[TEMP_LINK_UTR:' . $utr . ']', '[APPROVED_UTR:' . $utr . ']', (string) $student->notes );
+	cmp_update_student(
+		$student->id,
+		array(
+			'paid_fee' => (float) $student->total_fee,
+			'notes'    => $new_notes . "\n" . sprintf( __( 'UTR %s approved by admin via UPI on %s.', 'class-manager-pro' ), $utr, current_time( 'mysql' ) ),
+		)
+	);
+
+	cmp_redirect(
+		'cmp-batches',
+		sprintf(
+			/* translators: 1: amount 2: UTR */
+			__( 'Student admission approved! Payment of %1$s recorded via UPI with Transaction ID (UTR): %2$s.', 'class-manager-pro' ),
+			cmp_format_money( $amount ),
+			$utr
+		),
+		'success',
+		array(
+			'action' => 'view',
+			'id'     => $batch_id,
+			'tab'    => 'students',
+		)
+	);
+}
+add_action( 'admin_post_cmp_approve_temp_admission_utr', 'cmp_handle_approve_temp_admission_utr' );
 
 /**
  * Fetches a single student.
@@ -7960,7 +8072,9 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 		// Column 7: Actions (Essential buttons only!)
 		echo '<td class="cmp-actions cmp-row-actions-clean">';
 		echo '<a class="button button-small button-primary" href="' . esc_url( $view_url ) . '">' . esc_html__( 'View Profile', 'class-manager-pro' ) . '</a> ';
-		echo '<a class="button button-small" href="' . esc_url( $view_url ) . '&profile_tab=overview#cmp-drawer-collect-payment">+ ' . esc_html__( 'Payment', 'class-manager-pro' ) . '</a> ';
+		if ( $remaining > 0 ) {
+			echo '<a class="button button-small" href="' . esc_url( $view_url ) . '&profile_tab=overview#cmp-drawer-collect-payment">+ ' . esc_html__( 'Payment', 'class-manager-pro' ) . '</a> ';
+		}
 		if ( $whatsapp_url ) {
 			echo '<a class="button button-small cmp-comm-wa" href="' . esc_url( $whatsapp_url ) . '" target="_blank" rel="noopener">WhatsApp</a> ';
 		}
@@ -11265,7 +11379,34 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 	$phone     = cmp_clean_import_phone_number( cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) ) );
 	$total_fee = cmp_money_value( isset( $notes['total_fee'] ) ? $notes['total_fee'] : 0 );
 	$amount    = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
-	$city_raw  = sanitize_text_field( cmp_first_scalar_value( array( $notes['city'] ?? '', $notes['city_original'] ?? '', $payment['notes']['city'] ?? '' ) ) );
+	$city_raw  = '';
+	$city_keys = array( 'city', 'student_city', 'city_original', 'town', 'district', 'location', 'address_city', 'गाव', 'शहर', 'गाव/शहर', 'गाव / शहर' );
+	foreach ( (array) $notes as $n_key => $n_val ) {
+		$clean_k = strtolower( trim( (string) $n_key ) );
+		if ( in_array( $clean_k, $city_keys, true ) || false !== stripos( $clean_k, 'city' ) || false !== stripos( $clean_k, 'शहर' ) || false !== stripos( $clean_k, 'गाव' ) ) {
+			if ( is_scalar( $n_val ) ) {
+				$candidate = trim( (string) $n_val );
+				if ( '' !== $candidate && ! is_numeric( $candidate ) && ! preg_match( '/^0+(\.0+)?$/', $candidate ) ) {
+					$city_raw = sanitize_text_field( $candidate );
+					break;
+				}
+			}
+		}
+	}
+	if ( '' === $city_raw && ! empty( $payment['notes'] ) && is_array( $payment['notes'] ) ) {
+		foreach ( $payment['notes'] as $n_key => $n_val ) {
+			$clean_k = strtolower( trim( (string) $n_key ) );
+			if ( in_array( $clean_k, $city_keys, true ) || false !== stripos( $clean_k, 'city' ) || false !== stripos( $clean_k, 'शहर' ) || false !== stripos( $clean_k, 'गाव' ) ) {
+				if ( is_scalar( $n_val ) ) {
+					$candidate = trim( (string) $n_val );
+					if ( '' !== $candidate && ! is_numeric( $candidate ) && ! preg_match( '/^0+(\.0+)?$/', $candidate ) ) {
+						$city_raw = sanitize_text_field( $candidate );
+						break;
+					}
+				}
+			}
+		}
+	}
 	$city_data = cmp_normalize_city_name( $city_raw );
 	$lead_source = cmp_normalize_lead_source_name( cmp_first_scalar_value( array( $notes['lead_source'] ?? '', $notes['source'] ?? '', $payment['notes']['lead_source'] ?? '' ) ) );
 
@@ -14856,7 +14997,8 @@ function cmp_map_student_import_row( $row ) {
 		$payment_id,
 		$amount
 	);
-	$city       = sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'city', 'student_city', 'address_city' ), array( 9 ) ) );
+	$city_raw   = sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'city', 'student_city', 'address_city', 'town', 'district', 'location', 'शहर', 'गाव', 'गाव/शहर', 'गाव / शहर' ), array() ) );
+	$city       = ( is_numeric( $city_raw ) || preg_match( '/^0+(\.0+)?$/', $city_raw ) ) ? '' : $city_raw;
 	$lead_source = sanitize_text_field( cmp_get_student_import_row_value( $row, array( 'lead_source', 'source', 'referral_source', 'lead' ), array( 10 ) ) );
 
 	if ( '' === $name ) {

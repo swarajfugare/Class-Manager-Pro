@@ -248,9 +248,15 @@ function cmp_render_student_profile_workspace( $student_id ) {
 			</div>
 
 			<div class="cmp-student-hero-actions">
-				<button type="button" class="button button-primary" data-cmp-drawer-toggle="#cmp-drawer-collect-payment">
-					+ <?php esc_html_e( 'Collect Payment', 'class-manager-pro' ); ?>
-				</button>
+				<?php if ( (float) $summary['total_pending'] > 0 ) : ?>
+					<button type="button" class="button button-primary" data-cmp-drawer-toggle="#cmp-drawer-collect-payment">
+						+ <?php esc_html_e( 'Collect Payment', 'class-manager-pro' ); ?>
+					</button>
+				<?php else : ?>
+					<span class="cmp-badge-pill cmp-badge-completed" style="font-size:13px;padding:6px 12px;background:#e6f4ea;color:#137333;font-weight:600;display:inline-flex;align-items:center;">
+						✓ <?php esc_html_e( 'All Fees Cleared', 'class-manager-pro' ); ?>
+					</span>
+				<?php endif; ?>
 				<button type="button" class="button button-secondary" data-cmp-drawer-toggle="#cmp-drawer-enroll-class">
 					+ <?php esc_html_e( 'Enroll in Another Class', 'class-manager-pro' ); ?>
 				</button>
@@ -299,8 +305,10 @@ function cmp_render_student_profile_workspace( $student_id ) {
 						<th scope="row"><label for="cmp-quick-pay-mode"><?php esc_html_e( 'Payment Mode', 'class-manager-pro' ); ?></label></th>
 						<td>
 							<select id="cmp-quick-pay-mode" name="payment_mode" required>
-								<?php foreach ( cmp_payment_modes() as $mode ) : ?>
-									<option value="<?php echo esc_attr( $mode ); ?>" <?php selected( 'upi', $mode ); ?>><?php echo esc_html( ucfirst( $mode ) ); ?></option>
+								<?php
+								$allowed_modes = array( 'upi', 'razorpay', 'cash' );
+								foreach ( $allowed_modes as $mode ) : ?>
+									<option value="<?php echo esc_attr( $mode ); ?>" <?php selected( 'upi', $mode ); ?>><?php echo esc_html( 'upi' === $mode ? 'UPI' : ucfirst( $mode ) ); ?></option>
 								<?php endforeach; ?>
 							</select>
 						</td>
@@ -685,9 +693,13 @@ function cmp_render_student_profile_workspace( $student_id ) {
 						<p class="cmp-muted" id="cmp-student-payment-feedback"><?php esc_html_e( 'All payments collected from this student across all classes with audit records and transaction details.', 'class-manager-pro' ); ?></p>
 					</div>
 					<div>
-						<button type="button" class="button button-primary" data-cmp-drawer-toggle="#cmp-drawer-collect-payment">
-							+ <?php esc_html_e( 'Add / Collect Payment', 'class-manager-pro' ); ?>
-						</button>
+						<?php if ( (float) $summary['total_pending'] > 0 ) : ?>
+							<button type="button" class="button button-primary" data-cmp-drawer-toggle="#cmp-drawer-collect-payment">
+								+ <?php esc_html_e( 'Add / Collect Payment', 'class-manager-pro' ); ?>
+							</button>
+						<?php else : ?>
+							<span style="color:#008a20;font-weight:600;font-size:13px;padding:6px 12px;background:#e6f4ea;border-radius:4px;display:inline-block;">✓ <?php esc_html_e( 'All Payments Cleared', 'class-manager-pro' ); ?></span>
+						<?php endif; ?>
 					</div>
 				</div>
 
@@ -1071,48 +1083,51 @@ function cmp_render_students_page() {
 			</section>
 		<?php endif; ?>
 
-		<div class="cmp-toolbar cmp-toolbar-unified">
-			<form method="get" class="cmp-filter-form cmp-toolbar-inline" data-cmp-action="cmp_filter_students" data-cmp-target="#cmp-student-results-wrap">
+		<div class="cmp-students-master-bar">
+			<form method="get" class="cmp-filter-form cmp-master-filter-form" data-cmp-action="cmp_filter_students" data-cmp-target="#cmp-student-results-wrap">
 				<input type="hidden" name="page" value="cmp-students">
 				<input type="hidden" name="tab" value="<?php echo esc_attr( $current_tab ); ?>">
-				<input type="search" name="search" value="<?php echo esc_attr( $filters['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search student, phone, email, ID...', 'class-manager-pro' ); ?>" style="min-width: 220px;">
-				<select name="class_id" data-cmp-class-select>
-					<option value="0"><?php esc_html_e( 'All classes', 'class-manager-pro' ); ?></option>
-					<?php foreach ( $classes as $class ) : ?>
-						<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $filters['class_id'], (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<select name="batch_id" data-cmp-batches>
-					<option value="0"><?php esc_html_e( 'All batches', 'class-manager-pro' ); ?></option>
-					<?php foreach ( $batches as $batch ) : ?>
-						<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $filters['batch_id'], (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<select name="status">
-					<option value=""><?php esc_html_e( 'All statuses', 'class-manager-pro' ); ?></option>
-					<?php foreach ( cmp_student_statuses() as $status ) : ?>
-						<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $filters['status'], $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
-					<?php endforeach; ?>
-				</select>
 				<?php if ( 'pending' === $current_tab ) : ?>
 					<input type="hidden" name="fee_status" value="pending">
 				<?php endif; ?>
-				<button type="submit" class="button button-primary"><?php esc_html_e( 'Filter', 'class-manager-pro' ); ?></button>
+
+				<div class="cmp-master-filter-group">
+					<input type="search" name="search" value="<?php echo esc_attr( $filters['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search student, phone, email, ID...', 'class-manager-pro' ); ?>" class="cmp-master-search-input">
+					<select name="class_id" data-cmp-class-select>
+						<option value="0"><?php esc_html_e( 'All classes', 'class-manager-pro' ); ?></option>
+						<?php foreach ( $classes as $class ) : ?>
+							<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $filters['class_id'], (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<select name="batch_id" data-cmp-batches>
+						<option value="0"><?php esc_html_e( 'All batches', 'class-manager-pro' ); ?></option>
+						<?php foreach ( $batches as $batch ) : ?>
+							<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $filters['batch_id'], (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<select name="status">
+						<option value=""><?php esc_html_e( 'All statuses', 'class-manager-pro' ); ?></option>
+						<?php foreach ( cmp_student_statuses() as $status ) : ?>
+							<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $filters['status'], $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<button type="submit" class="button button-primary"><?php esc_html_e( 'Filter', 'class-manager-pro' ); ?></button>
+				</div>
 			</form>
 
-			<span class="cmp-toolbar-sep" aria-hidden="true">|</span>
+			<div class="cmp-master-divider" aria-hidden="true"></div>
 
-			<div class="cmp-toolbar-bulk">
+			<div class="cmp-master-bulk-group">
 				<?php wp_nonce_field( 'cmp_admin_nonce', 'cmp_admin_ajax_nonce' ); ?>
 				<select id="cmp-student-bulk-action">
-					<option value=""><?php esc_html_e( 'Bulk actions', 'class-manager-pro' ); ?></option>
-					<option value="delete"><?php esc_html_e( 'Delete selected', 'class-manager-pro' ); ?></option>
+					<option value=""><?php esc_html_e( 'Bulk action', 'class-manager-pro' ); ?></option>
+					<option value="delete"><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></option>
 					<option value="change_status"><?php esc_html_e( 'Change status', 'class-manager-pro' ); ?></option>
-					<option value="move_to_batch"><?php esc_html_e( 'Move to batch', 'class-manager-pro' ); ?></option>
+					<option value="move_to_batch"><?php esc_html_e( 'Move batch', 'class-manager-pro' ); ?></option>
 					<option value="send_mail"><?php esc_html_e( 'Send Mail', 'class-manager-pro' ); ?></option>
-					<option value="send_whatsapp"><?php esc_html_e( 'Send WhatsApp (Direct API)', 'class-manager-pro' ); ?></option>
+					<option value="send_whatsapp"><?php esc_html_e( 'WhatsApp API', 'class-manager-pro' ); ?></option>
 					<option value="clear_payment"><?php esc_html_e( 'Clear Payment', 'class-manager-pro' ); ?></option>
-					<option value="export"><?php esc_html_e( 'Export selected', 'class-manager-pro' ); ?></option>
+					<option value="export"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></option>
 				</select>
 				<select id="cmp-student-bulk-status" style="display: none;">
 					<option value=""><?php esc_html_e( 'Choose status', 'class-manager-pro' ); ?></option>
@@ -1136,10 +1151,10 @@ function cmp_render_students_page() {
 				<span class="cmp-muted" id="cmp-student-bulk-feedback"></span>
 			</div>
 
-			<div class="cmp-toolbar-actions-right">
-				<a class="button cmp-export-link" data-base-url="<?php echo esc_url( $export_url ); ?>" href="<?php echo esc_url( $export_url ); ?>"><?php esc_html_e( 'Export CSV', 'class-manager-pro' ); ?></a>
-				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import Students', 'class-manager-pro' ); ?></a>
-				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>#cmp-add-student">+ <?php esc_html_e( 'Add Student', 'class-manager-pro' ); ?></a>
+			<div class="cmp-master-action-links">
+				<a class="button cmp-export-link" data-base-url="<?php echo esc_url( $export_url ); ?>" href="<?php echo esc_url( $export_url ); ?>"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></a>
+				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import', 'class-manager-pro' ); ?></a>
+				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>#cmp-add-student">+ <?php esc_html_e( 'Student', 'class-manager-pro' ); ?></a>
 			</div>
 		</div>
 

@@ -93,8 +93,14 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 				<th scope="row"><label for="cmp-payment-mode"><?php esc_html_e( 'Payment Mode', 'class-manager-pro' ); ?></label></th>
 				<td>
 					<select id="cmp-payment-mode" name="payment_mode">
-						<?php foreach ( cmp_payment_modes() as $mode ) : ?>
-							<option value="<?php echo esc_attr( $mode ); ?>" <?php selected( $is_edit ? $payment->payment_mode : 'manual', $mode ); ?>><?php echo esc_html( ucfirst( $mode ) ); ?></option>
+						<?php
+						$modes = array( 'upi', 'razorpay', 'cash' );
+						$selected_mode = $is_edit ? $payment->payment_mode : 'upi';
+						if ( 'manual' === $selected_mode ) {
+							$selected_mode = 'upi';
+						}
+						foreach ( $modes as $mode ) : ?>
+							<option value="<?php echo esc_attr( $mode ); ?>" <?php selected( $selected_mode, $mode ); ?>><?php echo esc_html( 'upi' === $mode ? 'UPI' : ucfirst( $mode ) ); ?></option>
 						<?php endforeach; ?>
 					</select>
 				</td>

@@ -195,6 +195,7 @@ function cmp_maybe_render_public_batch_page() {
 		$success_name  = ! empty( $success['student_name'] ) ? $success['student_name'] : '';
 		$success_phone = ! empty( $success['phone'] ) ? $success['phone'] : '';
 		$success_email = ! empty( $success['email'] ) ? $success['email'] : '';
+		$success_city  = ! empty( $success['city'] ) ? $success['city'] : '';
 		$success_utr   = ! empty( $success['utr_number'] ) ? $success['utr_number'] : '';
 		$course_title  = ! empty( $batch->course_id ) ? cmp_get_tutor_course_title( (int) $batch->course_id ) : '';
 		$teacher_label = ! empty( $batch->teacher_user_id ) ? cmp_get_teacher_label( (int) $batch->teacher_user_id ) : '';
@@ -231,6 +232,12 @@ function cmp_maybe_render_public_batch_page() {
 						<strong><?php echo esc_html( $success_email ); ?></strong>
 					</div>
 				<?php endif; ?>
+				<?php if ( $success_city ) : ?>
+					<div class="cmp-receipt-row">
+						<span><?php esc_html_e( 'City / गाव / शहर', 'class-manager-pro' ); ?></span>
+						<strong><?php echo esc_html( $success_city ); ?></strong>
+					</div>
+				<?php endif; ?>
 				<?php if ( $success_utr ) : ?>
 					<div class="cmp-receipt-row cmp-receipt-row-highlight">
 						<span><?php esc_html_e( 'Payment UTR / Ref', 'class-manager-pro' ); ?></span>
@@ -238,55 +245,254 @@ function cmp_maybe_render_public_batch_page() {
 					</div>
 				<?php endif; ?>
 				<div class="cmp-receipt-row">
+					<span><?php esc_html_e( 'Payment Method', 'class-manager-pro' ); ?></span>
+					<strong><span class="cmp-badge cmp-badge-upi">UPI</span></strong>
+				</div>
+				<div class="cmp-receipt-row">
 					<span><?php esc_html_e( 'Date & Time', 'class-manager-pro' ); ?></span>
 					<strong><?php echo esc_html( $now_formatted ); ?></strong>
 				</div>
 			</div>
 
+			<canvas id="cmp-receipt-canvas" width="1000" height="1240" style="display:none;"></canvas>
+
 			<div class="cmp-receipt-actions">
 				<button type="button" class="cmp-share-btn cmp-btn-primary" id="cmp-btn-share-receipt">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-					<?php esc_html_e( 'Share Registration Details', 'class-manager-pro' ); ?>
+					<?php esc_html_e( 'Share Receipt Image', 'class-manager-pro' ); ?>
 				</button>
-				<button type="button" class="cmp-share-btn cmp-btn-secondary" id="cmp-btn-copy-receipt">
+				<button type="button" class="cmp-share-btn cmp-btn-secondary" id="cmp-btn-download-receipt">
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+					<?php esc_html_e( 'Download Image', 'class-manager-pro' ); ?>
+				</button>
+				<button type="button" class="cmp-share-btn cmp-btn-outline" id="cmp-btn-copy-receipt">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-					<?php esc_html_e( 'Copy Summary', 'class-manager-pro' ); ?>
+					<?php esc_html_e( 'Copy Text', 'class-manager-pro' ); ?>
 				</button>
 			</div>
-			<p class="cmp-receipt-hint"><?php esc_html_e( 'Tip: Please take a screenshot of this receipt or click Share to send proof to your teacher/admin on WhatsApp.', 'class-manager-pro' ); ?></p>
+			<p class="cmp-receipt-hint"><?php esc_html_e( 'Click "Share Receipt Image" to send your official admission card on WhatsApp or save it to your phone.', 'class-manager-pro' ); ?></p>
 		</div>
 
 		<script>
 		(function(){
-			var studentName = <?php echo wp_json_encode( $success_name ); ?>;
+			var studentName = <?php echo wp_json_encode( $success_name ? $success_name : 'Registered Student' ); ?>;
 			var className = <?php echo wp_json_encode( $batch->class_name ); ?>;
 			var batchName = <?php echo wp_json_encode( $batch->batch_name ); ?>;
 			var phone = <?php echo wp_json_encode( $success_phone ); ?>;
+			var email = <?php echo wp_json_encode( $success_email ); ?>;
+			var city = <?php echo wp_json_encode( $success_city ); ?>;
 			var utr = <?php echo wp_json_encode( $success_utr ); ?>;
 			var date = <?php echo wp_json_encode( $now_formatted ); ?>;
+			var brandName = <?php echo wp_json_encode( get_bloginfo( 'name' ) ); ?>;
 
 			var shareText = "🎓 *Admission Confirmation*\n\n"
 				+ "*Class:* " + className + "\n"
 				+ "*Batch:* " + batchName + "\n"
 				+ "*Student:* " + studentName + "\n"
 				+ "*Phone:* " + phone + "\n"
-				+ (utr ? ("*Payment UTR:* " + utr + "\n") : "")
+				+ (city ? ("*City:* " + city + "\n") : "")
+				+ (utr ? ("*Payment UTR (UPI):* " + utr + "\n") : "")
 				+ "*Date:* " + date + "\n\n"
 				+ "✅ Registration Completed Successfully!";
+
+			function drawReceiptCanvas() {
+				var canvas = document.getElementById('cmp-receipt-canvas');
+				if (!canvas) return null;
+				var ctx = canvas.getContext('2d');
+				if (!ctx) return null;
+
+				var W = canvas.width;
+				var H = canvas.height;
+
+				// Background
+				ctx.fillStyle = '#f8fafc';
+				ctx.fillRect(0, 0, W, H);
+
+				// Outer card shadow & border
+				var m = 40;
+				var cardW = W - m * 2;
+				var cardH = H - m * 2;
+				var r = 28;
+
+				ctx.save();
+				ctx.fillStyle = '#ffffff';
+				ctx.strokeStyle = '#e2e8f0';
+				ctx.lineWidth = 4;
+				ctx.beginPath();
+				ctx.roundRect(m, m, cardW, cardH, r);
+				ctx.fill();
+				ctx.stroke();
+				ctx.restore();
+
+				// Header banner
+				var headerH = 220;
+				ctx.save();
+				ctx.beginPath();
+				ctx.roundRect(m, m, cardW, headerH, [r, r, 0, 0]);
+				ctx.clip();
+				var grad = ctx.createLinearGradient(m, m, m + cardW, m + headerH);
+				grad.addColorStop(0, '#008a20');
+				grad.addColorStop(1, '#005f16');
+				ctx.fillStyle = grad;
+				ctx.fillRect(m, m, cardW, headerH);
+
+				// Header text
+				ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+				ctx.font = '600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'center';
+				ctx.fillText(brandName.toUpperCase(), W / 2, m + 55);
+
+				ctx.fillStyle = '#ffffff';
+				ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.fillText('ADMISSION CONFIRMATION', W / 2, m + 105);
+
+				ctx.fillStyle = '#dcfce7';
+				ctx.font = '500 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.fillText('✓ Registration & Payment Submitted Successfully', W / 2, m + 150);
+				ctx.restore();
+
+				// Table / Rows
+				var startY = m + headerH + 50;
+				var rowH = 72;
+				var leftX = m + 50;
+				var rightX = W - m - 50;
+
+				var rows = [
+					{ label: 'Course / Class', value: className },
+					{ label: 'Batch Name', value: batchName },
+					{ label: 'Student Name', value: studentName },
+					{ label: 'Mobile Number', value: phone },
+					{ label: 'Email Address', value: email || 'N/A' },
+					{ label: 'City / गाव', value: city || 'N/A' }
+				];
+
+				for (var i = 0; i < rows.length; i++) {
+					var curY = startY + (i * rowH);
+					ctx.fillStyle = (i % 2 === 0) ? '#f8fafc' : '#ffffff';
+					ctx.fillRect(leftX - 15, curY - 35, (rightX - leftX) + 30, rowH - 6);
+
+					ctx.fillStyle = '#64748b';
+					ctx.font = '600 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+					ctx.textAlign = 'left';
+					ctx.fillText(rows[i].label, leftX, curY);
+
+					ctx.fillStyle = '#0f172a';
+					ctx.font = 'bold 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+					ctx.textAlign = 'right';
+					var val = rows[i].value;
+					if (val.length > 28) val = val.substring(0, 27) + '...';
+					ctx.fillText(val, rightX, curY);
+				}
+
+				// UTR & Payment Highlight Box
+				var utrBoxY = startY + (rows.length * rowH) + 15;
+				var utrBoxH = 175;
+
+				ctx.save();
+				ctx.fillStyle = '#f0fdf4';
+				ctx.strokeStyle = '#22c55e';
+				ctx.lineWidth = 3;
+				ctx.beginPath();
+				ctx.roundRect(leftX - 15, utrBoxY, (rightX - leftX) + 30, utrBoxH, 16);
+				ctx.fill();
+				ctx.stroke();
+
+				ctx.fillStyle = '#166534';
+				ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'left';
+				ctx.fillText('PAYMENT DETAILS (UPI)', leftX + 15, utrBoxY + 42);
+
+				ctx.fillStyle = '#15803d';
+				ctx.font = '600 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'right';
+				ctx.fillText('Status: Submitted / Under Review', rightX - 15, utrBoxY + 42);
+
+				ctx.fillStyle = '#374151';
+				ctx.font = '500 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'left';
+				ctx.fillText('Transaction UTR:', leftX + 15, utrBoxY + 95);
+
+				ctx.fillStyle = '#111827';
+				ctx.font = 'bold 26px "Courier New", monospace';
+				ctx.textAlign = 'left';
+				ctx.fillText(utr ? utr : 'Pending Verification', leftX + 220, utrBoxY + 95);
+
+				ctx.fillStyle = '#6b7280';
+				ctx.font = '500 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'left';
+				ctx.fillText('Submitted At: ' + date, leftX + 15, utrBoxY + 140);
+				ctx.restore();
+
+				// Footer
+				var footerY = H - m - 45;
+				ctx.fillStyle = '#94a3b8';
+				ctx.font = '500 20px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+				ctx.textAlign = 'center';
+				ctx.fillText('Official Admission Confirmation • Keep this receipt for your records', W / 2, footerY);
+
+				return canvas;
+			}
+
+			// Pre-render canvas on page load
+			setTimeout(drawReceiptCanvas, 100);
+
+			function getReceiptBlob(callback) {
+				var canvas = drawReceiptCanvas();
+				if (!canvas) return;
+				canvas.toBlob(function(blob){
+					callback(blob, canvas);
+				}, 'image/png', 0.95);
+			}
 
 			var shareBtn = document.getElementById('cmp-btn-share-receipt');
 			if (shareBtn) {
 				shareBtn.addEventListener('click', function(){
-					if (navigator.share) {
-						navigator.share({
-							title: 'Admission Confirmation - ' + studentName,
-							text: shareText
-						}).catch(function(){
-							window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank');
-						});
-					} else {
-						window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank');
-					}
+					shareBtn.disabled = true;
+					shareBtn.innerText = '⏳ Generating Image...';
+
+					getReceiptBlob(function(blob, canvas){
+						var fileName = 'admission-receipt-' + studentName.replace(/[^a-zA-Z0-9]/g, '_') + '.png';
+						var file = new File([blob], fileName, { type: 'image/png' });
+
+						if (navigator.canShare && navigator.canShare({ files: [file] })) {
+							navigator.share({
+								title: 'Admission Confirmation - ' + studentName,
+								text: shareText,
+								files: [file]
+							}).then(function(){
+								shareBtn.disabled = false;
+								shareBtn.innerText = '📤 Share Receipt Image';
+							}).catch(function(err){
+								shareBtn.disabled = false;
+								shareBtn.innerText = '📤 Share Receipt Image';
+							});
+						} else {
+							// Fallback: download the image and prompt WhatsApp share
+							var link = document.createElement('a');
+							link.download = fileName;
+							link.href = canvas.toDataURL('image/png');
+							link.click();
+
+							setTimeout(function(){
+								window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(shareText), '_blank');
+								shareBtn.disabled = false;
+								shareBtn.innerText = '📤 Share Receipt Image';
+							}, 800);
+						}
+					});
+				});
+			}
+
+			var downloadBtn = document.getElementById('cmp-btn-download-receipt');
+			if (downloadBtn) {
+				downloadBtn.addEventListener('click', function(){
+					var canvas = drawReceiptCanvas();
+					if (!canvas) return;
+					var fileName = 'admission-receipt-' + studentName.replace(/[^a-zA-Z0-9]/g, '_') + '.png';
+					var link = document.createElement('a');
+					link.download = fileName;
+					link.href = canvas.toDataURL('image/png');
+					link.click();
 				});
 			}
 
@@ -296,7 +502,7 @@ function cmp_maybe_render_public_batch_page() {
 					if (navigator.clipboard) {
 						navigator.clipboard.writeText(shareText).then(function(){
 							copyBtn.innerText = '✓ Copied!';
-							setTimeout(function(){ copyBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Summary'; }, 2000);
+							setTimeout(function(){ copyBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:6px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Text'; }, 2000);
 						});
 					} else {
 						var ta = document.createElement('textarea');
@@ -306,7 +512,7 @@ function cmp_maybe_render_public_batch_page() {
 						document.execCommand('copy');
 						document.body.removeChild(ta);
 						copyBtn.innerText = '✓ Copied!';
-						setTimeout(function(){ copyBtn.innerText = 'Copy Summary'; }, 2000);
+						setTimeout(function(){ copyBtn.innerText = 'Copy Text'; }, 2000);
 					}
 				});
 			}
@@ -387,16 +593,21 @@ function cmp_maybe_render_public_batch_page() {
 						</div>
 
 						<div class="cmp-form-field">
-							<label for="cmp_student_utr">
-								<?php esc_html_e( 'Payment UTR / Transaction No. (Optional)', 'class-manager-pro' ); ?>
-								<span class="cmp-field-desc"><?php esc_html_e( 'If you have paid fees via UPI / QR / Bank, enter 12-digit UTR here', 'class-manager-pro' ); ?></span>
-							</label>
-							<input type="text" id="cmp_student_utr" name="utr_number" placeholder="<?php esc_attr_e( 'e.g. 4123xxxxxxxx or UPI Ref No.', 'class-manager-pro' ); ?>">
+							<label for="cmp_student_city"><?php esc_html_e( 'City / गाव / शहर *', 'class-manager-pro' ); ?></label>
+							<input type="text" id="cmp_student_city" name="city" required placeholder="<?php esc_attr_e( 'Enter your city or village name', 'class-manager-pro' ); ?>">
 						</div>
 
 						<div class="cmp-form-field">
-							<label for="cmp_student_notes"><?php esc_html_e( 'City / Notes (Optional)', 'class-manager-pro' ); ?></label>
-							<input type="text" id="cmp_student_notes" name="notes" placeholder="<?php esc_attr_e( 'Your city or any remark', 'class-manager-pro' ); ?>">
+							<label for="cmp_student_utr">
+								<?php esc_html_e( 'Payment UTR / Transaction No. *', 'class-manager-pro' ); ?>
+								<span class="cmp-field-desc"><?php esc_html_e( 'Enter 12-digit UPI / Bank Reference / UTR Number', 'class-manager-pro' ); ?></span>
+							</label>
+							<input type="text" id="cmp_student_utr" name="utr_number" required placeholder="<?php esc_attr_e( 'e.g. 4123xxxxxxxx or UPI Ref No.', 'class-manager-pro' ); ?>">
+						</div>
+
+						<div class="cmp-form-field">
+							<label for="cmp_student_notes"><?php esc_html_e( 'Notes / Remarks (Optional)', 'class-manager-pro' ); ?></label>
+							<input type="text" id="cmp_student_notes" name="notes" placeholder="<?php esc_attr_e( 'Any optional remark or request', 'class-manager-pro' ); ?>">
 						</div>
 
 						<button type="submit" class="cmp-public-submit-btn">
@@ -465,6 +676,25 @@ function cmp_handle_public_batch_form_submission() {
 		}
 	}
 
+	// Compulsory field validation
+	$name       = sanitize_text_field( cmp_field( $_POST, 'name' ) );
+	$phone      = sanitize_text_field( cmp_field( $_POST, 'phone' ) );
+	$email      = sanitize_email( cmp_field( $_POST, 'email' ) );
+	$city       = sanitize_text_field( cmp_field( $_POST, 'city' ) );
+	$utr_number = sanitize_text_field( cmp_field( $_POST, 'utr_number' ) );
+
+	if ( '' === $name || '' === $phone || '' === $email || '' === $city || '' === $utr_number ) {
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'cmp_public_error' => __( 'All fields (Name, Phone, Email, City, and Payment UTR) are compulsory.', 'class-manager-pro' ),
+				),
+				cmp_get_public_batch_access_url( $access_type, $access_token )
+			)
+		);
+		exit;
+	}
+
 	$result = cmp_register_public_student_for_batch( $batch, $_POST );
 
 	if ( is_wp_error( $result ) ) {
@@ -487,16 +717,16 @@ function cmp_handle_public_batch_form_submission() {
 		cmp_mark_batch_registration_token_used( $access_token, (int) $result );
 	}
 
-	$student    = cmp_get_student( (int) $result );
-	$utr_number = sanitize_text_field( cmp_field( $_POST, 'utr_number', '' ) );
+	$student = cmp_get_student( (int) $result );
 
 	cmp_store_public_registration_success(
 		$access_token,
 		array(
 			'student_id'   => (int) $result,
-			'student_name' => $student && ! empty( $student->name ) ? $student->name : sanitize_text_field( cmp_field( $_POST, 'name' ) ),
-			'phone'        => $student && ! empty( $student->phone ) ? $student->phone : sanitize_text_field( cmp_field( $_POST, 'phone' ) ),
-			'email'        => $student && ! empty( $student->email ) ? $student->email : sanitize_email( cmp_field( $_POST, 'email' ) ),
+			'student_name' => $student && ! empty( $student->name ) ? $student->name : $name,
+			'phone'        => $student && ! empty( $student->phone ) ? $student->phone : $phone,
+			'email'        => $student && ! empty( $student->email ) ? $student->email : $email,
+			'city'         => $student && ! empty( $student->city_original ) ? $student->city_original : $city,
 			'batch_name'   => $batch->batch_name,
 			'class_name'   => $batch->class_name,
 			'utr_number'   => $utr_number,

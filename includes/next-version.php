@@ -2884,13 +2884,17 @@ function cmp_handle_generate_batch_registration_link() {
 		);
 	}
 
+	$link_url = cmp_get_batch_temporary_registration_url( $result );
+
 	cmp_redirect(
 		'cmp-batches',
-		__( 'Temporary registration link generated. It stays active for 10 minutes or until one successful registration uses it.', 'class-manager-pro' ),
+		__( 'Temporary registration link generated and automatically copied to clipboard!', 'class-manager-pro' ),
 		'success',
 		array(
-			'action' => 'view',
-			'id'     => $batch_id,
+			'action'          => 'view',
+			'id'              => $batch_id,
+			'tab'             => 'admissions',
+			'cmp_auto_copied' => rawurlencode( $link_url ),
 		)
 	);
 }

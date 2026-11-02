@@ -2420,3 +2420,257 @@ form.cmp-loading::after {
 		border-bottom: 2px solid #000000 !important;
 	}
 }
+
+/* ==========================================================================
+   Students Unified Master Control Bar
+   ========================================================================== */
+.cmp-students-master-bar {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 12px;
+	background: #ffffff;
+	border: 1px solid #c3c4c7;
+	border-radius: 8px;
+	padding: 10px 14px;
+	margin-bottom: 16px;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.cmp-master-filter-form {
+	display: flex;
+	align-items: center;
+	margin: 0;
+}
+
+.cmp-master-filter-group,
+.cmp-master-bulk-group,
+.cmp-master-action-links {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmp-master-search-input {
+	min-width: 220px;
+	height: 32px;
+}
+
+.cmp-master-divider {
+	width: 1px;
+	height: 26px;
+	background: #e2e8f0;
+	margin: 0 4px;
+}
+
+.cmp-master-action-links {
+	margin-left: auto;
+}
+
+/* ==========================================================================
+   Pro Batch Header & SaaS Cards
+   ========================================================================== */
+.cmp-pro-header-modern {
+	background: #ffffff;
+	border: 1px solid #c3c4c7;
+	border-radius: 8px;
+	padding: 16px 20px;
+	margin-bottom: 16px;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 16px;
+}
+
+.cmp-title-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.cmp-title-row h1 {
+	margin: 0;
+	font-size: 22px;
+	font-weight: 700;
+	color: #0f172a;
+}
+
+.cmp-title-meta-line {
+	margin-top: 6px;
+	font-size: 13px;
+	color: #64748b;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmp-title-meta-line strong {
+	color: #1e293b;
+}
+
+.cmp-meta-sep {
+	color: #cbd5e1;
+}
+
+.cmp-toolbar-pro {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmp-batch-cards-pro {
+	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+	gap: 14px;
+	margin-bottom: 20px;
+}
+
+.cmp-stat-card-pro {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 14px 18px;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	transition: all 0.2s ease;
+}
+
+.cmp-stat-card-pro:hover {
+	border-color: #cbd5e1;
+	box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+}
+
+.cmp-stat-label {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #64748b;
+}
+
+.cmp-stat-value {
+	font-size: 24px;
+	font-weight: 700;
+	color: #0f172a;
+	line-height: 1.2;
+}
+
+.cmp-stat-foot {
+	font-size: 12px;
+	color: #94a3b8;
+}
+
+/* ==========================================================================
+   Executive Analytics Dashboard Tabs & Cards
+   ========================================================================== */
+.cmp-executive-kpi-grid {
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+.cmp-kpi-card {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	padding: 16px 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+}
+
+.cmp-kpi-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+}
+
+.cmp-kpi-title {
+	font-size: 13px;
+	font-weight: 600;
+	color: #64748b;
+}
+
+.cmp-kpi-badge {
+	font-size: 11px;
+	font-weight: 600;
+	padding: 3px 8px;
+	border-radius: 9999px;
+}
+
+.cmp-kpi-badge-success {
+	background: #dcfce7;
+	color: #15803d;
+}
+
+.cmp-kpi-badge-warning {
+	background: #fef2f2;
+	color: #b91c1c;
+}
+
+.cmp-kpi-badge-info {
+	background: #e0f2fe;
+	color: #0369a1;
+}
+
+.cmp-kpi-badge-purple {
+	background: #f3e8ff;
+	color: #7e22ce;
+}
+
+.cmp-kpi-value {
+	font-size: 28px;
+	font-weight: 800;
+	color: #0f172a;
+	line-height: 1.1;
+}
+
+.cmp-kpi-sub {
+	font-size: 12px;
+	color: #64748b;
+	border-top: 1px solid #f1f5f9;
+	padding-top: 6px;
+}
+
+.cmp-analytics-tabs-bar {
+	display: flex;
+	gap: 8px;
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 6px;
+	margin-bottom: 20px;
+	overflow-x: auto;
+}
+
+.cmp-analytics-tabs-bar .cmp-tab-btn {
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	padding: 8px 16px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #475569;
+	cursor: pointer;
+	white-space: nowrap;
+	transition: all 0.15s ease;
+}
+
+.cmp-analytics-tabs-bar .cmp-tab-btn:hover {
+	background: #ffffff;
+	color: #0f172a;
+}
+
+.cmp-analytics-tabs-bar .cmp-tab-btn.is-active {
+	background: #ffffff;
+	color: #0f172a;
+	box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+

@@ -207,6 +207,25 @@ function cmp_smartcertify_request_generate_again( $batch_id ) {
 }
 
 /**
+ * Helper to get all students of a batch safely.
+ *
+ * @param int $batch_id Batch ID.
+ * @return array Array of student objects.
+ */
+function cmp_get_batch_students( $batch_id ) {
+	if ( function_exists( 'cmp_get_students' ) ) {
+		return cmp_get_students( array( 'batch_id' => absint( $batch_id ) ) );
+	}
+	global $wpdb;
+	return $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT * FROM " . cmp_table( 'students' ) . " WHERE batch_id = %d ORDER BY name ASC",
+			absint( $batch_id )
+		)
+	);
+}
+
+/**
  * Returns comprehensive certificate tracking records and logs for all students in a batch.
  * Integrates with SmartCertify tables if present and CMP certificate logs.
  *
@@ -216,28 +235,29 @@ function cmp_smartcertify_request_generate_again( $batch_id ) {
 function cmp_get_batch_certificate_records( $batch_id ) {
 	global $wpdb;
 
-	$batch_id = absint( $batch_id );
-	$batch    = cmp_get_batch( $batch_id );
-	if ( ! $batch ) {
-		return array(
-			'records'          => array(),
-			'total_students'   => 0,
-			'generated_count'  => 0,
-			'downloaded_count' => 0,
-			'pending_count'    => 0,
-		);
-	}
+	try {
+		$batch_id = absint( $batch_id );
+		$batch    = cmp_get_batch( $batch_id );
+		if ( ! $batch ) {
+			return array(
+				'records'          => array(),
+				'total_students'   => 0,
+				'generated_count'  => 0,
+				'downloaded_count' => 0,
+				'pending_count'    => 0,
+			);
+		}
 
-	$students = cmp_get_batch_students( $batch_id );
-	if ( empty( $students ) ) {
-		return array(
-			'records'          => array(),
-			'total_students'   => 0,
-			'generated_count'  => 0,
-			'downloaded_count' => 0,
-			'pending_count'    => 0,
-		);
-	}
+		$students = cmp_get_batch_students( $batch_id );
+		if ( empty( $students ) ) {
+			return array(
+				'records'          => array(),
+				'total_students'   => 0,
+				'generated_count'  => 0,
+				'downloaded_count' => 0,
+				'pending_count'    => 0,
+			);
+		}
 
 	// SmartCertify table names
 	$codes_table = $wpdb->prefix . 'smartcertify_codes';
@@ -453,13 +473,22 @@ function cmp_get_batch_certificate_records( $batch_id ) {
 		);
 	}
 
-	return array(
-		'records'          => $records,
-		'total_students'   => count( $students ),
-		'generated_count'  => $generated_count,
-		'downloaded_count' => $downloaded_count,
-		'pending_count'    => $pending_count,
-	);
+		return array(
+			'records'          => $records,
+			'total_students'   => count( $students ),
+			'generated_count'  => $generated_count,
+			'downloaded_count' => $downloaded_count,
+			'pending_count'    => $pending_count,
+		);
+	} catch ( Throwable $e ) {
+		return array(
+			'records'          => array(),
+			'total_students'   => 0,
+			'generated_count'  => 0,
+			'downloaded_count' => 0,
+			'pending_count'    => 0,
+		);
+	}
 }
 
 /**
@@ -472,16 +501,17 @@ function cmp_get_batch_certificate_records( $batch_id ) {
 function cmp_auto_generate_batch_certificates( $batch_id, $force = false ) {
 	global $wpdb;
 
-	$batch_id = absint( $batch_id );
-	$batch    = cmp_get_batch( $batch_id );
-	if ( ! $batch ) {
-		return array( 'success' => false, 'message' => __( 'Batch not found.', 'class-manager-pro' ), 'generated' => 0 );
-	}
+	try {
+		$batch_id = absint( $batch_id );
+		$batch    = cmp_get_batch( $batch_id );
+		if ( ! $batch ) {
+			return array( 'success' => false, 'message' => __( 'Batch not found.', 'class-manager-pro' ), 'generated' => 0 );
+		}
 
-	$students = cmp_get_batch_students( $batch_id );
-	if ( empty( $students ) ) {
-		return array( 'success' => true, 'message' => __( 'No students in this batch.', 'class-manager-pro' ), 'generated' => 0 );
-	}
+		$students = cmp_get_batch_students( $batch_id );
+		if ( empty( $students ) ) {
+			return array( 'success' => true, 'message' => __( 'No students in this batch.', 'class-manager-pro' ), 'generated' => 0 );
+		}
 
 	$now_mysql = current_time( 'mysql' );
 	$cmp_stored = get_option( 'cmp_batch_certs_' . $batch_id, array() );
@@ -636,11 +666,18 @@ function cmp_auto_generate_batch_certificates( $batch_id, $force = false ) {
 		)
 	);
 
-	return array(
-		'success'   => true,
-		'message'   => sprintf( __( 'Certificates successfully generated for %d students in batch "%s".', 'class-manager-pro' ), $generated_count, $batch->batch_name ),
-		'generated' => $generated_count,
-	);
+		return array(
+			'success'   => true,
+			'message'   => sprintf( __( 'Certificates successfully generated for %d students in batch "%s".', 'class-manager-pro' ), $generated_count, $batch->batch_name ),
+			'generated' => $generated_count,
+		);
+	} catch ( Throwable $e ) {
+		return array(
+			'success'   => false,
+			'message'   => $e->getMessage(),
+			'generated' => 0,
+		);
+	}
 }
 
 /**

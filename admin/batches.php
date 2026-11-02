@@ -1295,7 +1295,6 @@ function cmp_render_batch_detail_panel( $batch ) {
 			</div>
 			<div class="cmp-toolbar cmp-toolbar-pro">
 				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'class_id' => (int) $batch->class_id, 'batch_id' => (int) $batch->id ) ) ); ?>#cmp-add-student"><?php esc_html_e( '+ Student', 'class-manager-pro' ); ?></a>
-				<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=cmp_clone_batch&id=' . (int) $batch->id ), 'cmp_clone_batch_' . (int) $batch->id ) ); ?>" title="<?php esc_attr_e( 'Duplicate batch settings into a new batch', 'class-manager-pro' ); ?>"><?php esc_html_e( '📋 Clone Batch', 'class-manager-pro' ); ?></a>
 				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments', array( 'batch_id' => (int) $batch->id ) ) ); ?>#cmp-add-payment"><?php esc_html_e( '+ Payment', 'class-manager-pro' ); ?></a>
 				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'admissions' ) ) ); ?>"><?php esc_html_e( '🔗 Temp Link', 'class-manager-pro' ); ?></a>
 				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'announcements' ) ) ); ?>"><?php esc_html_e( '📢 Announcement', 'class-manager-pro' ); ?></a>
@@ -1308,16 +1307,6 @@ function cmp_render_batch_detail_panel( $batch ) {
 						<?php wp_nonce_field( 'cmp_toggle_batch_status_' . (int) $batch->id ); ?>
 						<button type="submit" class="button button-secondary" onclick="return confirm('<?php esc_attr_e( 'Are you sure you want to mark this batch as Completed?', 'class-manager-pro' ); ?>');" title="<?php esc_attr_e( 'Mark Batch Completed', 'class-manager-pro' ); ?>">
 							✓ <?php esc_html_e( 'Complete Batch', 'class-manager-pro' ); ?>
-						</button>
-					</form>
-				<?php else : ?>
-					<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;margin:0;">
-						<input type="hidden" name="action" value="cmp_toggle_batch_status">
-						<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
-						<input type="hidden" name="new_status" value="active">
-						<?php wp_nonce_field( 'cmp_toggle_batch_status_' . (int) $batch->id ); ?>
-						<button type="submit" class="button button-secondary" onclick="return confirm('<?php esc_attr_e( 'Reopen this batch as Active?', 'class-manager-pro' ); ?>');" title="<?php esc_attr_e( 'Reactivate Batch', 'class-manager-pro' ); ?>">
-							↻ <?php esc_html_e( 'Reopen Batch', 'class-manager-pro' ); ?>
 						</button>
 					</form>
 				<?php endif; ?>
@@ -1682,8 +1671,7 @@ function cmp_render_batches_page() {
 									<td class="cmp-actions" style="white-space:nowrap;">
 										<a href="<?php echo esc_url( $view_url ); ?>" class="button button-small"><?php esc_html_e( 'View', 'class-manager-pro' ); ?></a>
 										<a href="<?php echo esc_url( $edit_url ); ?>" class="button button-small"><?php esc_html_e( 'Edit', 'class-manager-pro' ); ?></a>
-										<a href="<?php echo esc_url( $clone_url ); ?>" class="button button-small" title="<?php esc_attr_e( 'Duplicate batch settings into a new batch', 'class-manager-pro' ); ?>">📋 <?php esc_html_e( 'Clone', 'class-manager-pro' ); ?></a>
-										<?php if ( 'active' === $row->status ) : ?>
+										<?php if ( 'completed' !== $row->status ) : ?>
 											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin:0;">
 												<input type="hidden" name="action" value="cmp_toggle_batch_status">
 												<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $row->id ); ?>">
@@ -1691,27 +1679,7 @@ function cmp_render_batches_page() {
 												<?php wp_nonce_field( 'cmp_toggle_batch_status_' . (int) $row->id ); ?>
 												<button type="submit" class="button button-small" style="color:#059669;font-weight:600;" onclick="return confirm('<?php echo esc_js( sprintf( __( 'Mark batch "%s" as Completed?', 'class-manager-pro' ), $row->batch_name ) ); ?>');" title="<?php esc_attr_e( 'Mark Completed', 'class-manager-pro' ); ?>">✓ <?php esc_html_e( 'Complete', 'class-manager-pro' ); ?></button>
 											</form>
-										<?php elseif ( 'completed' === $row->status ) : ?>
-											<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin:0;">
-												<input type="hidden" name="action" value="cmp_toggle_batch_status">
-												<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $row->id ); ?>">
-												<input type="hidden" name="new_status" value="active">
-												<?php wp_nonce_field( 'cmp_toggle_batch_status_' . (int) $row->id ); ?>
-												<button type="submit" class="button button-small" style="color:#2563eb;font-weight:600;" onclick="return confirm('<?php echo esc_js( sprintf( __( 'Reopen batch "%s" as Active?', 'class-manager-pro' ), $row->batch_name ) ); ?>');" title="<?php esc_attr_e( 'Reopen as Active', 'class-manager-pro' ); ?>">↻ <?php esc_html_e( 'Reopen', 'class-manager-pro' ); ?></button>
-											</form>
 										<?php endif; ?>
-										<a
-											class="cmp-delete-link button button-small"
-											style="color:#dc2626;"
-											href="<?php echo esc_url( $delete_url ); ?>"
-											data-id="<?php echo esc_attr( (int) $row->id ); ?>"
-											data-type="batch"
-											data-cmp-ajax-delete="1"
-											data-cmp-entity-type="batch"
-											data-cmp-entity-id="<?php echo esc_attr( (int) $row->id ); ?>"
-											data-cmp-confirm="<?php esc_attr_e( 'Delete this batch?', 'class-manager-pro' ); ?>"
-											data-cmp-feedback="#cmp-batch-bulk-feedback"
-										><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></a>
 									</td>
 								</tr>
 							<?php endforeach; ?>

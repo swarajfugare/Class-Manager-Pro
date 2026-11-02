@@ -1083,83 +1083,83 @@ function cmp_render_students_page() {
 			</section>
 		<?php endif; ?>
 
-		<div class="cmp-students-master-bar">
-			<form method="get" class="cmp-filter-form cmp-master-filter-form" data-cmp-action="cmp_filter_students" data-cmp-target="#cmp-student-results-wrap">
-				<input type="hidden" name="page" value="cmp-students">
-				<input type="hidden" name="tab" value="<?php echo esc_attr( $current_tab ); ?>">
-				<?php if ( 'pending' === $current_tab ) : ?>
-					<input type="hidden" name="fee_status" value="pending">
-				<?php endif; ?>
-
-				<div class="cmp-master-filter-group">
-					<input type="search" name="search" value="<?php echo esc_attr( $filters['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search student, phone, email, ID...', 'class-manager-pro' ); ?>" class="cmp-master-search-input">
-					<select name="class_id" data-cmp-class-select>
-						<option value="0"><?php esc_html_e( 'All classes', 'class-manager-pro' ); ?></option>
-						<?php foreach ( $classes as $class ) : ?>
-							<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $filters['class_id'], (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<select name="batch_id" data-cmp-batches>
-						<option value="0"><?php esc_html_e( 'All batches', 'class-manager-pro' ); ?></option>
-						<?php foreach ( $batches as $batch ) : ?>
-							<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $filters['batch_id'], (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<select name="status">
-						<option value=""><?php esc_html_e( 'All statuses', 'class-manager-pro' ); ?></option>
-						<?php foreach ( cmp_student_statuses() as $status ) : ?>
-							<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $filters['status'], $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
-						<?php endforeach; ?>
-					</select>
-					<button type="submit" class="button button-primary"><?php esc_html_e( 'Filter', 'class-manager-pro' ); ?></button>
-				</div>
-			</form>
-
-			<div class="cmp-master-divider" aria-hidden="true"></div>
-
-			<div class="cmp-master-bulk-group">
-				<?php wp_nonce_field( 'cmp_admin_nonce', 'cmp_admin_ajax_nonce' ); ?>
-				<select id="cmp-student-bulk-action">
-					<option value=""><?php esc_html_e( 'Bulk action', 'class-manager-pro' ); ?></option>
-					<option value="delete"><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></option>
-					<option value="change_status"><?php esc_html_e( 'Change status', 'class-manager-pro' ); ?></option>
-					<option value="move_to_batch"><?php esc_html_e( 'Move batch', 'class-manager-pro' ); ?></option>
-					<option value="send_mail"><?php esc_html_e( 'Send Mail', 'class-manager-pro' ); ?></option>
-					<option value="send_whatsapp"><?php esc_html_e( 'WhatsApp API', 'class-manager-pro' ); ?></option>
-					<option value="clear_payment"><?php esc_html_e( 'Clear Payment', 'class-manager-pro' ); ?></option>
-					<option value="export"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></option>
-				</select>
-				<select id="cmp-student-bulk-status" style="display: none;">
-					<option value=""><?php esc_html_e( 'Choose status', 'class-manager-pro' ); ?></option>
-					<?php foreach ( cmp_student_statuses() as $status ) : ?>
-						<option value="<?php echo esc_attr( $status ); ?>"><?php echo esc_html( ucfirst( $status ) ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<select id="cmp-student-bulk-class" data-cmp-class-select style="display: none;">
-					<option value="0"><?php esc_html_e( 'Choose class', 'class-manager-pro' ); ?></option>
-					<?php foreach ( $classes as $class ) : ?>
-						<option value="<?php echo esc_attr( (int) $class->id ); ?>"><?php echo esc_html( $class->name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<select id="cmp-student-bulk-batch" data-cmp-batches style="display: none;">
-					<option value="0"><?php esc_html_e( 'Choose batch', 'class-manager-pro' ); ?></option>
-					<?php foreach ( $batches as $batch ) : ?>
-						<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>"><?php echo esc_html( $batch->batch_name ); ?></option>
-					<?php endforeach; ?>
-				</select>
-				<button type="button" class="button button-secondary" id="cmp-student-bulk-apply"><?php esc_html_e( 'Apply', 'class-manager-pro' ); ?></button>
-				<span class="cmp-muted" id="cmp-student-bulk-feedback"></span>
-			</div>
-
-			<div class="cmp-master-action-links">
-				<a class="button cmp-export-link" data-base-url="<?php echo esc_url( $export_url ); ?>" href="<?php echo esc_url( $export_url ); ?>"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></a>
-				<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import', 'class-manager-pro' ); ?></a>
-				<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>#cmp-add-student">+ <?php esc_html_e( 'Student', 'class-manager-pro' ); ?></a>
-			</div>
-		</div>
-
 		<div id="cmp-student-results-wrap">
 			<section class="cmp-panel">
+				<div class="cmp-panel-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid #e2e8f0;">
+					<div class="cmp-master-bulk-group" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+						<h2 style="margin:0 8px 0 0;"><?php esc_html_e( 'Students List', 'class-manager-pro' ); ?></h2>
+						<?php wp_nonce_field( 'cmp_admin_nonce', 'cmp_admin_ajax_nonce' ); ?>
+						<select id="cmp-student-bulk-action">
+							<option value=""><?php esc_html_e( 'Bulk action', 'class-manager-pro' ); ?></option>
+							<option value="delete"><?php esc_html_e( 'Delete', 'class-manager-pro' ); ?></option>
+							<option value="change_status"><?php esc_html_e( 'Change status', 'class-manager-pro' ); ?></option>
+							<option value="move_to_batch"><?php esc_html_e( 'Move batch', 'class-manager-pro' ); ?></option>
+							<option value="send_mail"><?php esc_html_e( 'Send Mail', 'class-manager-pro' ); ?></option>
+							<option value="send_whatsapp"><?php esc_html_e( 'WhatsApp API', 'class-manager-pro' ); ?></option>
+							<option value="clear_payment"><?php esc_html_e( 'Clear Payment', 'class-manager-pro' ); ?></option>
+							<option value="export"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></option>
+						</select>
+						<select id="cmp-student-bulk-status" style="display: none;">
+							<option value=""><?php esc_html_e( 'Choose status', 'class-manager-pro' ); ?></option>
+							<?php foreach ( cmp_student_statuses() as $status ) : ?>
+								<option value="<?php echo esc_attr( $status ); ?>"><?php echo esc_html( ucfirst( $status ) ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<select id="cmp-student-bulk-class" data-cmp-class-select style="display: none;">
+							<option value="0"><?php esc_html_e( 'Choose class', 'class-manager-pro' ); ?></option>
+							<?php foreach ( $classes as $class ) : ?>
+								<option value="<?php echo esc_attr( (int) $class->id ); ?>"><?php echo esc_html( $class->name ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<select id="cmp-student-bulk-batch" data-cmp-batches style="display: none;">
+							<option value="0"><?php esc_html_e( 'Choose batch', 'class-manager-pro' ); ?></option>
+							<?php foreach ( $batches as $batch ) : ?>
+								<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>"><?php echo esc_html( $batch->batch_name ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<button type="button" class="button button-secondary" id="cmp-student-bulk-apply"><?php esc_html_e( 'Apply', 'class-manager-pro' ); ?></button>
+						<span class="cmp-muted" id="cmp-student-bulk-feedback"></span>
+					</div>
+
+					<div class="cmp-master-action-links" style="display:flex; align-items:center; gap:8px;">
+						<a class="button cmp-export-link" data-base-url="<?php echo esc_url( $export_url ); ?>" href="<?php echo esc_url( $export_url ); ?>"><?php esc_html_e( 'Export', 'class-manager-pro' ); ?></a>
+						<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) . '#cmp-student-file-import' ); ?>"><?php esc_html_e( 'Import', 'class-manager-pro' ); ?></a>
+						<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students' ) ); ?>#cmp-add-student">+ <?php esc_html_e( 'Student', 'class-manager-pro' ); ?></a>
+					</div>
+				</div>
+
+				<div class="cmp-students-master-bar" style="margin-bottom:14px; border:none; padding:0; background:transparent;">
+					<form method="get" class="cmp-filter-form cmp-master-filter-form" data-cmp-action="cmp_filter_students" data-cmp-target="#cmp-student-results-wrap" style="width:100%;">
+						<input type="hidden" name="page" value="cmp-students">
+						<input type="hidden" name="tab" value="<?php echo esc_attr( $current_tab ); ?>">
+						<?php if ( 'pending' === $current_tab ) : ?>
+							<input type="hidden" name="fee_status" value="pending">
+						<?php endif; ?>
+
+						<div class="cmp-master-filter-group" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; width:100%;">
+							<input type="search" name="search" value="<?php echo esc_attr( $filters['search'] ); ?>" placeholder="<?php esc_attr_e( 'Search student, phone, email, ID...', 'class-manager-pro' ); ?>" class="cmp-master-search-input" style="flex:1; min-width:200px;">
+							<select name="class_id" data-cmp-class-select>
+								<option value="0"><?php esc_html_e( 'All classes', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $classes as $class ) : ?>
+									<option value="<?php echo esc_attr( (int) $class->id ); ?>" <?php selected( $filters['class_id'], (int) $class->id ); ?>><?php echo esc_html( $class->name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<select name="batch_id" data-cmp-batches>
+								<option value="0"><?php esc_html_e( 'All batches', 'class-manager-pro' ); ?></option>
+								<?php foreach ( $batches as $batch ) : ?>
+									<option value="<?php echo esc_attr( (int) $batch->id ); ?>" data-class-id="<?php echo esc_attr( (int) $batch->class_id ); ?>" <?php selected( $filters['batch_id'], (int) $batch->id ); ?>><?php echo esc_html( $batch->batch_name ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<select name="status">
+								<option value=""><?php esc_html_e( 'All statuses', 'class-manager-pro' ); ?></option>
+								<?php foreach ( cmp_student_statuses() as $status ) : ?>
+									<option value="<?php echo esc_attr( $status ); ?>" <?php selected( $filters['status'], $status ); ?>><?php echo esc_html( ucfirst( $status ) ); ?></option>
+								<?php endforeach; ?>
+							</select>
+							<button type="submit" class="button button-primary"><?php esc_html_e( 'Filter', 'class-manager-pro' ); ?></button>
+						</div>
+					</form>
+				</div>
 				<div class="cmp-table-scroll">
 					<table class="widefat striped">
 						<thead>

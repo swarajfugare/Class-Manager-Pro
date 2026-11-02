@@ -1641,6 +1641,12 @@
 			return true;
 		});
 
+		$(document).on('change', '#cmp-student-bulk-action', function () {
+			const action = String($(this).val() || '');
+			$('#cmp-student-bulk-status').toggle(action === 'change_status');
+			$('#cmp-student-bulk-class, #cmp-student-bulk-batch').toggle(action === 'move_to_batch');
+		});
+
 		$(document).on('click', '#cmp-student-bulk-apply', function () {
 			const $button = $(this);
 			const $feedback = $('#cmp-student-bulk-feedback');

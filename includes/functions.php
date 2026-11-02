@@ -7839,8 +7839,31 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 	ob_start();
 
 	if ( empty( $students ) ) {
-		echo '<tr><td colspan="12">' . esc_html__( 'No students found.', 'class-manager-pro' ) . '</td></tr>';
+		echo '<tr><td colspan="8">' . esc_html__( 'No students found.', 'class-manager-pro' ) . '</td></tr>';
 		return ob_get_clean();
+	}
+
+	// Pre-fetch enrollment counts across all batches for these students
+	global $wpdb;
+	$phone_counts = array();
+	$phones       = array_filter( array_unique( wp_list_pluck( $students, 'phone' ) ) );
+
+	if ( ! empty( $phones ) ) {
+		$placeholders = implode( ', ', array_fill( 0, count( $phones ), '%s' ) );
+		$count_rows   = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT phone, COUNT(*) as cnt, SUM(total_fee) as sum_total, SUM(paid_fee) as sum_paid FROM " . cmp_table( 'students' ) . " WHERE phone IN ($placeholders) GROUP BY phone",
+				$phones
+			)
+		);
+
+		foreach ( (array) $count_rows as $c_row ) {
+			$phone_counts[ $c_row->phone ] = array(
+				'count'     => (int) $c_row->cnt,
+				'sum_total' => (float) $c_row->sum_total,
+				'sum_paid'  => (float) $c_row->sum_paid,
+			);
+		}
 	}
 
 	foreach ( $students as $student ) {
@@ -7848,53 +7871,98 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 		$payment_status = cmp_get_student_payment_status( $student );
 		$batch_label    = cmp_get_student_batch_label( $student );
 		$view_url       = cmp_admin_url( 'cmp-students', array( 'action' => 'view', 'id' => (int) $student->id ) );
-		$edit_url       = cmp_admin_url( 'cmp-students', array( 'action' => 'edit', 'id' => (int) $student->id ) );
-		$payment_url    = cmp_admin_url( 'cmp-payments', array( 'student_id' => (int) $student->id ) ) . '#cmp-add-payment';
-		$profile_url    = cmp_get_student_profile_url( $student );
-		$email_url      = cmp_get_email_reminder_url(
-			$student,
-			'cmp-students',
-			array(
-				'action' => 'view',
-				'id'     => (int) $student->id,
-			)
-		);
 		$whatsapp_url   = cmp_get_whatsapp_reminder_url( $student );
 		$delete_url     = wp_nonce_url(
 			admin_url( 'admin-post.php?action=cmp_delete_student&id=' . (int) $student->id ),
 			'cmp_delete_student_' . (int) $student->id
 		);
 
+		$first_letter = strtoupper( mb_substr( trim( $student->name ), 0, 1 ) );
+		$avatar_url   = '';
+		if ( ! empty( $student->user_id ) ) {
+			$avatar_url = get_avatar_url( (int) $student->user_id, array( 'size' => 64, 'default' => '404' ) );
+		} elseif ( ! empty( $student->email ) ) {
+			$avatar_url = get_avatar_url( $student->email, array( 'size' => 64, 'default' => '404' ) );
+		}
+
+		$batch_count = isset( $phone_counts[ $student->phone ] ) ? (int) $phone_counts[ $student->phone ]['count'] : 1;
+		$city_label  = ! empty( $student->city_normalized ) ? $student->city_normalized : ( ! empty( $student->city_original ) ? $student->city_original : '' );
+
 		echo '<tr data-cmp-row-id="student-' . esc_attr( (int) $student->id ) . '">';
 		echo '<td><input type="checkbox" class="cmp-student-select" value="' . esc_attr( (int) $student->id ) . '"></td>';
-		echo '<td>' . esc_html( $student->name ) . '<br><span class="cmp-muted">' . esc_html( $student->unique_id ) . '</span></td>';
-		echo '<td>' . esc_html( $student->phone ) . '</td>';
-		echo '<td>' . esc_html( $student->email ) . '</td>';
-		echo '<td>' . esc_html( $student->class_name ) . '</td>';
-		echo '<td>' . esc_html( $batch_label ) . '</td>';
-		echo '<td>' . esc_html( cmp_format_money( $student->total_fee ) ) . '</td>';
-		echo '<td>' . esc_html( cmp_format_money( $student->paid_fee ) ) . '</td>';
-		echo '<td>' . esc_html( cmp_format_money( $remaining ) ) . '</td>';
-		echo '<td><span class="cmp-status cmp-status-' . esc_attr( $payment_status['key'] ) . '">' . esc_html( $payment_status['label'] ) . '</span></td>';
-		echo '<td><span class="cmp-status cmp-status-' . esc_attr( $student->status ) . '" data-cmp-status-badge="student-status-' . esc_attr( (int) $student->id ) . '">' . esc_html( ucfirst( $student->status ) ) . '</span></td>';
-		echo '<td class="cmp-actions">';
-		echo '<a href="' . esc_url( $view_url ) . '">' . esc_html__( 'View', 'class-manager-pro' ) . '</a> ';
-		echo '<a href="' . esc_url( $edit_url ) . '">' . esc_html__( 'Edit', 'class-manager-pro' ) . '</a> ';
-		echo '<a href="' . esc_url( $payment_url ) . '">' . esc_html__( 'Payment', 'class-manager-pro' ) . '</a> ';
-		if ( $profile_url ) {
-			echo '<a href="' . esc_url( $profile_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'View Profile', 'class-manager-pro' ) . '</a> ';
+
+		// Column 1: Student Identity (Avatar/Initial + Name + Unique ID)
+		echo '<td>';
+		echo '<div class="cmp-student-row-info">';
+		echo '<div class="cmp-student-row-avatar" aria-hidden="true">';
+		if ( $avatar_url ) {
+			echo '<img src="' . esc_url( $avatar_url ) . '" alt="" class="cmp-student-avatar-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';">';
+			echo '<span class="cmp-student-avatar-letter" style="display:none;">' . esc_html( $first_letter ) . '</span>';
+		} else {
+			echo '<span class="cmp-student-avatar-letter">' . esc_html( $first_letter ) . '</span>';
 		}
-		if ( $email_url ) {
-			echo '<a class="cmp-send-email-link" href="' . esc_url( $email_url ) . '" data-cmp-send-email="1" data-cmp-student-id="' . esc_attr( (int) $student->id ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'Send Email', 'class-manager-pro' ) . '</a> ';
-		}
-		if ( $whatsapp_url ) {
-			echo '<a href="' . esc_url( $whatsapp_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'WhatsApp', 'class-manager-pro' ) . '</a> ';
-			if ( function_exists( 'cmp_get_whatsapp_settings' ) && cmp_get_whatsapp_settings()['enabled'] ) {
-				echo '<a class="cmp-send-wa-api-link" href="#" data-cmp-send-wa="1" data-cmp-student-id="' . esc_attr( (int) $student->id ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'WA API', 'class-manager-pro' ) . '</a> ';
-			}
-		}
-		echo '<a class="cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $student->id ) . '" data-type="student" data-cmp-ajax-delete="1" data-cmp-entity-type="student" data-cmp-entity-id="' . esc_attr( (int) $student->id ) . '" data-cmp-confirm="' . esc_attr__( 'Delete this student?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'Delete', 'class-manager-pro' ) . '</a>';
+		echo '</div>';
+		echo '<div class="cmp-student-row-meta">';
+		echo '<a href="' . esc_url( $view_url ) . '" class="cmp-student-row-name"><strong>' . esc_html( $student->name ) . '</strong></a>';
+		echo '<br><span class="cmp-pill cmp-pill-id">' . esc_html( $student->unique_id ) . '</span>';
+		echo '</div>';
+		echo '</div>';
 		echo '</td>';
+
+		// Column 2: Contact & City
+		echo '<td>';
+		echo '<strong>' . esc_html( $student->phone ) . '</strong>';
+		if ( $student->email ) {
+			echo '<br><span class="cmp-muted" style="font-size:12px;">' . esc_html( $student->email ) . '</span>';
+		}
+		if ( $city_label ) {
+			echo '<br><span class="cmp-pill" style="background:#f1f5f9; color:#475569; margin-top:2px;">📍 ' . esc_html( $city_label ) . '</span>';
+		}
+		echo '</td>';
+
+		// Column 3: Enrolled Classes & Batches
+		echo '<td>';
+		echo '<strong>' . esc_html( $student->class_name ? $student->class_name : __( 'Unassigned', 'class-manager-pro' ) ) . '</strong>';
+		echo '<br><span class="cmp-muted">' . esc_html( $batch_label ? $batch_label : __( 'No batch', 'class-manager-pro' ) ) . '</span>';
+		if ( $batch_count > 1 ) {
+			echo '<br><a href="' . esc_url( $view_url ) . '#classes" class="cmp-pill cmp-pill-multi-batch" title="' . esc_attr( sprintf( __( 'Enrolled in %d batches across the institute', 'class-manager-pro' ), $batch_count ) ) . '">📚 ' . esc_html( sprintf( __( '%d Batches Joined', 'class-manager-pro' ), $batch_count ) ) . '</a>';
+		}
+		echo '</td>';
+
+		// Column 4: Fee & Balance
+		echo '<td>';
+		echo '<strong class="cmp-text-success" style="font-size: 13.5px;">' . esc_html( cmp_format_money( $student->paid_fee ) ) . '</strong>';
+		if ( $remaining > 0 ) {
+			echo '<br><span class="cmp-text-warning" style="font-size: 12px; font-weight:600;">' . esc_html( sprintf( __( 'Due: %s', 'class-manager-pro' ), cmp_format_money( $remaining ) ) ) . '</span>';
+		} else {
+			echo '<br><span class="cmp-muted" style="font-size: 12px;">' . esc_html__( 'Cleared', 'class-manager-pro' ) . '</span>';
+		}
+		echo '<br><span class="cmp-status cmp-status-' . esc_attr( $payment_status['key'] ) . '" style="margin-top:2px; display:inline-block;">' . esc_html( $payment_status['label'] ) . '</span>';
+		echo '</td>';
+
+		// Column 5: Status
+		echo '<td>';
+		echo '<span class="cmp-status cmp-status-' . esc_attr( $student->status ) . '" data-cmp-status-badge="student-status-' . esc_attr( (int) $student->id ) . '">' . esc_html( ucfirst( $student->status ) ) . '</span>';
+		echo '</td>';
+
+		// Column 6: Admission Date & Source
+		echo '<td>';
+		echo '<span>' . esc_html( ! empty( $student->created_at ) ? date_i18n( get_option( 'date_format' ), strtotime( $student->created_at ) ) : '—' ) . '</span>';
+		if ( ! empty( $student->lead_source ) ) {
+			echo '<br><span class="cmp-muted" style="font-size:12px;">' . esc_html( ucfirst( $student->lead_source ) ) . '</span>';
+		}
+		echo '</td>';
+
+		// Column 7: Actions (Essential buttons only!)
+		echo '<td class="cmp-actions cmp-row-actions-clean">';
+		echo '<a class="button button-small button-primary" href="' . esc_url( $view_url ) . '">' . esc_html__( 'View Profile', 'class-manager-pro' ) . '</a> ';
+		echo '<a class="button button-small" href="' . esc_url( $view_url ) . '&profile_tab=overview#cmp-drawer-collect-payment">+ ' . esc_html__( 'Payment', 'class-manager-pro' ) . '</a> ';
+		if ( $whatsapp_url ) {
+			echo '<a class="button button-small cmp-comm-wa" href="' . esc_url( $whatsapp_url ) . '" target="_blank" rel="noopener">WhatsApp</a> ';
+		}
+		echo '<a class="button button-small cmp-delete-link" href="' . esc_url( $delete_url ) . '" data-id="' . esc_attr( (int) $student->id ) . '" data-type="student" data-cmp-ajax-delete="1" data-cmp-entity-type="student" data-cmp-entity-id="' . esc_attr( (int) $student->id ) . '" data-cmp-confirm="' . esc_attr__( 'Delete this student?', 'class-manager-pro' ) . '" data-cmp-feedback="#cmp-student-bulk-feedback">' . esc_html__( 'Delete', 'class-manager-pro' ) . '</a>';
+		echo '</td>';
+
 		echo '</tr>';
 	}
 

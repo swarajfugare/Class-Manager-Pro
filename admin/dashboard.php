@@ -99,12 +99,12 @@ function cmp_render_dashboard_page() {
 					<p class="cmp-muted"><?php esc_html_e( 'The fastest path to today\'s admin work: collect pending fees, follow up leads, check teachers, and review batches.', 'class-manager-pro' ); ?></p>
 				</div>
 				<div class="cmp-toolbar">
-					<a class="button button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ); ?>"><?php esc_html_e( 'Collect Pending Fees', 'class-manager-pro' ); ?></a>
+					<a class="button button-primary" href="#cmp-pending-students-panel"><?php esc_html_e( 'Collect Pending Fees ↓', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments' ) . '#cmp-add-payment' ); ?>"><?php esc_html_e( 'Add Payment', 'class-manager-pro' ); ?></a>
 				</div>
 			</div>
 			<div class="cmp-action-grid">
-				<a class="cmp-action-card cmp-action-card-urgent" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ); ?>">
+				<a class="cmp-action-card cmp-action-card-urgent" href="#cmp-pending-students-panel">
 					<span><?php esc_html_e( 'Pending fees', 'class-manager-pro' ); ?></span>
 					<strong><?php echo esc_html( cmp_format_money( $metrics['pending_fees'] ) ); ?></strong>
 					<small><?php echo esc_html( sprintf( __( '%d students need collection', 'class-manager-pro' ), (int) $metrics['pending_students'] ) ); ?></small>
@@ -238,13 +238,13 @@ function cmp_render_dashboard_page() {
 		</div>
 
 		<div class="cmp-grid cmp-grid-2">
-			<section class="cmp-panel">
+			<section class="cmp-panel" id="cmp-pending-students-panel">
 				<div class="cmp-panel-header">
 					<div>
 						<h2><?php esc_html_e( 'Pending Fee Students', 'class-manager-pro' ); ?></h2>
-						<p class="cmp-muted"><?php esc_html_e( 'Review the students with the largest unpaid balances first.', 'class-manager-pro' ); ?></p>
+						<p class="cmp-muted"><?php esc_html_e( 'Review the students with the largest unpaid balances and click Payment to collect instantly.', 'class-manager-pro' ); ?></p>
 					</div>
-					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'status' => 'active' ) ) ); ?>"><?php esc_html_e( 'Open Students', 'class-manager-pro' ); ?></a>
+					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'tab' => 'pending', 'fee_status' => 'pending' ) ) ); ?>"><?php esc_html_e( 'All Pending', 'class-manager-pro' ); ?></a>
 				</div>
 				<div class="cmp-table-scroll cmp-table-scroll-y">
 					<table class="widefat striped">
@@ -254,25 +254,31 @@ function cmp_render_dashboard_page() {
 								<th><?php esc_html_e( 'Class / Batch', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Pending', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
+								<th><?php esc_html_e( 'Action', 'class-manager-pro' ); ?></th>
 							</tr>
 						</thead>
 						<tbody>
 							<?php if ( empty( $pending_students ) ) : ?>
-								<tr><td colspan="4"><?php esc_html_e( 'No pending students right now.', 'class-manager-pro' ); ?></td></tr>
+								<tr><td colspan="5"><?php esc_html_e( 'No pending students right now.', 'class-manager-pro' ); ?></td></tr>
 							<?php else : ?>
 								<?php foreach ( $pending_students as $student ) : ?>
 									<?php $payment_status = cmp_get_student_payment_status( $student ); ?>
 									<tr>
 										<td>
-											<a href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'action' => 'view', 'id' => (int) $student->id ) ) ); ?>"><?php echo esc_html( $student->name ); ?></a>
+											<a href="<?php echo esc_url( cmp_admin_url( 'cmp-students', array( 'action' => 'view', 'id' => (int) $student->id ) ) ); ?>"><strong><?php echo esc_html( $student->name ); ?></strong></a>
 											<br><span class="cmp-muted"><?php echo esc_html( $student->phone ); ?></span>
 										</td>
 										<td>
 											<?php echo esc_html( $student->class_name ? $student->class_name : __( 'Unassigned', 'class-manager-pro' ) ); ?>
 											<br><span class="cmp-muted"><?php echo esc_html( cmp_get_student_batch_label( $student ) ); ?></span>
 										</td>
-										<td><?php echo esc_html( cmp_format_money( max( 0, (float) $student->pending_fee ) ) ); ?></td>
+										<td><strong style="color:#d97706;"><?php echo esc_html( cmp_format_money( max( 0, (float) $student->pending_fee ) ) ); ?></strong></td>
 										<td><span class="cmp-status cmp-status-<?php echo esc_attr( $payment_status['key'] ); ?>"><?php echo esc_html( $payment_status['label'] ); ?></span></td>
+										<td>
+											<a class="button button-small button-primary" href="<?php echo esc_url( cmp_admin_url( 'cmp-payments', array( 'student_id' => (int) $student->id, 'amount' => max( 0, (float) $student->pending_fee ) ) ) ); ?>#cmp-add-payment">
+												💳 <?php esc_html_e( 'Payment', 'class-manager-pro' ); ?>
+											</a>
+										</td>
 									</tr>
 								<?php endforeach; ?>
 							<?php endif; ?>

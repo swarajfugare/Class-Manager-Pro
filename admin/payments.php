@@ -21,6 +21,21 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 	$students   = $is_edit ? array() : cmp_get_students();
 	$now        = current_time( 'timestamp' );
 	$student_id = $is_edit ? (int) $payment->student_id : absint( $selected_student_id );
+
+	$default_amount = '';
+	if ( $is_edit ) {
+		$default_amount = (float) $payment->amount;
+	} elseif ( ! empty( $_GET['amount'] ) ) {
+		$default_amount = floatval( $_GET['amount'] );
+	} elseif ( $student_id ) {
+		$target_student = cmp_get_student( $student_id );
+		if ( $target_student ) {
+			$pending = max( 0, (float) $target_student->total_fee - (float) $target_student->paid_fee );
+			if ( $pending > 0 ) {
+				$default_amount = $pending;
+			}
+		}
+	}
 	?>
 	<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="cmp-form" id="<?php echo esc_attr( $is_edit ? 'cmp-edit-payment' : 'cmp-add-payment' ); ?>" data-cmp-ajax-form="cmp_save_payment_ajax">
 		<input type="hidden" name="action" value="cmp_save_payment">
@@ -51,31 +66,33 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 				</tr>
 			<?php else : ?>
 				<tr>
-					<th scope="row"><label for="cmp-payment-student"><?php esc_html_e( 'Student', 'class-manager-pro' ); ?></label></th>
+					<th scope="row"><label for="cmp-payment-student"><?php esc_html_e( 'Student', 'class-manager-pro' ); ?> <span class="cmp-required" style="color:#dc2626; font-weight:bold;">*</span></label></th>
 					<td>
 						<select id="cmp-payment-student" name="student_id" required data-cmp-searchable="1">
 							<option value=""><?php esc_html_e( 'Select student', 'class-manager-pro' ); ?></option>
 							<?php foreach ( $students as $student ) : ?>
 								<?php
+								$pending_fee = max( 0, (float) $student->total_fee - (float) $student->paid_fee );
 								$student_label = sprintf(
-									'%1$s - %2$s (%3$s) / %4$s',
+									'%1$s - %2$s (%3$s) / %4$s [Due: %5$s]',
 									$student->unique_id,
 									$student->name,
 									$student->class_name ? $student->class_name : __( 'Unassigned', 'class-manager-pro' ),
-									cmp_get_student_batch_label( $student )
+									cmp_get_student_batch_label( $student ),
+									cmp_format_money( $pending_fee )
 								);
 								?>
-								<option value="<?php echo esc_attr( (int) $student->id ); ?>" <?php selected( $student_id, (int) $student->id ); ?>>
+								<option value="<?php echo esc_attr( (int) $student->id ); ?>" data-pending="<?php echo esc_attr( $pending_fee ); ?>" <?php selected( $student_id, (int) $student->id ); ?>>
 									<?php echo esc_html( $student_label ); ?>
 								</option>
 							<?php endforeach; ?>
 						</select>
-						<p class="description"><?php esc_html_e( 'Payments are saved against the selected student\'s current class and batch. If the amount is higher than the remaining fee, it will be adjusted automatically.', 'class-manager-pro' ); ?></p>
+						<p class="description"><?php esc_html_e( 'Payments are saved against the selected student\'s current class and batch. Pending balance will be auto-entered.', 'class-manager-pro' ); ?></p>
 					</td>
 				</tr>
 			<?php endif; ?>
 			<tr>
-				<th scope="row"><label for="cmp-payment-amount"><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?></label></th>
+				<th scope="row"><label for="cmp-payment-amount"><?php esc_html_e( 'Amount', 'class-manager-pro' ); ?> <span class="cmp-required" style="color:#dc2626; font-weight:bold;">*</span></label></th>
 				<td>
 					<input
 						type="number"
@@ -84,9 +101,10 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 						min="0.01"
 						step="0.01"
 						required
-						value="<?php echo esc_attr( $is_edit ? (float) $payment->amount : '' ); ?>"
+						value="<?php echo esc_attr( '' !== $default_amount ? $default_amount : '' ); ?>"
+						placeholder="0.00"
 					>
-					<p class="description"><?php esc_html_e( 'Overpayments are capped to the remaining allowed fee, and exact duplicate payment entries are blocked.', 'class-manager-pro' ); ?></p>
+					<p class="description"><?php esc_html_e( 'Auto-populated with student\'s pending amount. Overpayments are capped to the remaining allowed fee.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -106,10 +124,10 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 				</td>
 			</tr>
 			<tr>
-				<th scope="row"><label for="cmp-payment-transaction"><?php esc_html_e( 'Transaction ID', 'class-manager-pro' ); ?></label></th>
+				<th scope="row"><label for="cmp-payment-transaction"><?php esc_html_e( 'Transaction ID / UTR', 'class-manager-pro' ); ?> <span class="cmp-required" style="color:#dc2626; font-weight:bold;">*</span></label></th>
 				<td>
-					<input type="text" id="cmp-payment-transaction" name="transaction_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $payment->transaction_id : '' ); ?>">
-					<p class="description"><?php esc_html_e( 'Transaction IDs must stay unique across saved and trashed payments.', 'class-manager-pro' ); ?></p>
+					<input type="text" id="cmp-payment-transaction" name="transaction_id" class="regular-text" value="<?php echo esc_attr( $is_edit ? $payment->transaction_id : '' ); ?>" required placeholder="<?php esc_attr_e( 'Enter Transaction ID or UTR number (Mandatory)', 'class-manager-pro' ); ?>">
+					<p class="description"><?php esc_html_e( 'Compulsory: Every payment must have a unique Transaction ID or UTR.', 'class-manager-pro' ); ?></p>
 				</td>
 			</tr>
 			<tr>
@@ -132,6 +150,23 @@ function cmp_render_payment_form( $selected_student_id = 0, $payment = null ) {
 			<?php endif; ?>
 		</div>
 	</form>
+	<script>
+	(function() {
+		var sel = document.getElementById('cmp-payment-student');
+		var amt = document.getElementById('cmp-payment-amount');
+		if (sel && amt) {
+			sel.addEventListener('change', function() {
+				var opt = sel.options[sel.selectedIndex];
+				if (opt && opt.getAttribute('data-pending')) {
+					var p = parseFloat(opt.getAttribute('data-pending'));
+					if (p > 0) {
+						amt.value = p.toFixed(2);
+					}
+				}
+			});
+		}
+	})();
+	</script>
 	<?php
 }
 

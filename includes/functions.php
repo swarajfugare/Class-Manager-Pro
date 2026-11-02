@@ -6276,6 +6276,10 @@ function cmp_prepare_payment_payload( $data, $existing_payment = null ) {
 		return new WP_Error( 'cmp_invalid_payment', __( 'Valid student and payment amount are required.', 'class-manager-pro' ) );
 	}
 
+	if ( '' === trim( $transaction_id ) ) {
+		return new WP_Error( 'cmp_missing_transaction_id', __( 'Transaction ID / UTR number is compulsory for every payment.', 'class-manager-pro' ) );
+	}
+
 	if ( '' === $payment_date ) {
 		return new WP_Error( 'cmp_invalid_payment_date', __( 'Enter a valid payment date.', 'class-manager-pro' ) );
 	}
@@ -11149,6 +11153,190 @@ function cmp_razorpay_entity_meta( $entity ) {
 }
 
 /**
+ * Accurately extracts the customer's Full Name from Razorpay payment form and notes.
+ * Prioritizes actual form fields (Full Name, Student Name, नाव, पूर्ण नाव, etc.) over usernames or emails.
+ *
+ * @param array $payment Razorpay payment entity.
+ * @param array $payment_link Optional Razorpay payment link/page entity.
+ * @return string
+ */
+function cmp_extract_razorpay_full_name( $payment = array(), $payment_link = array() ) {
+	$candidates = array();
+
+	$notes = array();
+	if ( is_array( $payment ) ) {
+		if ( ! empty( $payment['notes'] ) && is_array( $payment['notes'] ) ) {
+			$notes = array_merge( $notes, $payment['notes'] );
+		}
+		if ( ! empty( $payment['metadata'] ) && is_array( $payment['metadata'] ) ) {
+			$notes = array_merge( $notes, $payment['metadata'] );
+		}
+	}
+	if ( is_array( $payment_link ) ) {
+		if ( ! empty( $payment_link['notes'] ) && is_array( $payment_link['notes'] ) ) {
+			$notes = array_merge( $notes, $payment_link['notes'] );
+		}
+		if ( ! empty( $payment_link['customer']['name'] ) && is_scalar( $payment_link['customer']['name'] ) ) {
+			$candidates[] = (string) $payment_link['customer']['name'];
+		}
+	}
+
+	// 1. Direct payment customer name attributes
+	if ( ! empty( $payment['customer']['name'] ) && is_scalar( $payment['customer']['name'] ) ) {
+		$candidates[] = (string) $payment['customer']['name'];
+	}
+	if ( ! empty( $payment['customer_name'] ) && is_scalar( $payment['customer_name'] ) ) {
+		$candidates[] = (string) $payment['customer_name'];
+	}
+	if ( ! empty( $payment['name'] ) && is_scalar( $payment['name'] ) ) {
+		$candidates[] = (string) $payment['name'];
+	}
+
+	// 2. High-priority standard Razorpay payment page field names
+	$priority_keys = array(
+		'full_name', 'Full Name', 'fullname', 'FullName', 'full name', 'Full name',
+		'student_name', 'Student Name', 'student_full_name', 'Student Full Name', 'student name', 'Student name',
+		'name', 'Name', 'NAME',
+		'पूर्ण नाव', 'नाव', 'विद्यार्थ्याचे नाव', 'विद्यार्थिनीचे नाव', 'नाव / Name', 'नाव/Name', 'Name / नाव', 'Name/नाव',
+		'customer_name', 'Customer Name', 'candidate_name', 'Candidate Name', 'your_name', 'Your Name',
+	);
+
+	foreach ( $priority_keys as $k ) {
+		if ( isset( $notes[ $k ] ) && is_scalar( $notes[ $k ] ) ) {
+			$val = trim( (string) $notes[ $k ] );
+			if ( '' !== $val ) {
+				$candidates[] = $val;
+			}
+		}
+	}
+
+	// 3. Scan all note keys dynamically for any field containing 'name' or 'नाव' or 'नाम'
+	$exclude_keys = array( 'batch_name', 'class_name', 'form_name', 'page_name', 'course_name', 'page_title', 'title', 'source' );
+	foreach ( $notes as $n_key => $n_val ) {
+		if ( ! is_scalar( $n_val ) ) {
+			continue;
+		}
+		$clean_k = strtolower( trim( (string) $n_key ) );
+		if ( in_array( $clean_k, $exclude_keys, true ) ) {
+			continue;
+		}
+		if ( false !== stripos( $clean_k, 'name' ) || false !== stripos( $clean_k, 'नाव' ) || false !== stripos( $clean_k, 'नाम' ) ) {
+			$val = trim( (string) $n_val );
+			if ( '' !== $val ) {
+				$candidates[] = $val;
+			}
+		}
+	}
+
+	// 4. Custom fields in payment links / pages
+	if ( ! empty( $payment_link['custom_fields'] ) && is_array( $payment_link['custom_fields'] ) ) {
+		foreach ( $payment_link['custom_fields'] as $cf ) {
+			if ( ! empty( $cf['value'] ) && is_scalar( $cf['value'] ) ) {
+				$cf_name = isset( $cf['name'] ) ? strtolower( (string) $cf['name'] ) : '';
+				if ( false !== stripos( $cf_name, 'name' ) || false !== stripos( $cf_name, 'नाव' ) ) {
+					$candidates[] = trim( (string) $cf['value'] );
+				}
+			}
+		}
+	}
+
+	// 5. Evaluate candidates to find the first genuine full name (ignoring pure emails, pure numbers, or IDs)
+	foreach ( $candidates as $cand ) {
+		$cand = trim( sanitize_text_field( $cand ) );
+		if ( '' === $cand || mb_strlen( $cand ) < 2 ) {
+			continue;
+		}
+		if ( false !== strpos( $cand, '@' ) ) {
+			continue;
+		}
+		if ( preg_match( '/^[0-9+\s\-()]+$/', $cand ) ) {
+			continue;
+		}
+		if ( preg_match( '/^(pay_|pl_|rfnd_)[A-Za-z0-9]+$/', $cand ) ) {
+			continue;
+		}
+
+		return $cand;
+	}
+
+	return '';
+}
+
+/**
+ * Replaces any existing student username records with their genuine Full Name
+ * from linked WordPress users (first_name + last_name) or payment records.
+ */
+function cmp_backfill_replace_usernames_with_full_names() {
+	global $wpdb;
+
+	$students = $wpdb->get_results(
+		"SELECT id, name, email, phone, user_id FROM " . cmp_table( 'students' ) . " WHERE name IS NOT NULL AND name <> ''"
+	);
+
+	if ( empty( $students ) ) {
+		return;
+	}
+
+	foreach ( $students as $s ) {
+		$current_name = trim( (string) $s->name );
+		$is_suspicious_username = false;
+
+		// Check if current name looks like a username (e.g. email prefix, contains @, or matches user_login)
+		if ( false !== strpos( $current_name, '@' ) ) {
+			$is_suspicious_username = true;
+		} elseif ( ! empty( $s->email ) && strtolower( $current_name ) === strtolower( strstr( $s->email, '@', true ) ) ) {
+			$is_suspicious_username = true;
+		} elseif ( $s->user_id > 0 ) {
+			$user = get_userdata( $s->user_id );
+			if ( $user && strtolower( $current_name ) === strtolower( $user->user_login ) ) {
+				$is_suspicious_username = true;
+			}
+		}
+
+		// Also check if user has actual first_name / last_name stored in WP
+		if ( $s->user_id > 0 ) {
+			$user = get_userdata( $s->user_id );
+			if ( $user ) {
+				$first = trim( (string) $user->first_name );
+				$last  = trim( (string) $user->last_name );
+				$full  = trim( $first . ' ' . $last );
+				if ( '' !== $full && $full !== $current_name && ( $is_suspicious_username || ! empty( $first ) ) ) {
+					$wpdb->update(
+						cmp_table( 'students' ),
+						array( 'name' => $full ),
+						array( 'id' => (int) $s->id ),
+						array( '%s' ),
+						array( '%d' )
+					);
+					continue;
+				} elseif ( ! empty( $user->display_name ) && $user->display_name !== $user->user_login && false === strpos( $user->display_name, '@' ) && $is_suspicious_username ) {
+					$wpdb->update(
+						cmp_table( 'students' ),
+						array( 'name' => $user->display_name ),
+						array( 'id' => (int) $s->id ),
+						array( '%s' ),
+						array( '%d' )
+					);
+					continue;
+				}
+			}
+		}
+
+		// If current name is an email, try cleaning it into clean readable format
+		if ( false !== strpos( $current_name, '@' ) && is_email( $current_name ) ) {
+			$clean = ucwords( str_replace( array( '.', '_', '-' ), ' ', strstr( $current_name, '@', true ) ) );
+			$wpdb->update(
+				cmp_table( 'students' ),
+				array( 'name' => $clean ),
+				array( 'id' => (int) $s->id ),
+				array( '%s' ),
+				array( '%d' )
+			);
+		}
+	}
+}
+
+/**
  * Returns whether a Razorpay payment matches a notes/metadata search.
  *
  * @param array  $payment Razorpay payment.
@@ -11747,7 +11935,10 @@ function cmp_resolve_batch_from_razorpay_payment( $payment, $link_map = array() 
  */
 function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 	$notes     = cmp_razorpay_entity_meta( $payment );
-	$name      = cmp_prepare_import_student_name( cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) ) );
+	$name      = cmp_extract_razorpay_full_name( $payment );
+	if ( '' === $name ) {
+		$name = cmp_prepare_import_student_name( cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) ) );
+	}
 	$email     = sanitize_email( cmp_first_scalar_value( array( $notes['email'] ?? '', $notes['student_email'] ?? '', $notes['customer_email'] ?? '', $payment['email'] ?? '', $payment['customer_email'] ?? '' ) ) );
 	$phone     = cmp_clean_import_phone_number( cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) ) );
 	$total_fee = cmp_money_value( isset( $notes['total_fee'] ) ? $notes['total_fee'] : 0 );
@@ -14341,7 +14532,10 @@ function cmp_sync_all_razorpay_payment_pages( $args = array() ) {
 		// 2. Failed payment attempt -> route to Leads (Interested Students)
 		elseif ( cmp_is_failed_razorpay_payment( $payment ) ) {
 			$meta      = cmp_razorpay_entity_meta( $payment );
-			$name      = cmp_first_scalar_value( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+			$name      = cmp_extract_razorpay_full_name( $payment );
+			if ( '' === $name ) {
+				$name  = cmp_first_scalar_value( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+			}
 			$email     = sanitize_email( cmp_first_scalar_value( array( $meta['email'] ?? '', $meta['student_email'] ?? '', $payment['email'] ?? '' ) ) );
 			$phone     = sanitize_text_field( cmp_first_scalar_value( array( $meta['phone'] ?? '', $meta['mobile'] ?? '', $meta['contact'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '' ) ) );
 			$amount    = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );
@@ -14505,7 +14699,10 @@ function cmp_ajax_sync_all_payment_pages() {
  */
 function cmp_payment_student_preview( $payment ) {
 	$notes = cmp_razorpay_entity_meta( $payment );
-	$name  = cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+	$name  = cmp_extract_razorpay_full_name( $payment );
+	if ( '' === $name ) {
+		$name = cmp_first_scalar_value( array( $notes['name'] ?? '', $notes['student_name'] ?? '', $notes['customer_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '' ) );
+	}
 	$email = cmp_first_scalar_value( array( $notes['email'] ?? '', $notes['student_email'] ?? '', $notes['customer_email'] ?? '', $payment['email'] ?? '', $payment['customer_email'] ?? '' ) );
 	$phone = cmp_first_scalar_value( array( $notes['phone'] ?? '', $notes['mobile'] ?? '', $notes['contact'] ?? '', $notes['student_phone'] ?? '', $notes['student_mobile'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment['customer_contact'] ?? '' ) );
 	$amount = cmp_razorpay_minor_to_major( isset( $payment['amount'] ) ? $payment['amount'] : 0 );

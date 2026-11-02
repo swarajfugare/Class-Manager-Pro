@@ -102,7 +102,12 @@ class CMP_Razorpay_Webhook {
 		$meta                  = array_merge( $payment_link_meta, $payment_meta );
 		$batch                 = null;
 
-		$name     = self::first_non_empty( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		$name     = function_exists( 'cmp_extract_razorpay_full_name' )
+			? cmp_extract_razorpay_full_name( $payment, $payment_link )
+			: self::first_non_empty( array( $meta['full_name'] ?? '', $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		if ( '' === $name ) {
+			$name = self::first_non_empty( array( $meta['full_name'] ?? '', $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		}
 		$email    = sanitize_email( self::first_non_empty( array( $meta['email'] ?? '', $meta['student_email'] ?? '', $payment['email'] ?? '', $payment_customer['email'] ?? '', $payment_link['email'] ?? '', $payment_link['customer_email'] ?? '', $payment_link_customer['email'] ?? '' ) ) );
 		$phone    = sanitize_text_field( self::first_non_empty( array( $meta['phone'] ?? '', $meta['mobile'] ?? '', $meta['contact'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment_customer['contact'] ?? '', $payment_link['contact'] ?? '', $payment_link['customer_contact'] ?? '', $payment_link_customer['contact'] ?? '' ) ) );
 		$class_id = isset( $meta['class_id'] ) ? absint( $meta['class_id'] ) : 0;
@@ -448,7 +453,12 @@ class CMP_Razorpay_Webhook {
 		$batch                 = null;
 		$class_id              = isset( $meta['class_id'] ) ? absint( $meta['class_id'] ) : 0;
 		$batch_id              = isset( $meta['batch_id'] ) ? absint( $meta['batch_id'] ) : 0;
-		$name                  = self::first_non_empty( array( $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		$name                  = function_exists( 'cmp_extract_razorpay_full_name' )
+			? cmp_extract_razorpay_full_name( $payment, $payment_link )
+			: self::first_non_empty( array( $meta['full_name'] ?? '', $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		if ( '' === $name ) {
+			$name = self::first_non_empty( array( $meta['full_name'] ?? '', $meta['name'] ?? '', $meta['student_name'] ?? '', $payment['name'] ?? '', $payment['customer_name'] ?? '', $payment_customer['name'] ?? '', $payment_link['customer_name'] ?? '', $payment_link_customer['name'] ?? '' ) );
+		}
 		$email                 = sanitize_email( self::first_non_empty( array( $meta['email'] ?? '', $meta['student_email'] ?? '', $payment['email'] ?? '', $payment_customer['email'] ?? '', $payment_link['email'] ?? '', $payment_link['customer_email'] ?? '', $payment_link_customer['email'] ?? '' ) ) );
 		$phone                 = sanitize_text_field( self::first_non_empty( array( $meta['phone'] ?? '', $meta['mobile'] ?? '', $meta['contact'] ?? '', $payment['contact'] ?? '', $payment['phone'] ?? '', $payment_customer['contact'] ?? '', $payment_link['contact'] ?? '', $payment_link['customer_contact'] ?? '', $payment_link_customer['contact'] ?? '' ) ) );
 		$transaction_id        = sanitize_text_field( self::first_non_empty( array( $payment['id'] ?? '', $payment_link['payment_id'] ?? '', $payment_link['id'] ?? '' ) ) );

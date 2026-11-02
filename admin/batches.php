@@ -520,6 +520,7 @@ function cmp_render_batch_students_tab( $batch ) {
 function cmp_render_batch_expenses_tab( $batch, $metrics ) {
 	$totals            = cmp_get_batch_expense_totals( (int) $batch->id );
 	$expenses          = cmp_get_batch_expenses( (int) $batch->id );
+	$rzp_charges       = cmp_get_batch_razorpay_charges( (int) $batch->id );
 	$category_labels   = cmp_expense_category_labels();
 	$default_date      = current_time( 'Y-m-d' );
 	$expenses_count    = count( $expenses );
@@ -528,11 +529,11 @@ function cmp_render_batch_expenses_tab( $batch, $metrics ) {
 		<div class="cmp-panel-header">
 			<div>
 				<h2><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></h2>
-				<p class="cmp-muted"><?php esc_html_e( 'Track teacher payment, Meta ads spend, ads material cost, and other expenses directly inside this batch.', 'class-manager-pro' ); ?></p>
+				<p class="cmp-muted"><?php esc_html_e( 'Track teacher payment, Meta ads spend, ads material cost, Razorpay gateway charges, and other expenses directly inside this batch.', 'class-manager-pro' ); ?></p>
 			</div>
 		</div>
 
-		<div class="cmp-cards cmp-cards-3">
+		<div class="cmp-cards cmp-cards-4" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin-bottom:16px;">
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Teacher Payment', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $totals['teacher_payment'] ) ); ?></strong>
@@ -545,17 +546,52 @@ function cmp_render_batch_expenses_tab( $batch, $metrics ) {
 				<span><?php esc_html_e( 'Ads Material Cost', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $totals['ad_material'] ) ); ?></strong>
 			</div>
+			<div class="cmp-card" style="border-left: 3px solid #3b82f6;">
+				<span title="<?php esc_attr_e( 'Automatically calculated from Razorpay collections', 'class-manager-pro' ); ?>">⚡ <?php esc_html_e( 'Razorpay Fee', 'class-manager-pro' ); ?></span>
+				<strong style="color:#2563eb;"><?php echo esc_html( cmp_format_money( $totals['razorpay_fee'] ) ); ?></strong>
+			</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Other Expenses', 'class-manager-pro' ); ?></span>
 				<strong><?php echo esc_html( cmp_format_money( $totals['other'] ) ); ?></strong>
 			</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Total Expense', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $totals['total_expense'] ) ); ?></strong>
+				<strong style="color:#dc2626;"><?php echo esc_html( cmp_format_money( $totals['total_expense'] ) ); ?></strong>
 			</div>
 			<div class="cmp-card">
 				<span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span>
-				<strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
+				<strong style="color:<?php echo (float) $metrics['net_income'] >= 0 ? '#008a20' : '#d63638'; ?>;"><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong>
+			</div>
+		</div>
+
+		<div class="cmp-panel" style="margin: 0 0 16px 0; border-left: 4px solid #3b82f6; background: #eff6ff; padding: 16px 20px; border-radius: 8px;">
+			<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+				<div>
+					<h3 style="margin:0 0 6px 0; color:#1e40af; display:flex; align-items:center; gap:8px; font-size:15px;">
+						💳 <?php esc_html_e( 'Live Razorpay Gateway Charges for this Batch', 'class-manager-pro' ); ?>
+						<span class="cmp-badge" style="background:#dbeafe; color:#1e40af; font-size:11px; padding:2px 8px; border-radius:12px;">⚡ Auto-Updated</span>
+					</h3>
+					<p style="margin:0; color:#1e3a8a; font-size:13px; line-height: 1.5;">
+						<?php
+						printf(
+							/* translators: 1: transaction count, 2: gross amount, 3: fee percentage, 4: deducted fee amount */
+							esc_html__( '%1$d Razorpay admission payment(s) totaling %2$s. At the configured %3$s%% gateway fee rate, exact gateway deduction is %4$s.', 'class-manager-pro' ),
+							(int) $rzp_charges['count'],
+							'<strong>' . esc_html( cmp_format_money( $rzp_charges['gross_amount'] ) ) . '</strong>',
+							'<strong>' . esc_html( number_format( (float) $rzp_charges['fee_percent'], 2 ) ) . '</strong>',
+							'<strong style="color:#b91c1c;">' . esc_html( cmp_format_money( $rzp_charges['charge_amount'] ) ) . '</strong>'
+						);
+						?>
+						<br>
+						<span style="color:#2563eb; font-size:12px;">
+							<?php esc_html_e( 'ℹ️ As new student admissions or payments increase in this batch, this charge RS amount updates automatically in real time.', 'class-manager-pro' ); ?>
+						</span>
+					</p>
+				</div>
+				<div style="text-align:right;">
+					<span style="font-size:12px; color:#475569; display:block;"><?php esc_html_e( 'Net Settlement Received:', 'class-manager-pro' ); ?></span>
+					<strong style="font-size:18px; color:#059669;"><?php echo esc_html( cmp_format_money( $rzp_charges['net_amount'] ) ); ?></strong>
+				</div>
 			</div>
 		</div>
 
@@ -616,7 +652,9 @@ function cmp_render_batch_expenses_tab( $batch, $metrics ) {
 					<p><span><?php esc_html_e( 'Pending Fees', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['pending_fee'] ) ); ?></strong></p>
 					<p><span><?php esc_html_e( 'Teacher Payment', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['teacher_payment'] ) ); ?></strong></p>
 					<p><span><?php esc_html_e( 'Ads Spend', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['ads_spend'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Razorpay Gateway Fee (Auto)', 'class-manager-pro' ); ?></span><strong style="color:#2563eb;"><?php echo esc_html( cmp_format_money( $totals['razorpay_fee'] ) ); ?></strong></p>
 					<p><span><?php esc_html_e( 'Other Expenses', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $totals['other'] ) ); ?></strong></p>
+					<p><span><?php esc_html_e( 'Total Expense', 'class-manager-pro' ); ?></span><strong style="color:#dc2626;"><?php echo esc_html( cmp_format_money( $totals['total_expense'] ) ); ?></strong></p>
 					<p><span><?php esc_html_e( 'Net Income', 'class-manager-pro' ); ?></span><strong><?php echo esc_html( cmp_format_money( $metrics['net_income'] ) ); ?></strong></p>
 				</div>
 			</section>
@@ -1255,7 +1293,7 @@ function cmp_render_batch_detail_panel( $batch ) {
 	$course_url   = ! empty( $batch->course_id ) ? cmp_get_tutor_course_url( (int) $batch->course_id ) : '';
 	$current_tab  = sanitize_key( cmp_field( $_GET, 'tab', 'students' ) );
 
-	if ( ! in_array( $current_tab, array( 'students', 'attendance', 'expenses', 'announcements', 'admissions', 'import' ), true ) ) {
+	if ( ! in_array( $current_tab, array( 'students', 'attendance', 'expenses', 'announcements', 'admissions', 'certificates', 'import' ), true ) ) {
 		$current_tab = 'students';
 	}
 	?>
@@ -1559,30 +1597,9 @@ function cmp_render_batches_page() {
 		?>
 
 		<section class="cmp-panel">
-			<div class="cmp-panel-header">
-				<div>
-					<h2><?php esc_html_e( 'Batch List', 'class-manager-pro' ); ?></h2>
-					<p class="cmp-muted"><?php esc_html_e( 'Open one batch at a time for students, attendance, temporary links, and Tutor LMS connections.', 'class-manager-pro' ); ?></p>
-				</div>
-				<div class="cmp-toolbar">
-					<a class="button button-primary" href="<?php echo esc_url( $add_url ); ?>"><?php esc_html_e( '+ Add New Batch', 'class-manager-pro' ); ?></a>
-				</div>
-			</div>
-
-			<div class="cmp-filter-chips-bar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:14px 0 16px 0;padding-bottom:12px;border-bottom:1px solid #e2e8f0;">
-				<div class="cmp-filter-chips" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', $class_filter ? array( 'class_id' => $class_filter ) : array() ) ); ?>" class="button <?php echo empty( $status_filter ) ? 'button-primary' : ''; ?>" style="border-radius:20px;font-size:12px;">
-						<?php esc_html_e( 'All Batches', 'class-manager-pro' ); ?> (<?php echo (int) $count_all; ?>)
-					</a>
-					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array_merge( $class_filter ? array( 'class_id' => $class_filter ) : array(), array( 'status' => 'active' ) ) ) ); ?>" class="button <?php echo 'active' === $status_filter ? 'button-primary' : ''; ?>" style="border-radius:20px;font-size:12px;">
-						🟢 <?php esc_html_e( 'Active', 'class-manager-pro' ); ?> (<?php echo (int) $count_active; ?>)
-					</a>
-					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array_merge( $class_filter ? array( 'class_id' => $class_filter ) : array(), array( 'status' => 'completed' ) ) ) ); ?>" class="button <?php echo 'completed' === $status_filter ? 'button-primary' : ''; ?>" style="border-radius:20px;font-size:12px;">
-						✓ <?php esc_html_e( 'Completed', 'class-manager-pro' ); ?> (<?php echo (int) $count_completed; ?>)
-					</a>
-					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array_merge( $class_filter ? array( 'class_id' => $class_filter ) : array(), array( 'status' => 'upcoming' ) ) ) ); ?>" class="button <?php echo 'upcoming' === $status_filter ? 'button-primary' : ''; ?>" style="border-radius:20px;font-size:12px;">
-						⏳ <?php esc_html_e( 'Upcoming', 'class-manager-pro' ); ?> (<?php echo (int) $count_upcoming; ?>)
-					</a>
+			<div class="cmp-panel-header" style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+				<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+					<h2 style="margin:0;"><?php esc_html_e( 'Batch List', 'class-manager-pro' ); ?></h2>
 					<?php if ( $class_filter ) : ?>
 						<span class="cmp-badge" style="background:#e0e7ff;color:#3730a3;font-size:12px;padding:4px 10px;border-radius:20px;">
 							<?php
@@ -1593,9 +1610,9 @@ function cmp_render_batches_page() {
 						</span>
 					<?php endif; ?>
 				</div>
-
-				<div class="cmp-batch-quick-search" style="display:flex;align-items:center;gap:8px;">
-					<input type="search" id="cmp-quick-batch-filter-input" placeholder="<?php esc_attr_e( 'Quick search batches...', 'class-manager-pro' ); ?>" style="min-width:220px;padding:4px 10px;border-radius:6px;font-size:13px;" onkeyup="var val = this.value.toLowerCase(); document.querySelectorAll('#cmp-batch-table-body tr').forEach(function(r){ r.style.display = r.innerText.toLowerCase().indexOf(val) > -1 ? '' : 'none'; });">
+				<div class="cmp-toolbar" style="display:flex;align-items:center;gap:10px;margin:0;">
+					<input type="search" id="cmp-quick-batch-filter-input" placeholder="<?php esc_attr_e( 'Quick search batches...', 'class-manager-pro' ); ?>" style="min-width:220px;padding:5px 12px;border-radius:6px;font-size:13px;height:32px;" onkeyup="var val = this.value.toLowerCase(); document.querySelectorAll('#cmp-batch-table-body tr').forEach(function(r){ r.style.display = r.innerText.toLowerCase().indexOf(val) > -1 ? '' : 'none'; });">
+					<a class="button button-primary" href="<?php echo esc_url( $add_url ); ?>"><?php esc_html_e( '+ Add New Batch', 'class-manager-pro' ); ?></a>
 				</div>
 			</div>
 

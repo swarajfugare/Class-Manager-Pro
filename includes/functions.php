@@ -7011,6 +7011,77 @@ function cmp_get_batch_expenses( $batch_id ) {
 }
 
 /**
+ * Calculates live Razorpay gateway fee deductions for a batch.
+ *
+ * @param int $batch_id Batch ID.
+ * @return array
+ */
+function cmp_get_batch_razorpay_charges( $batch_id ) {
+	global $wpdb;
+	$batch_id = absint( $batch_id );
+	if ( ! $batch_id ) {
+		return array(
+			'count'         => 0,
+			'gross_amount'  => 0,
+			'charge_amount' => 0,
+			'net_amount'    => 0,
+			'fee_percent'   => 2.36,
+		);
+	}
+
+	$default_fee_percent = (float) get_option( 'cmp_razorpay_fee_percent', 2.36 );
+	if ( $default_fee_percent <= 0 ) {
+		$default_fee_percent = 2.36;
+	}
+
+	$payments_table = cmp_table( 'payments' );
+	$students_table = cmp_table( 'students' );
+
+	$rows = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT p.id, p.amount, p.charge_amount, p.payment_mode, p.transaction_id, p.payment_date, s.name as student_name
+			FROM {$payments_table} p
+			LEFT JOIN {$students_table} s ON s.id = p.student_id
+			WHERE p.is_deleted = 0
+			  AND " . cmp_payment_batch_sql( 'p', 's' ) . " = %d
+			  AND (p.payment_mode = 'razorpay' OR p.transaction_id LIKE 'pay_%%' OR p.charge_amount > 0)",
+			$batch_id
+		)
+	);
+
+	$count         = 0;
+	$gross_amount  = 0;
+	$charge_amount = 0;
+
+	foreach ( (array) $rows as $row ) {
+		$amt = (float) $row->amount;
+		if ( $amt <= 0 ) {
+			continue;
+		}
+		$count++;
+		$gross_amount += $amt;
+
+		if ( isset( $row->charge_amount ) && (float) $row->charge_amount > 0 ) {
+			$charge_amount += (float) $row->charge_amount;
+		} else {
+			$charge_amount += round( $amt * ( $default_fee_percent / 100 ), 2 );
+		}
+	}
+
+	$charge_amount = round( $charge_amount, 2 );
+	$gross_amount  = round( $gross_amount, 2 );
+	$net_amount    = round( max( 0, $gross_amount - $charge_amount ), 2 );
+
+	return array(
+		'count'         => $count,
+		'gross_amount'  => $gross_amount,
+		'charge_amount' => $charge_amount,
+		'net_amount'    => $net_amount,
+		'fee_percent'   => $default_fee_percent,
+	);
+}
+
+/**
  * Returns expense totals for a batch.
  *
  * @param int $batch_id Batch ID.
@@ -7032,13 +7103,17 @@ function cmp_get_batch_expense_totals( $batch_id ) {
 	$ad_material     = isset( $rows['ad_material'] ) ? (float) $rows['ad_material']->total : 0;
 	$other           = isset( $rows['other'] ) ? (float) $rows['other']->total : 0;
 
+	$rzp_charges     = cmp_get_batch_razorpay_charges( $batch_id );
+	$razorpay_fee    = (float) $rzp_charges['charge_amount'];
+
 	return array(
 		'teacher_payment' => $teacher_payment,
 		'meta_ads'        => $meta_ads,
 		'ad_material'     => $ad_material,
 		'ads_spend'       => $meta_ads + $ad_material,
 		'other'           => $other,
-		'total_expense'   => $teacher_payment + $meta_ads + $ad_material + $other,
+		'razorpay_fee'    => $razorpay_fee,
+		'total_expense'   => $teacher_payment + $meta_ads + $ad_material + $other + $razorpay_fee,
 	);
 }
 
@@ -8251,7 +8326,7 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 	ob_start();
 
 	if ( empty( $students ) ) {
-		echo '<tr><td colspan="8">' . esc_html__( 'No students found.', 'class-manager-pro' ) . '</td></tr>';
+		echo '<tr><td colspan="7">' . esc_html__( 'No students found.', 'class-manager-pro' ) . '</td></tr>';
 		return ob_get_clean();
 	}
 
@@ -8352,12 +8427,7 @@ function cmp_render_student_rows( $students_or_filters = array() ) {
 		echo '<br><span class="cmp-status cmp-status-' . esc_attr( $payment_status['key'] ) . '" style="margin-top:2px; display:inline-block;">' . esc_html( $payment_status['label'] ) . '</span>';
 		echo '</td>';
 
-		// Column 5: Status
-		echo '<td>';
-		echo '<span class="cmp-status cmp-status-' . esc_attr( $student->status ) . '" data-cmp-status-badge="student-status-' . esc_attr( (int) $student->id ) . '">' . esc_html( ucfirst( $student->status ) ) . '</span>';
-		echo '</td>';
-
-		// Column 6: Admission Date & Source
+		// Column 5: Admission Date & Source
 		echo '<td>';
 		echo '<span>' . esc_html( ! empty( $student->created_at ) ? date_i18n( get_option( 'date_format' ), strtotime( $student->created_at ) ) : '—' ) . '</span>';
 		if ( ! empty( $student->lead_source ) ) {
@@ -10454,7 +10524,16 @@ function cmp_handle_save_settings() {
 	update_option( 'cmp_razorpay_secret', sanitize_text_field( cmp_field( $_POST, 'razorpay_secret' ) ) );
 	update_option( 'cmp_razorpay_webhook_secret', sanitize_text_field( cmp_field( $_POST, 'razorpay_webhook_secret' ) ) );
 
-	cmp_redirect( 'cmp-settings', __( 'Settings saved successfully.', 'class-manager-pro' ) );
+	if ( isset( $_POST['razorpay_fee_percent'] ) ) {
+		$fee_pct = (float) sanitize_text_field( cmp_field( $_POST, 'razorpay_fee_percent' ) );
+		update_option( 'cmp_razorpay_fee_percent', $fee_pct > 0 ? $fee_pct : 2.36 );
+	}
+	if ( isset( $_POST['currency_symbol'] ) ) {
+		update_option( 'cmp_currency_symbol', sanitize_text_field( cmp_field( $_POST, 'currency_symbol', '₹' ) ) );
+	}
+	update_option( 'cmp_auto_deduct_gateway_fee', ! empty( $_POST['auto_deduct_gateway_fee'] ) ? '1' : '0' );
+
+	cmp_redirect( add_query_arg( array( 'tab' => 'razorpay' ), 'cmp-settings' ), __( 'Settings saved successfully.', 'class-manager-pro' ) );
 }
 
 /**
@@ -10470,7 +10549,7 @@ function cmp_handle_save_smartcertify_settings() {
 		update_option( 'cmp_smartcertify_last_sync_status', 'Not started' );
 	}
 
-	cmp_redirect( 'cmp-settings', __( 'SmartCertify integration settings saved successfully.', 'class-manager-pro' ) );
+	cmp_redirect( add_query_arg( array( 'tab' => 'integrations' ), 'cmp-settings' ), __( 'SmartCertify integration settings saved successfully.', 'class-manager-pro' ) );
 }
 
 /**
@@ -16756,7 +16835,7 @@ function cmp_handle_save_sms_settings() {
 	update_option( 'cmp_enable_daily_admission_digest', ! empty( $_POST['enable_daily_admission_digest'] ) ? '1' : '0' );
 	update_option( 'cmp_digest_recipient_email', sanitize_email( cmp_field( $_POST, 'digest_recipient_email' ) ) );
 
-	cmp_redirect( 'cmp-settings', __( 'Reminder settings saved successfully.', 'class-manager-pro' ) );
+	cmp_redirect( add_query_arg( array( 'tab' => 'messages' ), 'cmp-settings' ), __( 'Reminder settings saved successfully.', 'class-manager-pro' ) );
 }
 
 /**
@@ -16769,7 +16848,7 @@ function cmp_handle_save_attendance_settings() {
 	update_option( 'cmp_attendance_enabled', ! empty( $_POST['attendance_enabled'] ) ? '1' : '0' );
 	update_option( 'cmp_default_attendance_status', 'present' );
 
-	cmp_redirect( 'cmp-settings', __( 'Attendance settings saved successfully.', 'class-manager-pro' ) );
+	cmp_redirect( add_query_arg( array( 'tab' => 'integrations' ), 'cmp-settings' ), __( 'Attendance settings saved successfully.', 'class-manager-pro' ) );
 }
 
 /**

@@ -1169,7 +1169,6 @@ function cmp_render_students_page() {
 								<th><?php esc_html_e( 'Contact & City', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Enrolled Classes & Batches', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Fee & Balance', 'class-manager-pro' ); ?></th>
-								<th><?php esc_html_e( 'Status', 'class-manager-pro' ); ?></th>
 								<th><?php esc_html_e( 'Admission Date & Source', 'class-manager-pro' ); ?></th>
 								<th style="min-width: 220px;"><?php esc_html_e( 'Quick Actions', 'class-manager-pro' ); ?></th>
 							</tr>

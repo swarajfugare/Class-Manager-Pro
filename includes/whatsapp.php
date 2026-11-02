@@ -39,9 +39,9 @@ function cmp_handle_save_whatsapp_settings() {
 	update_option( 'cmp_whatsapp_welcome_template', sanitize_textarea_field( cmp_field( $_POST, 'whatsapp_welcome_template' ) ) );
 
 	if ( function_exists( 'cmp_redirect' ) ) {
-		cmp_redirect( 'cmp-settings', __( 'WhatsApp integration settings saved successfully.', 'class-manager-pro' ) );
+		cmp_redirect( add_query_arg( array( 'tab' => 'whatsapp' ), 'cmp-settings' ), __( 'WhatsApp integration settings saved successfully.', 'class-manager-pro' ) );
 	} else {
-		wp_safe_redirect( admin_url( 'admin.php?page=cmp-settings&cmp_notice=' . rawurlencode( __( 'WhatsApp integration settings saved successfully.', 'class-manager-pro' ) ) ) );
+		wp_safe_redirect( admin_url( 'admin.php?page=cmp-settings&tab=whatsapp&cmp_notice=' . rawurlencode( __( 'WhatsApp integration settings saved successfully.', 'class-manager-pro' ) ) ) );
 		exit;
 	}
 }

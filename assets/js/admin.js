@@ -2051,6 +2051,54 @@
 			});
 		});
 
+		// Student profile tab navigation
+		$(document).on('click', '.cmp-profile-nav-tab', function (e) {
+			e.preventDefault();
+			var tabKey = $(this).data('cmp-tab');
+			if (!tabKey) {
+				return;
+			}
+			$('.cmp-profile-nav-tab').removeClass('nav-tab-active');
+			$(this).addClass('nav-tab-active');
+			$('.cmp-profile-tab-content').hide();
+			$('#cmp-profile-tab-' + tabKey).show();
+			if (window.history && window.history.replaceState) {
+				var url = new URL(window.location);
+				url.searchParams.set('profile_tab', tabKey);
+				window.history.replaceState({}, '', url);
+			}
+		});
+
+		// Student profile drawer toggle
+		$(document).on('click', '[data-cmp-drawer-toggle]', function (e) {
+			e.preventDefault();
+			var targetSelector = $(this).data('cmp-drawer-toggle');
+			if (!targetSelector) {
+				return;
+			}
+			var $target = $(targetSelector);
+			$target.slideToggle(200);
+			if ($target.is(':visible')) {
+				$('html, body').animate({
+					scrollTop: $target.offset().top - 80
+				}, 300);
+			}
+		});
+
+		// Student profile print action
+		$(document).on('click', '[data-cmp-print-student]', function (e) {
+			e.preventDefault();
+			$('.cmp-profile-nav-tab[data-cmp-tab="print"]').trigger('click');
+			setTimeout(function () {
+				window.print();
+			}, 250);
+		});
+
+		var initialProfileTab = new URLSearchParams(window.location.search).get('profile_tab');
+		if (initialProfileTab && $('.cmp-profile-nav-tab[data-cmp-tab="' + initialProfileTab + '"]').length) {
+			$('.cmp-profile-nav-tab[data-cmp-tab="' + initialProfileTab + '"]').trigger('click');
+		}
+
 		renderCharts();
 	});
 })(jQuery);

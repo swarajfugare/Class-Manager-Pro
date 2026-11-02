@@ -1566,3 +1566,506 @@ form.cmp-loading::after {
 		max-width: 100%;
 	}
 }
+
+/* ==========================================================================
+   Comprehensive Admin Student Profile Workspace Styles
+   ========================================================================== */
+
+.cmp-student-profile-wrap {
+	margin-top: 15px;
+}
+
+.cmp-profile-breadcrumb {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 16px;
+}
+
+.cmp-student-profile-hero {
+	background: #ffffff;
+	border: 1px solid #d7e3ee;
+	border-radius: 12px;
+	padding: 24px;
+	margin-bottom: 24px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 20px;
+	box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.cmp-student-hero-main {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	flex: 1;
+	min-width: 320px;
+}
+
+.cmp-student-avatar {
+	width: 64px;
+	height: 64px;
+	min-width: 64px;
+	border-radius: 50%;
+	background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+	color: #ffffff;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-size: 24px;
+	font-weight: 700;
+	box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+	user-select: none;
+}
+
+.cmp-student-identity {
+	flex: 1;
+}
+
+.cmp-student-title-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.cmp-student-title-row h2 {
+	margin: 0;
+	font-size: 24px;
+	font-weight: 700;
+	color: #0f172a;
+}
+
+.cmp-student-subtext {
+	margin: 8px 0 0;
+	color: #64748b;
+	font-size: 13.5px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.cmp-student-subtext strong {
+	color: #334155;
+}
+
+.cmp-student-hero-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.cmp-pill {
+	display: inline-flex;
+	align-items: center;
+	font-size: 11.5px;
+	font-weight: 600;
+	padding: 2px 9px;
+	border-radius: 9999px;
+	letter-spacing: 0.02em;
+}
+
+.cmp-pill-id {
+	background: #f1f5f9;
+	color: #475569;
+	border: 1px solid #cbd5e1;
+	font-family: monospace;
+	font-size: 12px;
+}
+
+.cmp-pill-mode {
+	background: #e0f2fe;
+	color: #0369a1;
+	border: 1px solid #bae6fd;
+}
+
+.cmp-pill-current {
+	background: #fef3c7;
+	color: #92400e;
+	border: 1px solid #fde68a;
+	margin-left: 6px;
+	font-size: 10.5px;
+}
+
+.cmp-text-success {
+	color: #15803d !important;
+}
+
+.cmp-text-warning {
+	color: #b91c1c !important;
+}
+
+.cmp-text-muted {
+	color: #64748b !important;
+}
+
+.cmp-row-highlight {
+	background: #f0fdf4 !important;
+}
+
+/* Action Drawers */
+.cmp-drawer-card {
+	background: #f8fafc;
+	border: 1px solid #cbd5e1;
+	border-left: 4px solid #2563eb;
+	border-radius: 8px;
+	padding: 20px 24px;
+	margin-bottom: 24px;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.cmp-drawer-header {
+	margin-bottom: 16px;
+}
+
+.cmp-drawer-header h3 {
+	margin: 0 0 4px;
+	font-size: 18px;
+	color: #0f172a;
+}
+
+.cmp-drawer-actions {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	margin-top: 16px;
+	padding-top: 14px;
+	border-top: 1px solid #e2e8f0;
+}
+
+/* Tabs & Columns */
+.cmp-profile-nav-tabs {
+	margin-bottom: 20px !important;
+	border-bottom: 1px solid #cbd5e1;
+}
+
+.cmp-profile-nav-tab {
+	font-size: 13.5px;
+	font-weight: 500;
+	padding: 8px 14px;
+}
+
+.cmp-profile-columns {
+	display: grid;
+	grid-template-columns: 2fr 1fr;
+	gap: 20px;
+}
+
+@media (max-width: 991px) {
+	.cmp-profile-columns {
+		grid-template-columns: 1fr;
+	}
+}
+
+.cmp-profile-col-main .cmp-detail-grid {
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.cmp-quick-status-form .cmp-quick-status-row {
+	display: flex;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.cmp-quick-status-row select {
+	flex: 1;
+}
+
+.cmp-comm-buttons {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 12px;
+}
+
+.cmp-comm-btn {
+	text-align: left;
+	display: flex !important;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px !important;
+}
+
+.cmp-comm-wa {
+	border-color: #25d366 !important;
+	color: #128c7e !important;
+}
+
+.cmp-comm-wa-reminder {
+	border-color: #f59e0b !important;
+	color: #b45309 !important;
+}
+
+.cmp-comm-wa-welcome {
+	border-color: #3b82f6 !important;
+	color: #1d4ed8 !important;
+}
+
+/* Attendance Pills */
+.cmp-attendance-pills-bar {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+	gap: 16px;
+	margin-top: 14px;
+}
+
+.cmp-att-pill {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 10px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	text-align: center;
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.cmp-att-pill-num {
+	font-size: 26px;
+	font-weight: 700;
+	line-height: 1.2;
+}
+
+.cmp-att-pill-label {
+	font-size: 12px;
+	color: #64748b;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	margin-top: 4px;
+}
+
+.cmp-att-pill-present .cmp-att-pill-num {
+	color: #15803d;
+}
+
+.cmp-att-pill-absent .cmp-att-pill-num {
+	color: #b91c1c;
+}
+
+.cmp-att-pill-leave .cmp-att-pill-num {
+	color: #d97706;
+}
+
+.cmp-att-pill-rate .cmp-att-pill-num {
+	color: #2563eb;
+}
+
+.cmp-status-att-present {
+	background: #dcfce7;
+	color: #15803d;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-weight: 600;
+}
+
+.cmp-status-att-absent {
+	background: #fee2e2;
+	color: #b91c1c;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-weight: 600;
+}
+
+.cmp-status-att-leave {
+	background: #fef3c7;
+	color: #b45309;
+	padding: 3px 8px;
+	border-radius: 4px;
+	font-weight: 600;
+}
+
+/* Printable Document */
+.cmp-print-toolbar {
+	background: #ffffff;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	padding: 16px 20px;
+	margin-bottom: 20px;
+	display: flex;
+	align-items: center;
+	gap: 16px;
+}
+
+.cmp-printable-student-card {
+	background: #ffffff;
+	border: 1px solid #d7e3ee;
+	border-radius: 10px;
+	padding: 32px 36px;
+	max-width: 860px;
+	margin: 0 auto 30px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+	color: #0f172a;
+}
+
+.cmp-print-doc-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	border-bottom: 2px solid #0f172a;
+	padding-bottom: 14px;
+	margin-bottom: 20px;
+}
+
+.cmp-print-doc-header h2 {
+	margin: 0 0 4px;
+	font-size: 22px;
+	color: #0f172a;
+}
+
+.cmp-print-doc-sub {
+	margin: 0;
+	color: #64748b;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+.cmp-print-doc-meta p {
+	margin: 2px 0;
+	font-size: 12.5px;
+	text-align: right;
+}
+
+.cmp-print-info-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 22px;
+	background: #f8fafc;
+	border-radius: 6px;
+}
+
+.cmp-print-info-table td {
+	padding: 8px 12px;
+	font-size: 13px;
+	border-bottom: 1px solid #e2e8f0;
+}
+
+.cmp-print-heading {
+	font-size: 15px;
+	font-weight: 700;
+	margin: 20px 0 10px;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #1e293b;
+	border-bottom: 1px solid #cbd5e1;
+	padding-bottom: 4px;
+}
+
+.cmp-print-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 20px;
+	font-size: 12.5px;
+}
+
+.cmp-print-table th,
+.cmp-print-table td {
+	border: 1px solid #cbd5e1;
+	padding: 7px 10px;
+	text-align: left;
+}
+
+.cmp-print-table th {
+	background: #f1f5f9;
+	font-weight: 600;
+}
+
+.cmp-print-summary-box {
+	display: flex;
+	justify-content: flex-end;
+	gap: 24px;
+	background: #f8fafc;
+	border: 1px solid #cbd5e1;
+	border-radius: 6px;
+	padding: 12px 18px;
+	margin-bottom: 30px;
+}
+
+.cmp-print-summary-item {
+	font-size: 14px;
+	display: flex;
+	gap: 8px;
+}
+
+.cmp-print-signatures {
+	display: flex;
+	justify-content: space-between;
+	margin-top: 50px;
+	padding-top: 10px;
+}
+
+.cmp-print-sig-block {
+	width: 220px;
+	text-align: center;
+}
+
+.cmp-print-sig-line {
+	border-bottom: 1px solid #475569;
+	margin-bottom: 8px;
+}
+
+.cmp-print-sig-block p {
+	font-size: 12px;
+	color: #475569;
+	margin: 0;
+}
+
+/* Print CSS */
+@media print {
+	#adminmenumain,
+	#adminmenuwrap,
+	#wpadminbar,
+	#wpfooter,
+	.notice,
+	.cmp-page-intro,
+	.cmp-profile-breadcrumb,
+	.cmp-profile-nav-tabs,
+	.cmp-print-toolbar,
+	.cmp-drawer-card,
+	.cmp-student-hero-actions,
+	.cmp-student-profile-hero,
+	.cmp-cards,
+	.cmp-profile-tab-content:not(#cmp-profile-tab-print),
+	.button {
+		display: none !important;
+	}
+
+	#wpcontent,
+	#wpbody,
+	#wpbody-content,
+	.wrap,
+	.cmp-wrap,
+	.cmp-student-profile-wrap {
+		margin: 0 !important;
+		padding: 0 !important;
+		width: 100% !important;
+		background: #ffffff !important;
+	}
+
+	.cmp-profile-tab-content#cmp-profile-tab-print {
+		display: block !important;
+	}
+
+	.cmp-printable-student-card {
+		display: block !important;
+		box-shadow: none !important;
+		border: 1px solid #000000 !important;
+		padding: 20px !important;
+		max-width: 100% !important;
+		margin: 0 !important;
+		color: #000000 !important;
+	}
+
+	.cmp-print-table th,
+	.cmp-print-table td {
+		border: 1px solid #000000 !important;
+	}
+
+	.cmp-print-doc-header {
+		border-bottom: 2px solid #000000 !important;
+	}
+}

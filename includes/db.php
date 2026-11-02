@@ -362,6 +362,9 @@ function cmp_install() {
 	cmp_backfill_payment_financial_fields();
 	cmp_refresh_student_paid_fees_from_payments();
 	cmp_migrate_failed_import_students_to_interested();
+	if ( function_exists( 'cmp_unbundle_merged_students_from_payments' ) ) {
+		cmp_unbundle_merged_students_from_payments();
+	}
 
 	$wpdb->query( "UPDATE {$wpdb->prefix}cmp_students SET city_original = NULL, city_normalized = NULL WHERE city_original IN ('0.000', '0.00', '0', '0.0', '0.0000') OR city_original REGEXP '^[0-9]+(\\.[0-9]+)?$'" );
 	$wpdb->query( "UPDATE {$wpdb->prefix}cmp_interested_students SET city_original = NULL, city_normalized = NULL WHERE city_original IN ('0.000', '0.00', '0', '0.0', '0.0000') OR city_original REGEXP '^[0-9]+(\\.[0-9]+)?$'" );

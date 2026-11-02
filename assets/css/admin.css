@@ -2524,10 +2524,22 @@ form.cmp-loading::after {
 	flex-wrap: wrap;
 }
 
-.cmp-batch-cards-pro {
-	grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+.cmp-batch-cards-pro,
+.cmp-batch-cards-styled {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)) !important;
 	gap: 14px;
 	margin-bottom: 20px;
+}
+
+.cmp-btn-danger {
+	color: #d63638 !important;
+	border-color: #d63638 !important;
+}
+
+.cmp-btn-danger:hover {
+	background: #d63638 !important;
+	color: #ffffff !important;
 }
 
 .cmp-stat-card-pro {

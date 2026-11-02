@@ -46,6 +46,13 @@ function cmp_render_dashboard_page() {
 		4
 	);
 
+	global $wpdb;
+	$today_start             = current_time( 'Y-m-d 00:00:00' );
+	$today_admissions        = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(id) FROM " . cmp_table( 'students' ) . " WHERE created_at >= %s", $today_start ) );
+	$today_revenue           = (float) $wpdb->get_var( $wpdb->prepare( "SELECT SUM(amount) FROM " . cmp_table( 'payments' ) . " WHERE is_deleted = 0 AND (payment_date >= %s OR created_at >= %s)", $today_start, $today_start ) );
+	$pending_utr_count       = (int) $wpdb->get_var( "SELECT COUNT(id) FROM " . cmp_table( 'students' ) . " WHERE notes LIKE '%[TEMP_LINK_UTR:%' AND notes NOT LIKE '%[APPROVED_UTR:%'" );
+	$completed_batches_count = (int) $wpdb->get_var( "SELECT COUNT(id) FROM " . cmp_table( 'batches' ) . " WHERE status = 'completed'" );
+
 	wp_add_inline_script(
 		'cmp-admin',
 		'window.CMPCharts = Object.assign({}, window.CMPCharts || {}, ' . wp_json_encode( $dashboard['chart_data'] ) . ');',
@@ -67,6 +74,23 @@ function cmp_render_dashboard_page() {
 			</select>
 			<button type="submit" class="button button-primary"><?php esc_html_e( 'Apply Filter', 'class-manager-pro' ); ?></button>
 		</form>
+
+		<?php if ( $pending_utr_count > 0 ) : ?>
+			<div class="cmp-panel" style="margin: 16px 0; border-left: 4px solid #f59e0b; background: #fffbeb; padding: 14px 18px; border-radius: 8px;">
+				<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+					<div style="display:flex; align-items:center; gap:12px;">
+						<span style="font-size:24px;">💳</span>
+						<div>
+							<strong style="color:#92400e; font-size:14px;"><?php echo esc_html( sprintf( _n( '%d Admission awaiting Payment UTR Approval', '%d Admissions awaiting Payment UTR Approval', $pending_utr_count, 'class-manager-pro' ), $pending_utr_count ) ); ?></strong>
+							<p style="margin:2px 0 0 0; color:#b45309; font-size:12px;"><?php esc_html_e( 'Students have submitted UPI / UTR numbers via temporary links and are waiting for verification.', 'class-manager-pro' ); ?></p>
+						</div>
+					</div>
+					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches' ) ); ?>" class="button button-primary" style="background:#d97706;border-color:#d97706;">
+						<?php esc_html_e( 'Review & Approve Admissions →', 'class-manager-pro' ); ?>
+					</a>
+				</div>
+			</div>
+		<?php endif; ?>
 
 		<section class="cmp-action-board">
 			<div class="cmp-panel-header">
@@ -107,6 +131,33 @@ function cmp_render_dashboard_page() {
 				</a>
 			</div>
 		</section>
+
+		<div class="cmp-cards cmp-cards-4" style="margin: 18px 0;">
+			<div class="cmp-card" style="border-top: 3px solid #3b82f6;">
+				<span><?php esc_html_e( 'Today\'s New Admissions', 'class-manager-pro' ); ?></span>
+				<strong style="color:#2563eb;"><?php echo esc_html( number_format_i18n( $today_admissions ) ); ?></strong>
+				<small class="cmp-muted"><?php echo esc_html( wp_date( 'd M Y' ) ); ?></small>
+			</div>
+			<div class="cmp-card" style="border-top: 3px solid #10b981;">
+				<span><?php esc_html_e( 'Today\'s Collections', 'class-manager-pro' ); ?></span>
+				<strong style="color:#059669;"><?php echo esc_html( cmp_format_money( $today_revenue ) ); ?></strong>
+				<small class="cmp-muted"><?php esc_html_e( 'Recorded today across all batches', 'class-manager-pro' ); ?></small>
+			</div>
+			<div class="cmp-card" style="border-top: 3px solid #8b5cf6;">
+				<span><?php esc_html_e( 'Batches in Session', 'class-manager-pro' ); ?></span>
+				<strong style="color:#7c3aed;"><?php echo esc_html( number_format_i18n( $metrics['active_batches'] ) ); ?></strong>
+				<small class="cmp-muted"><?php echo esc_html( sprintf( __( 'Out of %d total batches', 'class-manager-pro' ), (int) $metrics['total_batches'] ) ); ?></small>
+			</div>
+			<div class="cmp-card" style="border-top: 3px solid #f59e0b;">
+				<span><?php esc_html_e( 'Batch Certificates Hub', 'class-manager-pro' ); ?></span>
+				<strong style="color:#d97706;"><?php echo esc_html( number_format_i18n( $completed_batches_count ) ); ?></strong>
+				<small class="cmp-muted">
+					<a href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'status' => 'completed' ) ) ); ?>" style="text-decoration:none;font-weight:600;">
+						<?php esc_html_e( 'Completed batches →', 'class-manager-pro' ); ?>
+					</a>
+				</small>
+			</div>
+		</div>
 
 		<div class="cmp-cards cmp-dashboard-metrics">
 			<div class="cmp-card">
@@ -452,6 +503,7 @@ function cmp_render_dashboard_page() {
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-teacher-console' ) ); ?>"><?php esc_html_e( 'Teacher Console', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-analytics' ) ); ?>"><?php esc_html_e( 'Analytics', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-razorpay-import' ) ); ?>"><?php esc_html_e( 'Import from Razorpay', 'class-manager-pro' ); ?></a>
+					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'status' => 'completed' ) ) ); ?>">🎓 <?php esc_html_e( 'Certificates Hub', 'class-manager-pro' ); ?></a>
 					<a class="button" href="<?php echo esc_url( cmp_admin_url( 'cmp-settings' ) ); ?>"><?php esc_html_e( 'Settings', 'class-manager-pro' ); ?></a>
 				</div>
 			</section>

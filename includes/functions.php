@@ -4913,8 +4913,26 @@ function cmp_handle_toggle_batch_status() {
 		sprintf( __( 'Batch "%1$s" marked as %2$s.', 'class-manager-pro' ), $batch->batch_name, $new_status )
 	);
 
+	if ( 'completed' === $new_status ) {
+		if ( function_exists( 'cmp_auto_generate_batch_certificates' ) ) {
+			cmp_auto_generate_batch_certificates( $batch_id );
+		}
+		do_action(
+			'cmp_smartcertify_batch_completed',
+			array(
+				'source_plugin' => 'class-manager-pro',
+				'batch_id'      => $batch_id,
+				'class_id'      => (int) $batch->class_id,
+				'batch_name'    => $batch->batch_name,
+				'class_name'    => $batch->class_name,
+				'status'        => 'completed',
+				'timestamp'     => current_time( 'mysql' ),
+			)
+		);
+	}
+
 	$message = 'completed' === $new_status
-		? sprintf( __( 'Batch "%s" marked as completed successfully.', 'class-manager-pro' ), $batch->batch_name )
+		? sprintf( __( 'Batch "%s" marked as completed and certificates auto-generated successfully!', 'class-manager-pro' ), $batch->batch_name )
 		: sprintf( __( 'Batch "%s" reopened as active successfully.', 'class-manager-pro' ), $batch->batch_name );
 
 	cmp_redirect(
@@ -4924,6 +4942,7 @@ function cmp_handle_toggle_batch_status() {
 		array(
 			'action' => 'view',
 			'id'     => $batch_id,
+			'tab'    => 'completed' === $new_status ? 'certificates' : 'students',
 		)
 	);
 }

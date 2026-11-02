@@ -1098,6 +1098,153 @@ function cmp_render_batch_admissions_tab( $batch ) {
 }
 
 /**
+ * Renders the batch certificates tab showing full logs of who generated and who downloaded certificates.
+ *
+ * @param object $batch Batch row.
+ */
+function cmp_render_batch_certificates_tab( $batch ) {
+	$batch_id  = (int) $batch->id;
+	$cert_data = function_exists( 'cmp_get_batch_certificate_records' )
+		? cmp_get_batch_certificate_records( $batch_id )
+		: array( 'records' => array(), 'total_students' => 0, 'generated_count' => 0, 'downloaded_count' => 0, 'pending_count' => 0 );
+
+	$records          = $cert_data['records'];
+	$total_students   = $cert_data['total_students'];
+	$generated_count  = $cert_data['generated_count'];
+	$downloaded_count = $cert_data['downloaded_count'];
+	$pending_count    = $cert_data['pending_count'];
+	$download_rate    = $generated_count > 0 ? round( ( $downloaded_count / $generated_count ) * 100, 1 ) : 0;
+	?>
+	<div class="cmp-cards cmp-cards-4">
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Total Enrolled Students', 'class-manager-pro' ); ?></span>
+			<strong><?php echo esc_html( number_format_i18n( $total_students ) ); ?></strong>
+			<small class="cmp-muted"><?php esc_html_e( 'Eligible for certificates', 'class-manager-pro' ); ?></small>
+		</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Certificates Generated', 'class-manager-pro' ); ?></span>
+			<strong style="color:#059669;"><?php echo esc_html( number_format_i18n( $generated_count ) ); ?></strong>
+			<small class="cmp-muted"><?php echo esc_html( sprintf( __( '%d pending generation', 'class-manager-pro' ), $pending_count ) ); ?></small>
+		</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Downloaded by Students', 'class-manager-pro' ); ?></span>
+			<strong style="color:#2563eb;"><?php echo esc_html( number_format_i18n( $downloaded_count ) ); ?></strong>
+			<small class="cmp-muted"><?php echo esc_html( sprintf( __( '%s%% download rate', 'class-manager-pro' ), $download_rate ) ); ?></small>
+		</div>
+		<div class="cmp-card">
+			<span><?php esc_html_e( 'Not Yet Downloaded', 'class-manager-pro' ); ?></span>
+			<strong style="color:<?php echo ( $generated_count - $downloaded_count ) > 0 ? '#d97706' : '#059669'; ?>;"><?php echo esc_html( number_format_i18n( max( 0, $generated_count - $downloaded_count ) ) ); ?></strong>
+			<small class="cmp-muted"><?php esc_html_e( 'Ready for download', 'class-manager-pro' ); ?></small>
+		</div>
+	</div>
+
+	<section class="cmp-panel">
+		<div class="cmp-panel-header">
+			<div>
+				<h2><?php esc_html_e( 'Batch Certificates Log & Download Tracker', 'class-manager-pro' ); ?></h2>
+				<p class="cmp-muted"><?php esc_html_e( 'Track which students have had their certificates generated, who has downloaded them, and download counts.', 'class-manager-pro' ); ?></p>
+			</div>
+			<div class="cmp-toolbar">
+				<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline-block;margin:0;">
+					<input type="hidden" name="action" value="cmp_generate_batch_certificates">
+					<input type="hidden" name="batch_id" value="<?php echo esc_attr( $batch_id ); ?>">
+					<?php wp_nonce_field( 'cmp_generate_batch_certificates_' . $batch_id ); ?>
+					<button type="submit" class="button button-primary" style="background:#059669;border-color:#059669;">
+						⚡ <?php esc_html_e( 'Generate / Re-issue All Certificates', 'class-manager-pro' ); ?>
+					</button>
+				</form>
+				<input type="search" id="cmp-cert-filter-input" placeholder="<?php esc_attr_e( 'Search certificate log...', 'class-manager-pro' ); ?>" style="min-width:200px;padding:4px 10px;border-radius:6px;font-size:13px;" onkeyup="var val = this.value.toLowerCase(); document.querySelectorAll('#cmp-cert-log-tbody tr').forEach(function(r){ r.style.display = r.innerText.toLowerCase().indexOf(val) > -1 ? '' : 'none'; });">
+			</div>
+		</div>
+
+		<div class="cmp-table-scroll">
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'Student Name & Contact', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Certificate Status', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Code / Serial', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Generated Date', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Download Activity', 'class-manager-pro' ); ?></th>
+						<th><?php esc_html_e( 'Actions', 'class-manager-pro' ); ?></th>
+					</tr>
+				</thead>
+				<tbody id="cmp-cert-log-tbody">
+					<?php if ( empty( $records ) ) : ?>
+						<tr><td colspan="6"><?php esc_html_e( 'No students enrolled in this batch.', 'class-manager-pro' ); ?></td></tr>
+					<?php else : ?>
+						<?php foreach ( $records as $rec ) : ?>
+							<tr>
+								<td>
+									<strong><?php echo esc_html( $rec['student_name'] ); ?></strong>
+									<br><span class="cmp-muted" style="font-size:12px;"><?php echo esc_html( $rec['phone'] ? $rec['phone'] : $rec['email'] ); ?></span>
+								</td>
+								<td>
+									<?php if ( 'downloaded' === $rec['status'] ) : ?>
+										<span class="cmp-status cmp-status-active" style="background:#dcfce7;color:#166534;font-weight:600;padding:4px 8px;border-radius:6px;">✓ <?php esc_html_e( 'Downloaded', 'class-manager-pro' ); ?></span>
+									<?php elseif ( 'generated' === $rec['status'] ) : ?>
+										<span class="cmp-status" style="background:#e0f2fe;color:#075985;font-weight:600;padding:4px 8px;border-radius:6px;">⚡ <?php esc_html_e( 'Generated', 'class-manager-pro' ); ?></span>
+									<?php else : ?>
+										<span class="cmp-status" style="background:#f1f5f9;color:#64748b;font-weight:600;padding:4px 8px;border-radius:6px;">⏳ <?php esc_html_e( 'Not Generated', 'class-manager-pro' ); ?></span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php if ( $rec['code'] || $rec['serial'] ) : ?>
+										<code><?php echo esc_html( $rec['code'] ? $rec['code'] : $rec['serial'] ); ?></code>
+										<?php if ( $rec['serial'] && $rec['code'] && $rec['serial'] !== $rec['code'] ) : ?>
+											<br><small class="cmp-muted"><?php echo esc_html( $rec['serial'] ); ?></small>
+										<?php endif; ?>
+									<?php else : ?>
+										<span class="cmp-muted">—</span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php echo esc_html( ! empty( $rec['generated_at'] ) ? wp_date( 'd M Y, h:i A', strtotime( $rec['generated_at'] ) ) : '—' ); ?>
+								</td>
+								<td>
+									<?php if ( (int) $rec['download_count'] > 0 ) : ?>
+										<strong style="color:#059669;"><?php echo esc_html( sprintf( _n( '%d time', '%d times', (int) $rec['download_count'], 'class-manager-pro' ), (int) $rec['download_count'] ) ); ?></strong>
+										<?php if ( ! empty( $rec['last_download_at'] ) ) : ?>
+											<br><small class="cmp-muted"><?php echo esc_html( wp_date( 'd M Y, h:i A', strtotime( $rec['last_download_at'] ) ) ); ?></small>
+										<?php endif; ?>
+									<?php else : ?>
+										<span class="cmp-muted" style="color:#94a3b8;"><?php esc_html_e( 'Not downloaded yet', 'class-manager-pro' ); ?></span>
+									<?php endif; ?>
+								</td>
+								<td class="cmp-actions" style="white-space:nowrap;">
+									<?php if ( ! empty( $rec['pdf_url'] ) ) : ?>
+										<a href="<?php echo esc_url( $rec['pdf_url'] ); ?>" target="_blank" class="button button-small" style="color:#0284c7;">
+											📄 <?php esc_html_e( 'View PDF', 'class-manager-pro' ); ?>
+										</a>
+									<?php endif; ?>
+
+									<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin:0;">
+										<input type="hidden" name="action" value="cmp_generate_single_student_certificate">
+										<input type="hidden" name="student_id" value="<?php echo esc_attr( $rec['student_id'] ); ?>">
+										<input type="hidden" name="batch_id" value="<?php echo esc_attr( $batch_id ); ?>">
+										<?php wp_nonce_field( 'cmp_generate_single_cert_' . $rec['student_id'] ); ?>
+										<button type="submit" class="button button-small" title="<?php esc_attr_e( 'Generate / Re-issue certificate for this student', 'class-manager-pro' ); ?>">
+											⚡ <?php echo 'not_generated' === $rec['status'] ? esc_html__( 'Generate', 'class-manager-pro' ) : esc_html__( 'Re-issue', 'class-manager-pro' ); ?>
+										</button>
+									</form>
+
+									<?php if ( ! empty( $rec['wa_link'] ) && 'not_generated' !== $rec['status'] ) : ?>
+										<a href="<?php echo esc_url( $rec['wa_link'] ); ?>" target="_blank" class="button button-small" style="color:#16a34a;" title="<?php esc_attr_e( 'Send Certificate Code via WhatsApp', 'class-manager-pro' ); ?>">
+											💬 WhatsApp
+										</a>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					<?php endif; ?>
+				</tbody>
+			</table>
+		</div>
+	</section>
+	<?php
+}
+
+/**
  * Renders the batch detail panel.
  *
  * @param object $batch Batch row.
@@ -1240,6 +1387,47 @@ function cmp_render_batch_detail_panel( $batch ) {
 			<?php endif; ?>
 		</div>
 
+		<?php if ( 'completed' === (string) $batch->status ) : ?>
+			<?php
+			$cert_data = function_exists( 'cmp_get_batch_certificate_records' )
+				? cmp_get_batch_certificate_records( (int) $batch->id )
+				: array( 'total_students' => 0, 'generated_count' => 0, 'downloaded_count' => 0, 'pending_count' => 0 );
+			?>
+			<div class="cmp-panel" style="margin: 16px 0; border-left: 4px solid #10b981; background: #f0fdf4; padding: 18px 22px; border-radius: 8px;">
+				<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px;">
+					<div>
+						<h3 style="margin:0 0 6px 0; color:#065f46; display:flex; align-items:center; gap:8px; font-size:16px;">
+							🎓 <?php esc_html_e( 'Batch Completed - Certificates Available', 'class-manager-pro' ); ?>
+						</h3>
+						<p style="margin:0; color:#047857; font-size:13px;">
+							<?php
+							printf(
+								/* translators: 1: generated count 2: total students 3: downloaded count */
+								esc_html__( '%1$d of %2$d certificates generated • %3$d downloaded by students.', 'class-manager-pro' ),
+								(int) $cert_data['generated_count'],
+								(int) $cert_data['total_students'],
+								(int) $cert_data['downloaded_count']
+							);
+							?>
+						</p>
+					</div>
+					<div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+						<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="display:inline;margin:0;">
+							<input type="hidden" name="action" value="cmp_generate_batch_certificates">
+							<input type="hidden" name="batch_id" value="<?php echo esc_attr( (int) $batch->id ); ?>">
+							<?php wp_nonce_field( 'cmp_generate_batch_certificates_' . (int) $batch->id ); ?>
+							<button type="submit" class="button button-primary" style="background:#059669; border-color:#059669;">
+								⚡ <?php esc_html_e( 'Generate / Re-issue All Certificates', 'class-manager-pro' ); ?>
+							</button>
+						</form>
+						<a class="button button-secondary" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'certificates' ) ) ); ?>">
+							📜 <?php esc_html_e( 'View Certificate Logs & Downloads →', 'class-manager-pro' ); ?>
+						</a>
+					</div>
+				</div>
+			</div>
+		<?php endif; ?>
+
 		<nav class="nav-tab-wrapper cmp-tab-nav" aria-label="<?php esc_attr_e( 'Batch sections', 'class-manager-pro' ); ?>">
 			<a class="nav-tab <?php echo 'students' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'students' ) ) ); ?>"><?php esc_html_e( 'Enrolled Students', 'class-manager-pro' ); ?> (<?php echo esc_html( $metrics['student_count'] ); ?>)</a>
 			<?php if ( cmp_is_attendance_enabled() ) : ?>
@@ -1248,6 +1436,7 @@ function cmp_render_batch_detail_panel( $batch ) {
 			<a class="nav-tab <?php echo 'expenses' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'expenses' ) ) ); ?>"><?php esc_html_e( 'Expenses', 'class-manager-pro' ); ?></a>
 			<a class="nav-tab <?php echo 'admissions' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'admissions' ) ) ); ?>"><?php esc_html_e( 'Admissions & Temp Links', 'class-manager-pro' ); ?></a>
 			<a class="nav-tab <?php echo 'announcements' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'announcements' ) ) ); ?>"><?php esc_html_e( 'Announcements', 'class-manager-pro' ); ?></a>
+			<a class="nav-tab <?php echo 'certificates' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'certificates' ) ) ); ?>">🎓 <?php esc_html_e( 'Certificates', 'class-manager-pro' ); ?></a>
 			<a class="nav-tab <?php echo 'import' === $current_tab ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( cmp_admin_url( 'cmp-batches', array( 'action' => 'view', 'id' => (int) $batch->id, 'tab' => 'import' ) ) ); ?>"><?php esc_html_e( 'Import Tools', 'class-manager-pro' ); ?></a>
 		</nav>
 
@@ -1260,6 +1449,8 @@ function cmp_render_batch_detail_panel( $batch ) {
 			<?php cmp_render_batch_admissions_tab( $batch ); ?>
 		<?php elseif ( 'announcements' === $current_tab ) : ?>
 			<?php cmp_render_batch_announcements_tab( $batch ); ?>
+		<?php elseif ( 'certificates' === $current_tab ) : ?>
+			<?php cmp_render_batch_certificates_tab( $batch ); ?>
 		<?php elseif ( 'import' === $current_tab ) : ?>
 			<?php cmp_render_batch_import_tools( $batch, 'cmp-batches', 'view' ); ?>
 		<?php else : ?>

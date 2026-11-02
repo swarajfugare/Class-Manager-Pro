@@ -4409,6 +4409,54 @@ function cmp_send_registration_notifications( $student, $batch, $context = array
 }
 
 /**
+ * Checks whether two person names refer to the same individual or distinctly different people.
+ *
+ * @param string $name1 First name.
+ * @param string $name2 Second name.
+ * @return bool
+ */
+function cmp_is_same_person_name( $name1, $name2 ) {
+	$n1 = trim( strtolower( (string) $name1 ) );
+	$n2 = trim( strtolower( (string) $name2 ) );
+
+	if ( '' === $n1 || '' === $n2 ) {
+		return true;
+	}
+
+	if ( $n1 === $n2 ) {
+		return true;
+	}
+
+	// Substring match: e.g. "Shruti Omble" vs "Shruti Vijay Omble"
+	if ( false !== strpos( $n1, $n2 ) || false !== strpos( $n2, $n1 ) ) {
+		return true;
+	}
+
+	$words1 = array_values( array_filter( preg_split( '/[\s\-_,\/]+/', $n1 ) ) );
+	$words2 = array_values( array_filter( preg_split( '/[\s\-_,\/]+/', $n2 ) ) );
+
+	if ( empty( $words1 ) || empty( $words2 ) ) {
+		return true;
+	}
+
+	$last1 = end( $words1 );
+	$last2 = end( $words2 );
+
+	if ( strlen( $last1 ) >= 3 && strlen( $last2 ) >= 3 && $last1 !== $last2 ) {
+		return false;
+	}
+
+	$first1 = reset( $words1 );
+	$first2 = reset( $words2 );
+
+	if ( strlen( $first1 ) >= 3 && strlen( $first2 ) >= 3 && $first1 !== $first2 ) {
+		return false;
+	}
+
+	return true;
+}
+
+/**
  * Centralizes student registration into a batch.
  *
  * @param object $batch Batch row.
@@ -4467,6 +4515,10 @@ function cmp_process_batch_registration( $batch, $data, $options = array() ) {
 	}
 
 	$existing = cmp_find_mergeable_student_for_batch( $batch, $phone, $email );
+	if ( $existing && ! empty( $existing->name ) && '' !== $name && ! cmp_is_same_person_name( $existing->name, $name ) ) {
+		// Distinct person using the same contact details (e.g. relatives/friends): combine names so both are preserved
+		$name = $existing->name . ' / ' . $name;
+	}
 	$existing_id = $existing ? (int) $existing->id : 0;
 	$capacity_exclude_id = $existing && (int) $existing->batch_id === (int) $batch->id ? $existing_id : 0;
 
@@ -4489,7 +4541,7 @@ function cmp_process_batch_registration( $batch, $data, $options = array() ) {
 				'email'     => $email,
 				'class_id'  => (int) $batch->class_id,
 				'batch_id'  => (int) $batch->id,
-				'total_fee' => null !== $options['total_fee'] ? cmp_money_value( $options['total_fee'] ) : ( (float) $existing->total_fee > 0 ? (float) $existing->total_fee : cmp_get_batch_effective_fee( $batch ) ),
+				'total_fee' => null !== $options['total_fee'] ? max( (float) cmp_money_value( $options['total_fee'] ), (float) $existing->total_fee ) : ( (float) $existing->total_fee > 0 ? (float) $existing->total_fee : cmp_get_batch_effective_fee( $batch ) ),
 				'paid_fee'  => null !== $options['paid_fee'] ? cmp_money_value( $options['paid_fee'] ) : ( $existing ? (float) $existing->paid_fee : 0 ),
 				'status'    => cmp_clean_enum( cmp_field( $options, 'status', 'active' ), cmp_student_statuses(), 'active' ),
 				'notes'     => cmp_append_note( $existing->notes, $notes ),
@@ -5394,15 +5446,23 @@ function cmp_recalculate_student_paid_fee( $student_id ) {
 	}
 
 	$paid_fee = cmp_get_student_context_payment_total( $student_id, (int) $student->class_id, (int) $student->batch_id );
-	$updated  = $wpdb->update(
+	$update_fields = array(
+		'paid_fee' => $paid_fee,
+	);
+	$update_formats = array( '%f' );
+
+	if ( (float) $paid_fee > (float) $student->total_fee ) {
+		$update_fields['total_fee'] = $paid_fee;
+		$update_formats[]           = '%f';
+	}
+
+	$updated = $wpdb->update(
 		cmp_table( 'students' ),
-		array(
-			'paid_fee' => $paid_fee,
-		),
+		$update_fields,
 		array(
 			'id' => $student_id,
 		),
-		array( '%f' ),
+		$update_formats,
 		array( '%d' )
 	);
 
@@ -5680,15 +5740,46 @@ function cmp_prepare_payment_payload( $data, $existing_payment = null ) {
 		return new WP_Error( 'cmp_invalid_payment_context', __( 'Manual payments must use the student\'s current class and batch.', 'class-manager-pro' ) );
 	}
 
-	$allowed_amount = cmp_get_payment_remaining_allowed_amount( $student_id, $class_id, $batch_id, $exclude_id );
+	$allowed_amount    = cmp_get_payment_remaining_allowed_amount( $student_id, $class_id, $batch_id, $exclude_id );
+	$is_gateway_import = in_array( $payment_mode, array( 'razorpay', 'upi' ), true ) || ! empty( $data['allow_overpayment'] );
 
 	if ( $allowed_amount <= 0 ) {
-		return new WP_Error( 'cmp_payment_not_allowed', __( 'This student has no remaining fee balance for the selected batch.', 'class-manager-pro' ) );
-	}
-
-	if ( $amount > $allowed_amount ) {
-		$amount = $allowed_amount;
-		cmp_set_payment_operation_notice( __( 'Entered amount exceeds allowed fee. Adjusted automatically.', 'class-manager-pro' ), 'warning' );
+		if ( $is_gateway_import ) {
+			// Real gateway transaction: expand student total_fee to accommodate the new payment
+			global $wpdb;
+			$new_total_fee = (float) $student->total_fee + (float) $amount;
+			$wpdb->update(
+				cmp_table( 'students' ),
+				array( 'total_fee' => $new_total_fee ),
+				array( 'id' => (int) $student_id ),
+				array( '%f' ),
+				array( '%d' )
+			);
+			$student->total_fee = $new_total_fee;
+			$allowed_amount     = $amount;
+		} else {
+			return new WP_Error( 'cmp_payment_not_allowed', __( 'This student has no remaining fee balance for the selected batch.', 'class-manager-pro' ) );
+		}
+	} elseif ( $amount > $allowed_amount ) {
+		if ( $is_gateway_import ) {
+			// Gateway payment exceeds current remaining balance: expand student total_fee
+			global $wpdb;
+			$new_total_fee = (float) $student->paid_fee + (float) $amount;
+			if ( $new_total_fee > (float) $student->total_fee ) {
+				$wpdb->update(
+					cmp_table( 'students' ),
+					array( 'total_fee' => $new_total_fee ),
+					array( 'id' => (int) $student_id ),
+					array( '%f' ),
+					array( '%d' )
+				);
+				$student->total_fee = $new_total_fee;
+			}
+			$allowed_amount = $amount;
+		} else {
+			$amount = $allowed_amount;
+			cmp_set_payment_operation_notice( __( 'Entered amount exceeds allowed fee. Adjusted automatically.', 'class-manager-pro' ), 'warning' );
+		}
 	}
 
 	if ( '' !== $transaction_id && cmp_payment_exists( $transaction_id, $exclude_id ) ) {
@@ -10797,13 +10888,14 @@ function cmp_upsert_import_student_from_payment( $payment, $batch = null ) {
 			'lead_source'   => $lead_source,
 		),
 		array(
-			'registration_method' => 'razorpay_import',
-			'registration_source' => 'razorpay_import',
-			'send_notifications'  => true,
-			'total_fee'           => $total_fee,
-			'paid_fee'            => null,
-			'status'              => 'active',
-			'notes_prefix'        => __( 'Created during Razorpay import.', 'class-manager-pro' ),
+			'registration_method'     => 'razorpay_import',
+			'registration_source'     => 'razorpay_import',
+			'send_notifications'      => true,
+			'allow_capacity_override' => true,
+			'total_fee'               => $total_fee,
+			'paid_fee'                => null,
+			'status'                  => 'active',
+			'notes_prefix'            => __( 'Created during Razorpay import.', 'class-manager-pro' ),
 		)
 	);
 }
@@ -10870,14 +10962,15 @@ function cmp_import_razorpay_payment( $payment, $link_map = array() ) {
 
 	$result = cmp_insert_payment(
 		array(
-			'student_id'     => (int) $student_id,
-			'class_id'       => $payment_class_id,
-			'batch_id'       => $payment_batch_id,
-			'amount'         => $amount,
+			'student_id'           => (int) $student_id,
+			'class_id'             => $payment_class_id,
+			'batch_id'             => $payment_batch_id,
+			'amount'               => $amount,
 			'apply_gateway_charge' => 1,
-			'payment_mode'   => 'razorpay',
-			'transaction_id' => $transaction_id,
-			'payment_date'   => $payment_date,
+			'payment_mode'         => 'razorpay',
+			'transaction_id'       => $transaction_id,
+			'payment_date'         => $payment_date,
+			'allow_overpayment'    => 1,
 		)
 	);
 
@@ -11001,13 +11094,23 @@ function cmp_clean_and_realign_batch_payments( $batch_id, $valid_payment_ids = a
 			);
 
 			if ( ! empty( $pmt->student_id ) ) {
-				$wpdb->update(
-					cmp_table( 'students' ),
-					array( 'batch_id' => 0 ),
-					array( 'id' => (int) $pmt->student_id ),
-					array( '%d' ),
-					array( '%d' )
+				$other_pmts = (int) $wpdb->get_var(
+					$wpdb->prepare(
+						'SELECT COUNT(*) FROM ' . cmp_table( 'payments' ) . ' WHERE student_id = %d AND batch_id = %d AND id <> %d AND is_deleted = 0',
+						$pmt->student_id,
+						$batch_id,
+						$pmt->id
+					)
 				);
+				if ( 0 === $other_pmts ) {
+					$wpdb->update(
+						cmp_table( 'students' ),
+						array( 'batch_id' => 0 ),
+						array( 'id' => (int) $pmt->student_id ),
+						array( '%d' ),
+						array( '%d' )
+					);
+				}
 			}
 		}
 
@@ -11099,14 +11202,15 @@ function cmp_import_razorpay_payment_into_batch( $payment, $batch ) {
 
 	$result = cmp_insert_payment(
 		array(
-			'student_id'     => (int) $student_id,
-			'class_id'       => (int) $batch->class_id,
-			'batch_id'       => (int) $batch->id,
-			'amount'         => $amount,
+			'student_id'           => (int) $student_id,
+			'class_id'             => (int) $batch->class_id,
+			'batch_id'             => (int) $batch->id,
+			'amount'               => $amount,
 			'apply_gateway_charge' => 1,
-			'payment_mode'   => 'razorpay',
-			'transaction_id' => $transaction_id,
-			'payment_date'   => $payment_date,
+			'payment_mode'         => 'razorpay',
+			'transaction_id'       => $transaction_id,
+			'payment_date'         => $payment_date,
+			'allow_overpayment'    => 1,
 		)
 	);
 
